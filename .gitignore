@@ -1,0 +1,13 @@
+# Flutter
+**/.dart_tool/
+**/build/
+**/.idea/
+**/*.iml
+
+# Python
+**/__pycache__/
+**/.venv/
+**/.pytest_cache/
+
+# Env
+**/.env
