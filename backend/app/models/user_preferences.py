@@ -5,7 +5,7 @@ from app.db.base import Base
 class UserPreference(Base):
     __tablename__ = "user_preferences"
     __table_args__ = (
-        UniqueConstraint("user_id", "key", name="uq_user_preferences_user_key"),
+        UniqueConstraint("user_id", "key", "value", name="uq_user_preferences_user_key_value"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -13,6 +13,8 @@ class RegisterRequest(BaseModel):
     def validate_password(cls, v: str):
         if len(v) < 8:
             raise ValueError("Пароль должен быть не менее 8 символов")
+        if len(v.encode("utf-8")) > 72:
+             raise ValueError("Пароль слишком длинный (bcrypt поддерживает до 72 байт)")
         if not re.search(r"[A-Z]", v):
             raise ValueError("Пароль должен содержать минимум 1 заглавную латинскую букву")
         if not re.search(r"[a-z]", v):
