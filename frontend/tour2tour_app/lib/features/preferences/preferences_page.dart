@@ -3,7 +3,13 @@ import 'preferences_repo.dart';
 
 class PreferencesPage extends StatefulWidget {
   final PreferencesRepo repo;
-  const PreferencesPage({super.key, required this.repo});
+   final Future<void> Function()? onLogout;
+
+  const PreferencesPage({
+    super.key,
+    required this.repo,
+    this.onLogout,
+  });
 
   @override
   State<PreferencesPage> createState() => _PreferencesPageState();
@@ -37,7 +43,9 @@ class _PreferencesPageState extends State<PreferencesPage> {
     try {
       await widget.repo.setPreferences(selected.toList());
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сохранено')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сохранено')),
+      );
     } catch (e) {
       setState(() => error = e.toString());
     }
@@ -48,7 +56,20 @@ class _PreferencesPageState extends State<PreferencesPage> {
     if (loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Предпочтения')),
+      appBar: AppBar(
+        title: const Text('Предпочтения'),
+        actions: [
+          IconButton(
+            tooltip: 'Выйти',
+            icon: const Icon(Icons.logout),
+            onPressed: widget.onLogout == null
+                ? null
+                : () async {
+                    await widget.onLogout!();
+                  },
+          ),
+        ],  
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

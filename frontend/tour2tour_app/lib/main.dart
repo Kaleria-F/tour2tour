@@ -33,23 +33,36 @@ class _Tour2TourAppState extends State<Tour2TourApp> {
   }
 
   Future<void> _init() async {
-    token = await tokenStorage.read();
-    setState(() => loading = false);
+    final t = await tokenStorage.read();
+    setState(() {
+      token = t;
+      loading = false;
+    });
   }
 
-  void onLoggedIn() async {
-    token = await tokenStorage.read();
-    setState(() {});
+  Future<void> onLoggedIn() async {
+    final t = await tokenStorage.read();
+    setState(() => token = t);
   }
+
+  Future<void> onLogout() async {
+    await tokenStorage.clear();
+    setState(() => token = null);
+  }
+
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const MaterialApp(home: Scaffold(body: Center(child: CircularProgressIndicator())));
+    if (loading) {
+      return const MaterialApp(
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
+    }
 
     return MaterialApp(
       home: (token == null)
           ? LoginPage(auth: auth, onLoggedIn: onLoggedIn)
-          : PreferencesPage(repo: prefs),
+          : PreferencesPage(repo: prefs, onLogout: onLogout),
     );
   }
 }
