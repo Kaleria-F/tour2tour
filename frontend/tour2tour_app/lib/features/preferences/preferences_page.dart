@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../auth/auth_repo.dart';
 import 'preferences_repo.dart';
 
 class PreferencesPage extends StatefulWidget {
   final PreferencesRepo repo;
-   final Future<void> Function()? onLogout;
+  final AuthRepo auth;
 
-  const PreferencesPage({
-    super.key,
-    required this.repo,
-    this.onLogout,
-  });
+  const PreferencesPage({super.key, required this.repo, required this.auth});
 
   @override
   State<PreferencesPage> createState() => _PreferencesPageState();
@@ -32,9 +30,9 @@ class _PreferencesPageState extends State<PreferencesPage> {
       final data = await widget.repo.getPreferences();
       selected.addAll(data);
     } catch (_) {
-      // если ещё нет preferences — не страшно
+      // если GET нет/падает — не страшно
     } finally {
-      setState(() => loading = false);
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -43,12 +41,16 @@ class _PreferencesPageState extends State<PreferencesPage> {
     try {
       await widget.repo.setPreferences(selected.toList());
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Сохранено')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сохранено')));
     } catch (e) {
       setState(() => error = e.toString());
     }
+  }
+
+  Future<void> _logout() async {
+    await widget.auth.logout();
+    if (!mounted) return;
+    context.go('/login');
   }
 
   @override
@@ -62,13 +64,9 @@ class _PreferencesPageState extends State<PreferencesPage> {
           IconButton(
             tooltip: 'Выйти',
             icon: const Icon(Icons.logout),
-            onPressed: widget.onLogout == null
-                ? null
-                : () async {
-                    await widget.onLogout!();
-                  },
+            onPressed: _logout,
           ),
-        ],  
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -94,7 +92,10 @@ class _PreferencesPageState extends State<PreferencesPage> {
               ),
             ),
             if (error != null) Text(error!, style: const TextStyle(color: Colors.red)),
-            ElevatedButton(onPressed: _save, child: const Text('Сохранить')),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(onPressed: _save, child: const Text('Сохранить')),
+            ),
           ],
         ),
       ),

@@ -1,23 +1,25 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../config.dart';
+import '../core/token_storage.dart';
 
 class ApiClient {
-  ApiClient._();
+  final TokenStorage tokenStorage;
+  late final Dio dio;
 
-  static final _storage = FlutterSecureStorage();
+  ApiClient(this.tokenStorage) {
+    dio = Dio(
+      BaseOptions(
+        baseUrl: Config.apiBaseUrl,
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+        headers: {'Content-Type': 'application/json'},
+      ),
+    );
 
-  static final Dio dio = Dio(
-    BaseOptions(
-      baseUrl: Config.apiBaseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
-      headers: {'Content-Type': 'application/json'},
-    ),
-  )..interceptors.add(
+    dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          final token = await _storage.read(key: 'access_token');
+          final token = await tokenStorage.read();
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
           }
@@ -25,11 +27,5 @@ class ApiClient {
         },
       ),
     );
-
-  static Future<void> saveToken(String token) =>
-      _storage.write(key: 'access_token', value: token);
-
-  static Future<void> clearToken() => _storage.delete(key: 'access_token');
-
-  static Future<String?> getToken() => _storage.read(key: 'access_token');
+  }
 }

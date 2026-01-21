@@ -1,26 +1,39 @@
 import 'package:go_router/go_router.dart';
-import 'screens/login_screen.dart';
-import 'screens/register_screen.dart';
-import 'features/preferences/preferences_page.dart';
-import 'core/api_client.dart';
 import 'core/token_storage.dart';
+import 'api/api_client.dart';
+import 'features/auth/auth_repo.dart';
+import 'features/auth/login_page.dart';
+import 'features/auth/register_page.dart';
 import 'features/preferences/preferences_repo.dart';
+import 'features/preferences/preferences_page.dart';
 
-final tokenStorage = TokenStorage();
-final api = ApiClient(tokenStorage);
-final prefsRepo = PreferencesRepo(api);
+GoRouter buildRouter() {
+  final tokenStorage = TokenStorage();
+  final api = ApiClient(tokenStorage);
+  final auth = AuthRepo(api, tokenStorage);
+  final prefs = PreferencesRepo(api);
 
-final router = GoRouter(
-  initialLocation: '/login',
-  routes: [
-    GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
-    GoRoute(path: '/register', builder: (_, __) => const RegisterScreen()),
-    GoRoute(
-      path: '/preferences',
-      builder: (_, __) {
-        final repo = PreferencesRepo(ApiClient(TokenStorage()));
-        return PreferencesPage(repo: repo);
-      },
-    ),
-  ],
-);
+  return GoRouter(
+    initialLocation: '/login',
+    redirect: (context, state) async {
+      final token = await tokenStorage.read();
+      final loggedIn = token != null && token.isNotEmpty;
+
+      final goingToLogin = state.matchedLocation == '/login';
+      final goingToRegister = state.matchedLocation == '/register';
+
+      if (!loggedIn && !(goingToLogin || goingToRegister)) return '/login';
+      if (loggedIn && (goingToLogin || goingToRegister)) return '/preferences';
+
+      return null;
+    },
+    routes: [
+      GoRoute(path: '/login', builder: (_, __) => LoginPage(auth: auth)),
+      GoRoute(path: '/register', builder: (_, __) => RegisterPage(auth: auth)),
+      GoRoute(
+        path: '/preferences',
+        builder: (_, __) => PreferencesPage(repo: prefs, auth: auth),
+      ),
+    ],
+  );
+}
