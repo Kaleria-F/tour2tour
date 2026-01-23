@@ -1,5 +1,5 @@
 from sqlalchemy import String, Boolean
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 class User(Base):
@@ -11,3 +11,4 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="traveler")  # traveler/admin
     is_2fa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    trips = relationship("Trip", back_populates="user", cascade="all, delete")

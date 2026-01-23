@@ -28,4 +28,14 @@ class ApiClient {
       ),
     );
   }
+
+  //Метод для создания путешествий
+  Future<Response?> createTrip(Map<String, dynamic> data) async {
+    try {
+      return await dio.post('/trips/', data: data);
+    } catch (e) {
+      print('Ошибка при создании путешествия: $e');
+      return null;
+    }
+  }
 }
