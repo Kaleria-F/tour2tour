@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../auth/auth_repo.dart';
 import 'preferences_repo.dart';
 
+
+
 class PreferencesPage extends StatefulWidget {
   final PreferencesRepo repo;
   final AuthRepo auth;
@@ -47,7 +49,12 @@ class _PreferencesPageState extends State<PreferencesPage> {
     try {
       await widget.repo.setPreferences(selected.toList());
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Сохранено')));
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сохранено')),
+      );
+
+      context.go('/profile'); // 👈 переход на главный экран
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));

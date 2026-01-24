@@ -10,6 +10,10 @@ import 'features/auth/register_page.dart';
 import 'features/preferences/preferences_repo.dart';
 import 'features/preferences/preferences_page.dart';
 
+import 'features/profile/profile_page.dart';
+import 'features/trips/create_trip_page.dart';
+
+
 GoRouter buildRouter() {
   final tokenStorage = TokenStorage();
   final api = ApiClient(tokenStorage);
@@ -31,6 +35,14 @@ GoRouter buildRouter() {
       GoRoute(
         path: '/preferences',
         builder: (_, __) => PreferencesPage(repo: prefs, auth: auth),
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (_, __) => const ProfilePage(),
+      ),
+      GoRoute(
+        path: '/create-trip',
+        builder: (_, __) => CreateTripPage(),
       ),
     ],
   );
