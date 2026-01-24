@@ -10,11 +10,9 @@ class Tour2TourApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final router = buildRouter();
-
     return MaterialApp.router(
-      title: 'Tour2Tour',
-      routerConfig: router,
+      debugShowCheckedModeBanner: false,
+      routerConfig: buildRouter(),
     );
   }
 }
