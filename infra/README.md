@@ -1,9 +1,16 @@
 # Infra
 
-## Структура проекта
+## Docker Compose
 
-### Docker Compose
+`infra/docker-compose.yml` — локальная инфраструктура для микросервисов.
 
-- `docker-compose.yml` — локальная инфраструктура для разработки.
-  - `db` — PostgreSQL 16 (порт 5432, данные в томе `db_data`).
-  - `redis` — Redis 7 (порт 6379).
+Сервисы:
+- `auth-service` (порт `8001`) + `auth-db` (порт `5433`).
+- `trips-service` (порт `8002`) + `trips-db` (порт `5434`).
+- `recommendations-service` (порт `8003`) + `rec-db` (порт `5435`) + `redis` (порт `6379`).
+- `payments-service` (порт `8004`) + `payments-db` (порт `5436`).
+
+### Быстрый старт
+```
+docker compose -f infra/docker-compose.yml up --build
+```

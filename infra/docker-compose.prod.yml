@@ -4,73 +4,70 @@ services:
     environment:
       POSTGRES_DB: auth
       POSTGRES_USER: auth
-      POSTGRES_PASSWORD: auth
-    ports:
-      - "5433:5432"
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
     volumes:
       - auth_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   trips-db:
     image: postgres:16
     environment:
       POSTGRES_DB: trips
       POSTGRES_USER: trips
-      POSTGRES_PASSWORD: trips
-    ports:
-      - "5434:5432"
+      POSTGRES_PASSWORD: ${TRIPS_DB_PASSWORD}
     volumes:
       - trips_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   rec-db:
     image: postgres:16
     environment:
       POSTGRES_DB: recs
       POSTGRES_USER: recs
-      POSTGRES_PASSWORD: recs
-    ports:
-      - "5435:5432"
+      POSTGRES_PASSWORD: ${RECS_DB_PASSWORD}
     volumes:
       - rec_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   payments-db:
     image: postgres:16
     environment:
       POSTGRES_DB: payments
       POSTGRES_USER: payments
-      POSTGRES_PASSWORD: payments
-    ports:
-      - "5436:5432"
+      POSTGRES_PASSWORD: ${PAYMENTS_DB_PASSWORD}
     volumes:
       - payments_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   redis:
     image: redis:7
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
 
   auth-service:
     build:
       context: ..
       dockerfile: services/auth-service/Dockerfile
     environment:
-      DATABASE_URL: postgresql+psycopg://auth:auth@auth-db:5432/auth
-      JWT_SECRET: dev_secret
+      DATABASE_URL: postgresql+psycopg://auth:${AUTH_DB_PASSWORD}@auth-db:5432/auth
+      JWT_SECRET: ${JWT_SECRET}
       JWT_ALG: HS256
     ports:
       - "8001:8000"
     depends_on:
       - auth-db
+    restart: unless-stopped
 
   trips-service:
     build:
       context: ..
       dockerfile: services/trips-service/Dockerfile
     environment:
-      DATABASE_URL: postgresql+psycopg://trips:trips@trips-db:5432/trips
+      DATABASE_URL: postgresql+psycopg://trips:${TRIPS_DB_PASSWORD}@trips-db:5432/trips
     ports:
       - "8002:8000"
     depends_on:
       - trips-db
+    restart: unless-stopped
 
   recommendations-service:
     build:
@@ -81,6 +78,7 @@ services:
     depends_on:
       - rec-db
       - redis
+    restart: unless-stopped
 
   payments-service:
     build:
@@ -90,6 +88,7 @@ services:
       - "8004:8000"
     depends_on:
       - payments-db
+    restart: unless-stopped
 
 volumes:
   auth_db_data:
