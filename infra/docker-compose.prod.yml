@@ -45,8 +45,8 @@ services:
 
   auth-service:
     build:
-      context: ..
-      dockerfile: services/auth-service/Dockerfile
+      context: ../services/auth-service
+      dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://auth:${AUTH_DB_PASSWORD}@auth-db:5432/auth
       JWT_SECRET: ${JWT_SECRET}
@@ -59,8 +59,8 @@ services:
 
   trips-service:
     build:
-      context: ..
-      dockerfile: services/trips-service/Dockerfile
+      context: ../services/trips-service
+      dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://trips:${TRIPS_DB_PASSWORD}@trips-db:5432/trips
     ports:
@@ -71,8 +71,8 @@ services:
 
   recommendations-service:
     build:
-      context: ..
-      dockerfile: services/recommendations-service/Dockerfile
+      context: ../services/recommendations-service
+      dockerfile: Dockerfile
     ports:
       - "8003:8000"
     depends_on:
@@ -82,8 +82,8 @@ services:
 
   payments-service:
     build:
-      context: ..
-      dockerfile: services/payments-service/Dockerfile
+      context: ../services/payments-service
+      dockerfile: Dockerfile
     ports:
       - "8004:8000"
     depends_on:
