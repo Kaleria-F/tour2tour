@@ -2,7 +2,15 @@
 import 'package:flutter/foundation.dart';
 
 class Config {
-  static const _api = 'https://api.24tour2tour.ru';
+  static const _androidEmulator = 'http://10.0.2.2:8000';
+  static const _webLocal = 'http://127.0.0.1:8000';
+  static const _apiOverride =
+      String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
-  static String get apiBaseUrl => _api;
+  static String get apiBaseUrl {
+    if (_apiOverride.isNotEmpty) {
+      return _apiOverride;
+    }
+    return kIsWeb ? _webLocal : _androidEmulator;
+  }
 }
