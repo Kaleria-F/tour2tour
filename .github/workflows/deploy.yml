@@ -1,0 +1,24 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd ~/tour2tour
+            git pull
+            docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod up --build -d
+            docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod exec -T auth-service alembic upgrade head
+            docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod exec -T trips-service alembic upgrade head

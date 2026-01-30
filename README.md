@@ -1,5 +1,21 @@
 # как запускать (local + production)
 
+---
+
+## 4) Auto-deploy (GitHub Actions)
+
+Workflow file: `.github/workflows/deploy.yml` (runs on push to `main`).
+
+Add repository secrets:
+- `SSH_HOST` = server IP (e.g. `89.23.97.65`)
+- `SSH_USER` = `root`
+- `SSH_KEY` = private SSH key (full contents)
+- `SSH_PORT` = `22` (optional)
+
+The workflow runs:
+- `git pull`
+- `docker compose ... up --build -d`
+- `alembic upgrade head` for auth/trips
 Этот файл объясняет, как запускать проект в двух режимах:
 
 локальная разработка (для тестирования и исправлений)
@@ -100,4 +116,14 @@ scp -i C:\Users\Valeria\tour2tour\key.txt -r frontend/tour2tour_app/build/web ro
 3. запустить миграции (если были изменения)
 4. обновить сборку Flutter Web, если изменялся фронтенд
 
+---
 
+## Branching model
+
+- `main` — production (stable)
+- `develop` — development/testing
+
+Workflow:
+1) work in `develop`
+2) open PR `develop` -> `main` for release
+3) auto-deploy runs on `main`
