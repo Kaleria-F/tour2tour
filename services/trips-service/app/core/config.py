@@ -7,6 +7,8 @@ ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
 class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
+    jwt_secret: str = Field(alias="JWT_SECRET")
+    jwt_alg: str = Field(default="HS256", alias="JWT_ALG")
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_PATH),

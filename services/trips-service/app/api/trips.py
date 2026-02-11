@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_user_id
 from app.db.deps import get_db
 from app.schemas.trip import TripCreate, TripOut
 from app.models.trip import Trip
@@ -12,10 +13,8 @@ router = APIRouter(prefix="/trips", tags=["trips"])
 def create_trip(
     trip: TripCreate,
     db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
 ):
-    # TODO: заменить заглушку на реальный user_id из auth-service.
-    user_id = 1
-
     if trip.end_date < trip.start_date:
         raise HTTPException(
             status_code=400,

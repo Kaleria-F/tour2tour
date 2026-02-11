@@ -79,6 +79,8 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://trips:trips@trips-db:5432/trips
+      JWT_SECRET: dev_secret
+      JWT_ALG: HS256
     ports:
       - "8002:8000"
     depends_on:
