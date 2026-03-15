@@ -7,8 +7,20 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.models.user_preferences import UserPreference
 from app.schemas.preferences import PreferencesUpsert, PreferencesOut
+from app.schemas.user import UserMeOut
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.get("/me", response_model=UserMeOut)
+def get_me(me: User = Depends(get_current_user)):
+    return UserMeOut(
+        id=me.id,
+        email=me.email,
+        phone=me.phone,
+        role=me.role,
+        is_2fa_enabled=me.is_2fa_enabled,
+    )
 
 
 @router.get("/me/preferences", response_model=PreferencesOut)

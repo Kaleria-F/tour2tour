@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'dart:math' as math;
 import '../../api/api_client.dart';
 import '../../core/token_storage.dart';
 
@@ -15,8 +17,16 @@ class _CreateTripPageState extends State<CreateTripPage> {
 
   DateTime? _startDate;
   DateTime? _endDate;
+  bool _saving = false;
 
   final ApiClient apiClient = ApiClient(TokenStorage());
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickDate({required bool isStart}) async {
     DateTime initialDate = DateTime.now();
@@ -70,66 +80,234 @@ class _CreateTripPageState extends State<CreateTripPage> {
       "end_date": _endDate!.toIso8601String().split('T')[0],
     };
 
-    final response = await apiClient.createTrip(tripData);
+    setState(() => _saving = true);
+    try {
+      final response = await apiClient.createTrip(tripData);
 
-    if (response != null && response.statusCode == 200) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Путешествие создано!')),
-      );
-      Navigator.pop(context);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ошибка при создании')),
-      );
+      if (!mounted) return;
+      if (response != null && response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Путешествие создано!')),
+        );
+        context.go('/trip-workspace', extra: _titleController.text.trim());
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ошибка при создании')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Создать путешествие')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(labelText: 'Название'),
-            ),
-            TextField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Описание'),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => _pickDate(isStart: true),
-                    child: Text(_startDate == null
-                        ? 'Выбрать дату начала'
-                        : 'Начало: ${_startDate!.toLocal().toString().split(' ')[0]}'),
+      body: Stack(
+        children: [
+          const _NightBackground(),
+          SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 14),
+                      _Logo(cs: cs),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Создать путешествие',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Заполни ключевые параметры поездки',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.75),
+                          fontSize: 13.5,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            children: [
+                              TextField(
+                                controller: _titleController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Название',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: _descriptionController,
+                                minLines: 2,
+                                maxLines: 3,
+                                decoration: const InputDecoration(
+                                  labelText: 'Описание',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () => _pickDate(isStart: true),
+                                      child: Text(_startDate == null
+                                          ? 'Дата начала'
+                                          : _startDate!.toLocal().toString().split(' ')[0]),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () => _pickDate(isStart: false),
+                                      child: Text(_endDate == null
+                                          ? 'Дата окончания'
+                                          : _endDate!.toLocal().toString().split(' ')[0]),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [cs.primary, cs.primary.withOpacity(0.75)],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: cs.primary.withOpacity(0.35),
+                                blurRadius: 18,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              shadowColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                            ),
+                            onPressed: _saving ? null : _saveTrip,
+                            child: _saving
+                                ? const SizedBox(
+                                    height: 22,
+                                    width: 22,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Text(
+                                    'Сохранить',
+                                    style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
+                                  ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => _pickDate(isStart: false),
-                    child: Text(_endDate == null
-                        ? 'Выбрать дату окончания'
-                        : 'Окончание: ${_endDate!.toLocal().toString().split(' ')[0]}'),
-                  ),
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _saveTrip,
-              child: const Text('Сохранить'),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _Logo extends StatelessWidget {
+  final ColorScheme cs;
+  const _Logo({required this.cs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: cs.primary.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: cs.primary.withOpacity(0.28)),
+      ),
+      child: Icon(Icons.luggage_rounded, color: cs.primary, size: 28),
+    );
+  }
+}
+
+class _NightBackground extends StatelessWidget {
+  const _NightBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _NightPainter(),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
+class _NightPainter extends CustomPainter {
+  final _rng = math.Random(7);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    const gradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color(0xFF0B1023),
+        Color(0xFF090D1A),
+      ],
+    );
+    canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
+    final vignette = RadialGradient(
+      colors: [
+        Colors.transparent,
+        Colors.black.withOpacity(0.55),
+      ],
+      stops: const [0.55, 1.0],
+    );
+    canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
+    final starPaint = Paint()..color = Colors.white.withOpacity(0.55);
+    final starPaintDim = Paint()..color = Colors.white.withOpacity(0.22);
+    final count = (size.width * size.height / 6500).clamp(70, 170).toInt();
+    for (var i = 0; i < count; i++) {
+      final x = _rng.nextDouble() * size.width;
+      final y = _rng.nextDouble() * size.height * 0.6;
+      final r = _rng.nextDouble() * 1.35 + 0.2;
+      canvas.drawCircle(Offset(x, y), r, (i % 3 == 0) ? starPaint : starPaintDim);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

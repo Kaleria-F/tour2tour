@@ -23,6 +23,7 @@ app.add_middleware(
         "https://24tour2tour.ru",
         "https://api.24tour2tour.ru",
     ],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
