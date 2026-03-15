@@ -2,10 +2,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'profile_repo.dart';
+import '../trips/trips_repo.dart';
 
 class ProfilePage extends StatefulWidget {
   final ProfileRepo repo;
-  const ProfilePage({super.key, required this.repo});
+  final TripsRepo tripsRepo;
+  const ProfilePage({super.key, required this.repo, required this.tripsRepo});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -13,6 +15,7 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   UserMe? _me;
+  List<TripSummary> _trips = const [];
   bool _loading = true;
   String? _error;
 
@@ -29,10 +32,14 @@ class _ProfilePageState extends State<ProfilePage> {
     });
 
     try {
-      final me = await widget.repo.getMe();
+      final results = await Future.wait([
+        widget.repo.getMe(),
+        widget.tripsRepo.listTrips(),
+      ]);
       if (!mounted) return;
       setState(() {
-        _me = me;
+        _me = results[0] as UserMe;
+        _trips = results[1] as List<TripSummary>;
       });
     } catch (e) {
       if (!mounted) return;
@@ -86,49 +93,105 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       ),
                       const SizedBox(height: 18),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white.withOpacity(0.12)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Мои путешествия',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.white.withOpacity(0.12)),
                             ),
-                            const SizedBox(height: 10),
-                            if (_loading)
-                              const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            else if (_error != null)
-                              Text(
-                                'Ошибка загрузки профиля: $_error',
-                                style: const TextStyle(color: Colors.redAccent),
-                              )
-                            else
-                              Text(
-                                'Роль: ${_me?.role ?? '-'}',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.85),
-                                  fontSize: 14,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Мои путешествия',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                              ),
-                          ],
+                                const SizedBox(height: 10),
+                                if (_loading)
+                                  const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                else if (_error != null)
+                                  Text(
+                                    'Ошибка загрузки профиля: $_error',
+                                    style: const TextStyle(color: Colors.redAccent),
+                                  )
+                                else if (_trips.isEmpty)
+                                  Text(
+                                    'Пока нет путешествий. Создай первое.',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.85),
+                                      fontSize: 14,
+                                    ),
+                                  )
+                                else
+                                  Column(
+                                    children: _trips.map((trip) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(bottom: 10),
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(12),
+                                          onTap: () {
+                                            context.go(
+                                              '/trip-workspace',
+                                              extra: {
+                                                'id': trip.id,
+                                                'title': trip.title,
+                                                'start_date': trip.startDate,
+                                                'end_date': trip.endDate,
+                                              },
+                                            );
+                                          },
+                                          child: Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(0.06),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(color: Colors.white.withOpacity(0.12)),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  trip.title,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  '${_fmtDate(trip.startDate)} - ${_fmtDate(trip.endDate)}',
+                                                  style: TextStyle(
+                                                    color: Colors.white.withOpacity(0.75),
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                      const Spacer(),
+                      const SizedBox(height: 14),
                       SizedBox(
                         width: double.infinity,
                         height: 52,
@@ -172,6 +235,12 @@ class _ProfilePageState extends State<ProfilePage> {
         ],
       ),
     );
+  }
+
+  String _fmtDate(DateTime value) {
+    final m = value.month.toString().padLeft(2, '0');
+    final d = value.day.toString().padLeft(2, '0');
+    return '$d.$m.${value.year}';
   }
 }
 

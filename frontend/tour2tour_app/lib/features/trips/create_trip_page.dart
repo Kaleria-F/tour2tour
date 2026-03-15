@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:math' as math;
-import '../../api/api_client.dart';
-import '../../core/token_storage.dart';
+import 'trips_repo.dart';
 
 class CreateTripPage extends StatefulWidget {
-  const CreateTripPage({super.key});
+  final TripsRepo tripsRepo;
+  const CreateTripPage({super.key, required this.tripsRepo});
 
   @override
   State<CreateTripPage> createState() => _CreateTripPageState();
@@ -18,8 +18,6 @@ class _CreateTripPageState extends State<CreateTripPage> {
   DateTime? _startDate;
   DateTime? _endDate;
   bool _saving = false;
-
-  final ApiClient apiClient = ApiClient(TokenStorage());
 
   @override
   void dispose() {
@@ -73,23 +71,27 @@ class _CreateTripPageState extends State<CreateTripPage> {
       return;
     }
 
-    final tripData = {
-      "title": _titleController.text,
-      "description": _descriptionController.text,
-      "start_date": _startDate!.toIso8601String().split('T')[0],
-      "end_date": _endDate!.toIso8601String().split('T')[0],
-    };
-
     setState(() => _saving = true);
     try {
-      final response = await apiClient.createTrip(tripData);
+      final trip = await widget.tripsRepo.createTrip(
+        title: _titleController.text.trim(),
+        description: _descriptionController.text.trim(),
+        startDate: _startDate!,
+        endDate: _endDate!,
+      );
 
       if (!mounted) return;
-      if (response != null && response.statusCode == 200) {
+      if (trip != null) {
+        final payload = <String, dynamic>{
+          'id': trip.id,
+          'title': trip.title,
+          'start_date': trip.startDate,
+          'end_date': trip.endDate,
+        };
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Путешествие создано!')),
         );
-        context.go('/trip-workspace', extra: _titleController.text.trim());
+        context.go('/trip-workspace', extra: payload);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Ошибка при создании')),

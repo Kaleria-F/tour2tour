@@ -48,6 +48,18 @@ services:
     ports:
       - "6379:6379"
 
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
   gateway:
     image: nginx:1.24
     ports:
@@ -59,6 +71,7 @@ services:
       - trips-service
       - recommendations-service
       - payments-service
+      - documents-service
 
   auth-service:
     build:
@@ -105,8 +118,29 @@ services:
     depends_on:
       - payments-db
 
+  documents-service:
+    build:
+      context: ../services/documents-service
+      dockerfile: Dockerfile
+    environment:
+      JWT_SECRET: dev_secret
+      JWT_ALG: HS256
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: http://127.0.0.1:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: tour2tour-documents
+      S3_USE_SSL: "false"
+      S3_FORCE_PATH_STYLE: "true"
+    ports:
+      - "8005:8000"
+    depends_on:
+      - minio
+
 volumes:
   auth_db_data:
   trips_db_data:
   rec_db_data:
   payments_db_data:
+  minio_data:

@@ -92,6 +92,25 @@ services:
       - payments-db
     restart: unless-stopped
 
+  documents-service:
+    build:
+      context: ../services/documents-service
+      dockerfile: Dockerfile
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALG: HS256
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_USE_SSL: ${S3_USE_SSL}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE}
+    ports:
+      - "8005:8000"
+    restart: unless-stopped
+
 volumes:
   auth_db_data:
   trips_db_data:

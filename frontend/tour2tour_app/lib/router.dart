@@ -10,10 +10,12 @@ import 'features/auth/register_page.dart';
 import 'features/preferences/preferences_repo.dart';
 import 'features/preferences/preferences_page.dart';
 
+import 'features/documents/documents_repo.dart';
 import 'features/profile/profile_repo.dart';
 import 'features/profile/profile_page.dart';
 import 'features/trips/create_trip_page.dart';
 import 'features/trips/trip_workspace_page.dart';
+import 'features/trips/trips_repo.dart';
 
 
 GoRouter buildRouter() {
@@ -23,6 +25,8 @@ GoRouter buildRouter() {
   final auth = AuthRepo(api, tokenStorage);
   final prefs = PreferencesRepo(api);
   final profile = ProfileRepo(api);
+  final trips = TripsRepo(api);
+  final documents = DocumentsRepo(api);
 
   return GoRouter(
     initialLocation: '/login',
@@ -41,19 +45,30 @@ GoRouter buildRouter() {
       ),
       GoRoute(
         path: '/profile',
-        builder: (_, __) => ProfilePage(repo: profile),
+        builder: (_, __) => ProfilePage(repo: profile, tripsRepo: trips),
       ),
       GoRoute(
         path: '/create-trip',
-        builder: (_, __) => CreateTripPage(),
+        builder: (_, __) => CreateTripPage(tripsRepo: trips),
       ),
       GoRoute(
         path: '/trip-workspace',
         builder: (_, state) {
-          final title = state.extra is String && (state.extra as String).trim().isNotEmpty
-              ? state.extra as String
-              : 'Путешествие';
-          return TripWorkspacePage(tripTitle: title);
+          final payload = state.extra is Map<String, dynamic>
+              ? state.extra as Map<String, dynamic>
+              : <String, dynamic>{};
+          final title = (payload['title'] ?? 'Путешествие').toString();
+          final tripId = payload['id'] is int ? payload['id'] as int : null;
+          final startDate = payload['start_date'] is DateTime ? payload['start_date'] as DateTime : null;
+          final endDate = payload['end_date'] is DateTime ? payload['end_date'] as DateTime : null;
+          return TripWorkspacePage(
+            tripTitle: title,
+            tripId: tripId,
+            startDate: startDate,
+            endDate: endDate,
+            tripsRepo: trips,
+            documentsRepo: documents,
+          );
         },
       ),
     ],
