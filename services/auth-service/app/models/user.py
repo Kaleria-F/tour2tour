@@ -12,6 +12,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="traveler")  # traveler/admin
     is_2fa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    passkey_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    totp_secret: Mapped[str | None] = mapped_column(String(128), nullable=True)
     preferences = relationship(
         "UserPreference",
         back_populates="user",

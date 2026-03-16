@@ -18,7 +18,10 @@ def create_access_token(
     secret: str,
     alg: str,
     expires_minutes: int = 60 * 24,
+    extra_claims: dict | None = None,
 ) -> str:
     expire = datetime.utcnow() + timedelta(minutes=expires_minutes)
     to_encode = {"sub": sub, "exp": expire}
+    if extra_claims:
+        to_encode.update(extra_claims)
     return jwt.encode(to_encode, secret, algorithm=alg)

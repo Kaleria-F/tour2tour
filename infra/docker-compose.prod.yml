@@ -51,6 +51,13 @@ services:
       DATABASE_URL: postgresql+psycopg://auth:${AUTH_DB_PASSWORD}@auth-db:5432/auth
       JWT_SECRET: ${JWT_SECRET}
       JWT_ALG: HS256
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
+      SMTP_USE_TLS: ${SMTP_USE_TLS}
+      SMTP_USE_SSL: ${SMTP_USE_SSL}
     ports:
       - "8001:8000"
     depends_on:

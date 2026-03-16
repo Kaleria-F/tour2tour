@@ -7,7 +7,11 @@ import '../trips/trips_repo.dart';
 class ProfilePage extends StatefulWidget {
   final ProfileRepo repo;
   final TripsRepo tripsRepo;
-  const ProfilePage({super.key, required this.repo, required this.tripsRepo});
+  const ProfilePage({
+    super.key,
+    required this.repo,
+    required this.tripsRepo,
+  });
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -106,6 +110,23 @@ class _ProfilePageState extends State<ProfilePage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    OutlinedButton.icon(
+                                      onPressed: () => context.go('/change-password'),
+                                      icon: const Icon(Icons.lock_reset),
+                                      label: const Text('Сменить пароль'),
+                                    ),
+                                    OutlinedButton.icon(
+                                      onPressed: () => context.go('/security-setup'),
+                                      icon: const Icon(Icons.security),
+                                      label: const Text('2FA / Passkey'),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
                                 const Text(
                                   'Мои путешествия',
                                   style: TextStyle(

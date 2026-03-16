@@ -6,6 +6,10 @@ import 'api/api_client.dart';
 import 'features/auth/auth_repo.dart';
 import 'features/auth/login_page.dart';
 import 'features/auth/register_page.dart';
+import 'features/auth/security_setup_page.dart';
+import 'features/auth/totp_verify_page.dart';
+import 'features/auth/change_password_page.dart';
+import 'features/auth/recovery_page.dart';
 
 import 'features/preferences/preferences_repo.dart';
 import 'features/preferences/preferences_page.dart';
@@ -38,8 +42,31 @@ GoRouter buildRouter() {
         builder: (_, __) => LoginPage(auth: auth),
       ),
       GoRoute(
+        path: '/recovery',
+        builder: (_, __) => RecoveryPage(auth: auth),
+      ),
+      GoRoute(
         path: '/register',
         builder: (_, __) => RegisterPage(auth: auth),
+      ),
+      GoRoute(
+        path: '/security-setup',
+        builder: (_, __) => SecuritySetupPage(auth: auth),
+      ),
+      GoRoute(
+        path: '/totp-verify',
+        builder: (_, state) {
+          final payload = state.extra is Map<String, dynamic>
+              ? state.extra as Map<String, dynamic>
+              : <String, dynamic>{};
+          return TotpVerifyPage(
+            auth: auth,
+            challengeId: (payload['challenge_id'] ?? '').toString(),
+            factors: (payload['factors'] as List? ?? const [])
+                .map((e) => e.toString())
+                .toList(),
+          );
+        },
       ),
       GoRoute(
         path: '/preferences',
@@ -53,6 +80,10 @@ GoRouter buildRouter() {
       GoRoute(
         path: '/profile',
         builder: (_, __) => ProfilePage(repo: profile, tripsRepo: trips),
+      ),
+      GoRoute(
+        path: '/change-password',
+        builder: (_, __) => ChangePasswordPage(auth: auth),
       ),
       GoRoute(
         path: '/create-trip',

@@ -31,6 +31,8 @@ def get_me(me: User = Depends(get_current_user)):
         phone=me.phone,
         role=me.role,
         is_2fa_enabled=me.is_2fa_enabled,
+        totp_enabled=me.totp_enabled,
+        passkey_enabled=me.passkey_enabled,
     )
 
 

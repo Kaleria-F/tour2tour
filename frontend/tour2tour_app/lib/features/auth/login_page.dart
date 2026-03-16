@@ -25,13 +25,23 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => _loading = true);
     try {
-      await widget.auth.login(
+      final result = await widget.auth.login(
         email: _email.text.trim(),
         password: _password.text,
       );
 
       if (!mounted) return;
-      context.go('/profile');
+      if (result.requires2fa && result.challengeId != null) {
+        context.go(
+          '/totp-verify',
+          extra: {
+            'challenge_id': result.challengeId!,
+            'factors': result.availableFactors,
+          },
+        );
+      } else {
+        context.go('/profile');
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -169,7 +179,7 @@ class _LoginPageState extends State<LoginPage> {
                       const SizedBox(height: 12),
                       TextButton(
                         onPressed: () {
-                          // TODO: экран восстановления пароля
+                          context.go('/recovery');
                         },
                         child: Text(
                           'Забыли пароль?',

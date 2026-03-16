@@ -40,7 +40,7 @@ class _RegisterPageState extends State<RegisterPage> {
       );
 
       if (!mounted) return;
-      context.go('/preferences');
+      context.go('/security-setup');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
