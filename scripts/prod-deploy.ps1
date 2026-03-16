@@ -36,7 +36,7 @@ if (-not $SkipFrontend) {
   Push-Location $FlutterProjectPath
   try {
     flutter pub get
-    flutter build web --release
+    flutter build web --release --dart-define=API_BASE_URL=https://api.24tour2tour.ru
   } finally {
     Pop-Location
   }
