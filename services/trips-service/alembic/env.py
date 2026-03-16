@@ -9,7 +9,7 @@ sys.path.append(str(ROOT_DIR))
 
 from app.core.config import settings
 from app.db.base import Base
-from app.models import trip, expense
+from app.models import trip, expense, stage
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

@@ -1,45 +1,60 @@
-# tour2tour_app
+# Tour2Tour Flutter App
 
-A new Flutter project.
+Flutter-клиент поддерживает:
+- Web
+- Android
+- iOS
 
-## Структура проекта
+## Локальный запуск
 
-Ниже кратко описано, где что находится, чтобы быстро ориентироваться в коде.
+Все команды выполняются из:
+`C:\Users\Valeria\tour2tour\frontend\tour2tour_app`
 
-### Основное приложение
+### Web против локального backend
+```bash
+flutter pub get
+flutter run -d chrome
+```
 
-- `lib/main.dart` — точка входа Flutter, инициализация `MaterialApp.router`.
-- `lib/router.dart` — маршрутизация на `go_router`, редиректы по авторизации.
-- `lib/config.dart` — конфигурация и константы приложения.
-- `lib/api/api_client.dart` — HTTP-клиент (на `dio`) и базовая работа с API.
-- `lib/core/token_storage.dart` — хранение токена в защищенном хранилище.
+По умолчанию web использует:
+- `http://127.0.0.1:8888`
 
-### Фичи (feature-based структура)
+### Android emulator против локального backend
+```bash
+flutter pub get
+flutter run -d emulator-5554
+```
 
-- `lib/features/auth/` — авторизация.
-  - `auth_repo.dart` — репозиторий и сетевые запросы.
-  - `login_page.dart` — экран входа.
-  - `register_page.dart` — экран регистрации.
-- `lib/features/preferences/` — пользовательские предпочтения.
-  - `preferences_repo.dart` — репозиторий и работа с API.
-  - `preferences_page.dart` — экран предпочтений.
+По умолчанию emulator использует:
+- `http://10.0.2.2:8888`
 
-### Тесты
+### Запуск против production API
+```bash
+flutter pub get
+flutter run -d chrome --dart-define=API_BASE_URL=https://api.24tour2tour.ru
+```
 
-- `test/widget_test.dart` — базовый виджет-тест (шаблон Flutter).
+## Production build
 
-### Платформенные папки Flutter (стандарт)
+```bash
+flutter build web --release --dart-define=API_BASE_URL=https://api.24tour2tour.ru
+```
 
-- `android/`, `ios/`, `macos/`, `windows/`, `linux/`, `web/` — нативные оболочки и сборка под каждую платформу.
+## Очистка
 
-### Конфигурация
+```bash
+flutter clean
+flutter pub get
+```
 
-- `pubspec.yaml` — зависимости, метаданные и ассеты.
-- `analysis_options.yaml` — правила анализа кода.
+## Где задается API base URL
 
+Файл:
+- [config.dart](c:/Users/Valeria/tour2tour/frontend/tour2tour_app/lib/config.dart)
 
+Локальные значения:
+- web: `http://127.0.0.1:8888`
+- emulator: `http://10.0.2.2:8888`
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-- 
-[online documentation](https://docs.flutter.dev/
+Production задается через:
+- `--dart-define=API_BASE_URL=...`

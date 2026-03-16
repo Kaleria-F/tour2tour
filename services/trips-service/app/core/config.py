@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
     jwt_secret: str = Field(alias="JWT_SECRET")
     jwt_alg: str = Field(default="HS256", alias="JWT_ALG")
+    recommendations_service_url: str = Field(
+        default="http://recommendations-service:8000",
+        alias="RECOMMENDATIONS_SERVICE_URL",
+    )
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_PATH),

@@ -9,6 +9,7 @@ import 'features/auth/register_page.dart';
 
 import 'features/preferences/preferences_repo.dart';
 import 'features/preferences/preferences_page.dart';
+import 'features/recommendations/recommendations_repo.dart';
 
 import 'features/documents/documents_repo.dart';
 import 'features/profile/profile_repo.dart';
@@ -24,6 +25,7 @@ GoRouter buildRouter() {
 
   final auth = AuthRepo(api, tokenStorage);
   final prefs = PreferencesRepo(api);
+  final recommendations = RecommendationsRepo(api);
   final profile = ProfileRepo(api);
   final trips = TripsRepo(api);
   final documents = DocumentsRepo(api);
@@ -41,7 +43,12 @@ GoRouter buildRouter() {
       ),
       GoRoute(
         path: '/preferences',
-        builder: (_, __) => PreferencesPage(repo: prefs, auth: auth),
+        builder: (_, state) => PreferencesPage(
+          repo: prefs,
+          auth: auth,
+          fromRecommendations:
+              state.uri.queryParameters['from'] == 'recommendations',
+        ),
       ),
       GoRoute(
         path: '/profile',
@@ -68,6 +75,8 @@ GoRouter buildRouter() {
             endDate: endDate,
             tripsRepo: trips,
             documentsRepo: documents,
+            preferencesRepo: prefs,
+            recommendationsRepo: recommendations,
           );
         },
       ),

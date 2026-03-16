@@ -52,6 +52,139 @@ class TripExpense {
   }
 }
 
+class TripStage {
+  final int id;
+  final int tripId;
+  final int position;
+  final String stageType;
+  final String subtype;
+  final String title;
+  final String? startLocation;
+  final String? endLocation;
+  final String? address;
+  final double? latitude;
+  final double? longitude;
+  final DateTime? startTime;
+  final DateTime? endTime;
+  final int? durationMinutes;
+  final double? costRub;
+  final String? referenceNumber;
+  final String? notes;
+  final String? websiteUrl;
+  final double? rating;
+  final String? documentKey;
+
+  TripStage({
+    required this.id,
+    required this.tripId,
+    required this.position,
+    required this.stageType,
+    required this.subtype,
+    required this.title,
+    this.startLocation,
+    this.endLocation,
+    this.address,
+    this.latitude,
+    this.longitude,
+    this.startTime,
+    this.endTime,
+    this.durationMinutes,
+    this.costRub,
+    this.referenceNumber,
+    this.notes,
+    this.websiteUrl,
+    this.rating,
+    this.documentKey,
+  });
+
+  factory TripStage.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic raw) {
+      final value = raw?.toString();
+      if (value == null || value.isEmpty) return null;
+      return DateTime.tryParse(value);
+    }
+
+    double? parseDouble(dynamic raw) {
+      if (raw == null) return null;
+      return double.tryParse(raw.toString());
+    }
+
+    int? parseInt(dynamic raw) {
+      if (raw == null) return null;
+      return int.tryParse(raw.toString());
+    }
+
+    return TripStage(
+      id: json['id'] as int,
+      tripId: json['trip_id'] as int,
+      position: json['position'] as int,
+      stageType: (json['stage_type'] ?? '').toString(),
+      subtype: (json['subtype'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      startLocation: json['start_location']?.toString(),
+      endLocation: json['end_location']?.toString(),
+      address: json['address']?.toString(),
+      latitude: parseDouble(json['latitude']),
+      longitude: parseDouble(json['longitude']),
+      startTime: parseDate(json['start_time']),
+      endTime: parseDate(json['end_time']),
+      durationMinutes: parseInt(json['duration_minutes']),
+      costRub: parseDouble(json['cost_rub']),
+      referenceNumber: json['reference_number']?.toString(),
+      notes: json['notes']?.toString(),
+      websiteUrl: json['website_url']?.toString(),
+      rating: parseDouble(json['rating']),
+      documentKey: json['document_key']?.toString(),
+    );
+  }
+}
+
+class StageSuggestion {
+  final String title;
+  final String stageType;
+  final String subtype;
+  final String reason;
+  final String? startLocation;
+  final String? endLocation;
+  final String? address;
+  final double? latitude;
+  final double? longitude;
+  final double? estimatedCostRub;
+
+  StageSuggestion({
+    required this.title,
+    required this.stageType,
+    required this.subtype,
+    required this.reason,
+    this.startLocation,
+    this.endLocation,
+    this.address,
+    this.latitude,
+    this.longitude,
+    this.estimatedCostRub,
+  });
+
+  factory StageSuggestion.fromJson(Map<String, dynamic> json) {
+    double? parseDouble(dynamic raw) {
+      if (raw == null) return null;
+      return double.tryParse(raw.toString());
+    }
+
+    return StageSuggestion(
+      title: (json['title'] ?? '').toString(),
+      stageType: (json['stage_type'] ?? '').toString(),
+      subtype: (json['subtype'] ?? '').toString(),
+      reason: (json['reason'] ?? '').toString(),
+      startLocation: json['start_location']?.toString(),
+      endLocation: json['end_location']?.toString(),
+      address: json['address']?.toString(),
+      latitude: parseDouble(json['latitude']),
+      longitude: parseDouble(json['longitude']),
+      estimatedCostRub: parseDouble(json['estimated_cost_rub']),
+    );
+  }
+}
+
 class TripsRepo {
   final ApiClient api;
   TripsRepo(this.api);
@@ -113,5 +246,143 @@ class TripsRepo {
     final data = res.data;
     if (data is! Map<String, dynamic>) return null;
     return TripExpense.fromJson(data);
+  }
+
+  Future<List<TripStage>> listStages(int tripId) async {
+    final res = await api.dio.get('/trips/$tripId/stages');
+    final data = res.data;
+    if (data is! List) return [];
+    return data
+        .whereType<Map>()
+        .map((raw) => TripStage.fromJson(Map<String, dynamic>.from(raw)))
+        .toList();
+  }
+
+  Future<TripStage?> createStage({
+    required int tripId,
+    required String stageType,
+    required String subtype,
+    required String title,
+    String? startLocation,
+    String? endLocation,
+    String? address,
+    double? latitude,
+    double? longitude,
+    DateTime? startTime,
+    DateTime? endTime,
+    int? durationMinutes,
+    double? costRub,
+    String? referenceNumber,
+    String? notes,
+    String? websiteUrl,
+    double? rating,
+    String? documentKey,
+  }) async {
+    final res = await api.dio.post(
+      '/trips/$tripId/stages',
+      data: {
+        'stage_type': stageType,
+        'subtype': subtype,
+        'title': title,
+        'start_location': startLocation,
+        'end_location': endLocation,
+        'address': address,
+        'latitude': latitude,
+        'longitude': longitude,
+        'start_time': startTime?.toIso8601String(),
+        'end_time': endTime?.toIso8601String(),
+        'duration_minutes': durationMinutes,
+        'cost_rub': costRub?.toStringAsFixed(2),
+        'reference_number': referenceNumber,
+        'notes': notes,
+        'website_url': websiteUrl,
+        'rating': rating,
+        'document_key': documentKey,
+      },
+    );
+    final data = res.data;
+    if (data is! Map<String, dynamic>) return null;
+    return TripStage.fromJson(data);
+  }
+
+  Future<TripStage?> updateStage({
+    required int tripId,
+    required int stageId,
+    required Map<String, dynamic> patch,
+  }) async {
+    final res = await api.dio.patch(
+      '/trips/$tripId/stages/$stageId',
+      data: patch,
+    );
+    final data = res.data;
+    if (data is! Map<String, dynamic>) return null;
+    return TripStage.fromJson(data);
+  }
+
+  Future<void> deleteStage({required int tripId, required int stageId}) async {
+    await api.dio.delete('/trips/$tripId/stages/$stageId');
+  }
+
+  Future<TripStage?> copyStage({
+    required int tripId,
+    required int stageId,
+  }) async {
+    final res = await api.dio.post('/trips/$tripId/stages/$stageId/copy');
+    final data = res.data;
+    if (data is! Map<String, dynamic>) return null;
+    return TripStage.fromJson(data);
+  }
+
+  Future<List<TripStage>> reorderStages({
+    required int tripId,
+    required List<int> orderedIds,
+  }) async {
+    final res = await api.dio.post(
+      '/trips/$tripId/stages/reorder',
+      data: {'stage_ids': orderedIds},
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data
+        .whereType<Map>()
+        .map((raw) => TripStage.fromJson(Map<String, dynamic>.from(raw)))
+        .toList();
+  }
+
+  Future<List<StageSuggestion>> listStageSuggestions({
+    required int tripId,
+    required int stageId,
+  }) async {
+    final res = await api.dio.get('/trips/$tripId/stages/$stageId/suggestions');
+    final data = res.data;
+    if (data is! List) return [];
+    return data
+        .whereType<Map>()
+        .map((raw) => StageSuggestion.fromJson(Map<String, dynamic>.from(raw)))
+        .toList();
+  }
+
+  Future<TripStage?> createStageFromSuggestion({
+    required int tripId,
+    required StageSuggestion suggestion,
+  }) async {
+    final res = await api.dio.post(
+      '/trips/$tripId/stages',
+      data: {
+        'stage_type': suggestion.stageType,
+        'subtype': suggestion.subtype,
+        'title': suggestion.title,
+        'start_location': suggestion.startLocation,
+        'end_location': suggestion.endLocation,
+        'address': suggestion.address,
+        'latitude': suggestion.latitude,
+        'longitude': suggestion.longitude,
+        'cost_rub': suggestion.estimatedCostRub?.toStringAsFixed(2),
+        'notes': suggestion.reason,
+      },
+    );
+    final data = res.data;
+    if (data is! Map<String, dynamic>) return null;
+    return TripStage.fromJson(data);
   }
 }

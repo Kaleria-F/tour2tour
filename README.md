@@ -1,73 +1,116 @@
-# как запускать (local + production)
+# Tour2Tour
 
-Этот файл объясняет, как запускать проект в двух режимах:
+Основные режимы работы проекта:
+- локальная разработка и тестирование;
+- production-развертывание на VPS с доменом `24tour2tour.ru`.
 
-локальная разработка (для тестирования и исправлений)
+Все локальные команды ниже выполняются из корня репозитория:
+`C:\Users\Valeria\tour2tour`
 
-продакшн на домене (24tour2tour.ru)
+## Локальный запуск
 
-Все команды выполняются из корня репозитория:
-C:\Users\Valeria\tour2tour
-
----
-
-## 1) Локальная разработка
-
-### 1.1 Запуск backend локально (микросервисы + gateway)
-Запускает локальные PostgreSQL, Redis, все сервисы и локальный Nginx‑gateway.
-
-Из корня репозитория::
+### 1. Поднять backend и инфраструктуру
 ```bash
 docker compose -f infra/docker-compose.yml up --build -d
 ```
 
-проверка:
-```bash
-curl http://127.0.0.1:8000/health
-```
-
-локальные порты
-- gateway: `http://127.0.0.1:8000`
-- auth-service: `http://127.0.0.1:8001`
-- trips-service: `http://127.0.0.1:8002`
-- recommendations-service: `http://127.0.0.1:8003`
-- payments-service: `http://127.0.0.1:8004`
-
-### Запуск миграций локально (при необходимости)
+### 2. Выполнить миграции
 ```bash
 docker compose -f infra/docker-compose.yml exec auth-service alembic upgrade head
 docker compose -f infra/docker-compose.yml exec trips-service alembic upgrade head
 ```
 
-### Запуск Flutter-приложения локально
-Конфигурация поддерживает переопределение API  через
-`--dart-define=API_BASE_URL=...`.
-
-Web (локальный gateway 127.0.0.1:8000)
+### 3. Проверить gateway
 ```bash
-cd frontend/tour2tour_app
-flutter run -d chrome --dart-define=API_BASE_URL=http://127.0.0.1:8000
+curl.exe http://127.0.0.1:8888/health
 ```
 
-Android emulator (local gateway):
-```bash
-cd frontend/tour2tour_app
-flutter run -d emulator-5554 --dart-define=API_BASE_URL=http://10.0.2.2:8000
+Ожидаемый ответ:
+```json
+{"status":"ok"}
 ```
 
-Реальное устройство (использовать IP ПК в локальной сети)
+### 4. Запустить Flutter Web локально
 ```bash
 cd frontend/tour2tour_app
-flutter run -d <device_id> --dart-define=API_BASE_URL=http://<LAN_IP>:8000
+flutter pub get
+flutter run -d chrome
 ```
 
----
+Локальный web использует:
+- `http://127.0.0.1:8888`
 
-## 2) 2) Продакшн (домен)
+### 5. Запустить Flutter Android Emulator локально
+```bash
+cd frontend/tour2tour_app
+flutter pub get
+flutter run -d emulator-5554
+```
 
-### 2.1 Деплой backend на VPS
+Android emulator использует:
+- `http://10.0.2.2:8888`
 
-На сервере:
+### 6. Запустить фронт против production API
+```bash
+cd frontend/tour2tour_app
+flutter pub get
+flutter run -d chrome --dart-define=API_BASE_URL=https://api.24tour2tour.ru
+```
+
+## Команды для тестирования
+
+### Проверить список контейнеров
+```bash
+docker compose -f infra/docker-compose.yml ps
+```
+
+### Проверить логи gateway
+```bash
+docker compose -f infra/docker-compose.yml logs gateway
+```
+
+### Проверить логи auth-service
+```bash
+docker compose -f infra/docker-compose.yml logs auth-service
+```
+
+### Проверить локальный auth endpoint
+```bash
+curl.exe -i http://127.0.0.1:8888/auth/register
+```
+
+Ожидаемо для GET:
+- `405 Method Not Allowed`
+
+Это означает, что маршрутизация до auth-service работает.
+
+## Очистка и перезапуск
+
+### Остановить локальный контур
+```bash
+docker compose -f infra/docker-compose.yml down
+```
+
+### Остановить и удалить тома
+```bash
+docker compose -f infra/docker-compose.yml down -v
+```
+
+Используй это только если нужно полностью сбросить локальные БД.
+
+### Пересобрать сервисы заново
+```bash
+docker compose -f infra/docker-compose.yml up --build -d
+```
+
+### Пересоздать только gateway
+```bash
+docker compose -f infra/docker-compose.yml up -d --force-recreate gateway
+```
+
+## Production
+
+### Backend на VPS
 ```bash
 cd ~/tour2tour
 docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod up --build -d
@@ -75,29 +118,34 @@ docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod exec 
 docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod exec trips-service alembic upgrade head
 ```
 
-### 2.2 API base URL (production)
-`https://api.24tour2tour.ru`
-
-### 2.3 Сборка и деплой Flutter Web (продакшн)
-Локальная сборка:
+### Flutter Web build для production
 ```bash
 cd frontend/tour2tour_app
 flutter build web --release --dart-define=API_BASE_URL=https://api.24tour2tour.ru
 ```
 
-Загрузка на сервер:
-```bash
-scp -i C:\Users\Valeria\tour2tour\key.txt -r frontend/tour2tour_app/build/web root@89.23.97.65:/var/www/tour2tour
-```
-После загрузки Nginx отдаёт сайт из папки /var/www/tour2tour.
+## Ветки
 
----
+- `main` — стабильная production-ветка
+- `develop` — разработка и локальное тестирование
 
-## 3) Процесс обновления (продакшн)
+Поток работы:
+1. разработка идет в `develop`;
+2. после проверки создается PR из `develop` в `main`;
+3. деплой запускается из `main`.
 
-1. git pull на сервере
-2. docker compose ... up --build -d
-3. запустить миграции (если были изменения)
-4. обновить сборку Flutter Web, если изменялся фронтенд
+## Auto-deploy
 
+Workflow:
+- `.github/workflows/deploy.yml`
 
+Secrets GitHub Actions:
+- `SSH_HOST`
+- `SSH_USER`
+- `SSH_KEY`
+- `SSH_PORT`
+
+Текущий workflow делает:
+- `git pull` на сервере;
+- `docker compose ... up --build -d`;
+- `alembic upgrade head` для `auth-service` и `trips-service`.

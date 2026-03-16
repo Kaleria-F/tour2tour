@@ -2,8 +2,8 @@
 import 'package:flutter/foundation.dart';
 
 class Config {
-  static const _androidEmulator = 'http://10.0.2.2:8000';
-  static const _webLocal = 'http://127.0.0.1:8000';
+  static const _androidEmulator = 'http://10.0.2.2:8888';
+  static const _webLocal = 'http://127.0.0.1:8888';
   static const _apiOverride =
       String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
