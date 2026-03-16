@@ -216,6 +216,9 @@ class _CreateTripPageState extends State<CreateTripPage> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               shadowColor: Colors.transparent,
+                              foregroundColor: Colors.white,
+                              disabledForegroundColor: Colors.white70,
+                              disabledBackgroundColor: Colors.transparent,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                             ),
                             onPressed: _saving ? null : _saveTrip,

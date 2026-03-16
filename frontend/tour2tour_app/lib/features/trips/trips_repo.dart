@@ -248,6 +248,34 @@ class TripsRepo {
     return TripExpense.fromJson(data);
   }
 
+  Future<TripExpense?> updateExpense({
+    required int tripId,
+    required int expenseId,
+    String? description,
+    double? amountRub,
+    String? category,
+  }) async {
+    final patch = <String, dynamic>{};
+    if (description != null) patch['description'] = description;
+    if (amountRub != null) patch['amount_rub'] = amountRub.toStringAsFixed(2);
+    if (category != null) patch['category'] = category;
+
+    final res = await api.dio.patch(
+      '/trips/$tripId/expenses/$expenseId',
+      data: patch,
+    );
+    final data = res.data;
+    if (data is! Map<String, dynamic>) return null;
+    return TripExpense.fromJson(data);
+  }
+
+  Future<void> deleteExpense({
+    required int tripId,
+    required int expenseId,
+  }) async {
+    await api.dio.delete('/trips/$tripId/expenses/$expenseId');
+  }
+
   Future<List<TripStage>> listStages(int tripId) async {
     final res = await api.dio.get('/trips/$tripId/stages');
     final data = res.data;

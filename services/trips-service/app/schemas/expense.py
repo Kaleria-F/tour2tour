@@ -10,6 +10,12 @@ class ExpenseCreate(BaseModel):
     category: str = Field(..., min_length=1, max_length=32)
 
 
+class ExpenseUpdate(BaseModel):
+    description: str | None = Field(None, min_length=1, max_length=255)
+    amount_rub: Decimal | None = Field(None, gt=0, max_digits=12, decimal_places=2)
+    category: str | None = Field(None, min_length=1, max_length=32)
+
+
 class ExpenseOut(BaseModel):
     id: int
     trip_id: int

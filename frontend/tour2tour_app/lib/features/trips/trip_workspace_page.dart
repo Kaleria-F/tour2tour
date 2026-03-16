@@ -1,5 +1,4 @@
 ﻿import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -37,11 +36,12 @@ class TripWorkspacePage extends StatefulWidget {
 }
 
 class _TripWorkspacePageState extends State<TripWorkspacePage> {
-  int _currentIndex = 0;
+  int _currentIndex = 1;
 
   bool _budgetLoading = false;
   bool _addingExpense = false;
   List<TripExpense> _expenses = const [];
+  bool _showBudgetAnalytics = false;
   bool _stagesLoading = false;
   bool _addingStage = false;
   List<TripStage> _stages = const [];
@@ -75,6 +75,14 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     'transport': 'Транспорт',
     'entertainment': 'Развлечения',
     'other': 'Другое',
+  };
+
+  static const _categoryColors = {
+    'food': Color(0xFFFF8A65),
+    'housing': Color(0xFFFFD54F),
+    'transport': Color(0xFF4FC3F7),
+    'entertainment': Color(0xFFBA68C8),
+    'other': Color(0xFF90A4AE),
   };
 
   static const _stageTypeLabels = {
@@ -249,6 +257,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       if (!mounted) return;
       if (created != null) {
         await _loadStages();
+        await _loadExpenses();
         if (!mounted) return;
         setState(() {
           _selectedStageId = created.id;
@@ -457,6 +466,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         });
       }
       await _loadStages();
+      await _loadExpenses();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Этап добавлен в маршрут')),
@@ -657,6 +667,69 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
   }
 
+  Future<void> _openEditExpenseDialog(TripExpense expense) async {
+    if (widget.tripId == null) return;
+
+    final result = await showDialog<_AddExpensePayload>(
+      context: context,
+      builder: (context) => _AddExpenseDialog(
+        categories: _categories,
+        title: 'Редактировать расход',
+        submitLabel: 'Сохранить',
+        initial: _AddExpensePayload(
+          description: expense.description,
+          amountRub: expense.amountRub,
+          category: expense.category,
+        ),
+      ),
+    );
+
+    if (result == null) return;
+
+    try {
+      final updated = await widget.tripsRepo.updateExpense(
+        tripId: widget.tripId!,
+        expenseId: expense.id,
+        description: result.description,
+        amountRub: result.amountRub,
+        category: result.category,
+      );
+
+      if (!mounted || updated == null) return;
+      setState(() {
+        _expenses = _expenses
+            .map((item) => item.id == updated.id ? updated : item)
+            .toList();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось обновить расход')),
+      );
+    }
+  }
+
+  Future<void> _deleteExpense(TripExpense expense) async {
+    if (widget.tripId == null) return;
+
+    try {
+      await widget.tripsRepo.deleteExpense(
+        tripId: widget.tripId!,
+        expenseId: expense.id,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _expenses = _expenses.where((item) => item.id != expense.id).toList();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось удалить расход')),
+      );
+    }
+  }
+
   Future<void> _loadDocuments() async {
     if (widget.tripId == null) return;
     setState(() {
@@ -813,7 +886,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       final downloadUrl = await widget.documentsRepo.getDownloadUrl(
         doc.objectKey,
       );
-      final bytes = await widget.documentsRepo.fetchFileBytes(downloadUrl);
       if (!mounted) return;
 
       final fileType = _resolvePreviewType(doc.fileName);
@@ -830,7 +902,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         context: context,
         builder: (_) => _DocumentPreviewDialog(
           title: doc.fileName,
-          bytes: bytes,
+          fileUrl: downloadUrl,
           fileType: fileType,
         ),
       );
@@ -915,9 +987,8 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                     children: [
                       const SizedBox(height: 14),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          _Logo(cs: cs),
                           TextButton.icon(
                             onPressed: () => context.go('/profile'),
                             icon: const Icon(Icons.exit_to_app_rounded),
@@ -925,7 +996,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 8),
                       Text(
                         widget.tripTitle,
                         style: const TextStyle(
@@ -935,16 +1006,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                           height: 1.1,
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        _sectionTitles[_currentIndex],
-                        style: TextStyle(
-                          color: cs.primary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 6),
                       if (widget.startDate != null && widget.endDate != null)
                         Text(
                           '${_fmtDate(widget.startDate!)} - ${_fmtDate(widget.endDate!)}',
@@ -953,7 +1015,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                             fontSize: 13,
                           ),
                         ),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 12),
                       Expanded(
                         child: _currentIndex == 1
                             ? _buildRouteCard(cs)
@@ -969,6 +1031,9 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         onTap: (index) {
                           setState(() {
                             _currentIndex = index;
+                            if (index != 2) {
+                              _showBudgetAnalytics = false;
+                            }
                           });
                           if (index == 0) {
                             _loadRecommendations();
@@ -1409,6 +1474,10 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   }
 
   Widget _buildBudgetCard(ColorScheme cs) {
+    if (_showBudgetAnalytics) {
+      return _buildBudgetAnalyticsCard(cs);
+    }
+
     final total = _expenses.fold<double>(0, (sum, e) => sum + e.amountRub);
 
     final visible = _expenses
@@ -1444,6 +1513,18 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Диаграмма расходов',
+                onPressed: () {
+                  setState(() {
+                    _showBudgetAnalytics = true;
+                  });
+                },
+                icon: const Icon(
+                  Icons.pie_chart_outline_rounded,
+                  color: Colors.white,
                 ),
               ),
             ],
@@ -1590,7 +1671,137 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              '${expense.amountRub.toStringAsFixed(2)} в‚Ѕ',
+                              '${expense.amountRub.toStringAsFixed(2)} руб.',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Редактировать',
+                              onPressed: () => _openEditExpenseDialog(expense),
+                              icon: const Icon(
+                                Icons.edit_outlined,
+                                color: Colors.white,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Удалить',
+                              onPressed: () => _deleteExpense(expense),
+                              icon: const Icon(
+                                Icons.delete_outline_rounded,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBudgetAnalyticsCard(ColorScheme cs) {
+    final totalsByCategory = <String, double>{};
+    for (final expense in _expenses) {
+      totalsByCategory[expense.category] =
+          (totalsByCategory[expense.category] ?? 0) + expense.amountRub;
+    }
+
+    final items = totalsByCategory.entries
+        .where((e) => e.value > 0)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final total = items.fold<double>(0, (sum, e) => sum + e.value);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _showBudgetAnalytics = false;
+                  });
+                },
+                icon: const Icon(Icons.arrow_back_rounded),
+                label: const Text('Назад к расходам'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Center(
+            child: _ExpensePieChart(
+              values: {
+                for (final item in items) item.key: item.value,
+              },
+              colors: _categoryColors,
+              total: total,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: items.isEmpty
+                ? Center(
+                    child: Text(
+                      'Пока нет данных для диаграммы',
+                      style: TextStyle(color: Colors.white.withOpacity(0.85)),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final item = items[i];
+                      final categoryKey = item.key;
+                      final categoryLabel = _categories[categoryKey] ?? categoryKey;
+                      final color = _categoryColors[categoryKey] ?? _categoryColors['other']!;
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white.withOpacity(0.1)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                categoryLabel,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${item.value.toStringAsFixed(2)} руб.',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -1774,12 +1985,12 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
 class _DocumentPreviewDialog extends StatelessWidget {
   final String title;
-  final Uint8List bytes;
+  final String fileUrl;
   final String fileType;
 
   const _DocumentPreviewDialog({
     required this.title,
-    required this.bytes,
+    required this.fileUrl,
     required this.fileType,
   });
 
@@ -1814,12 +2025,21 @@ class _DocumentPreviewDialog extends StatelessWidget {
             const Divider(height: 1),
             Expanded(
               child: fileType == 'pdf'
-                  ? SfPdfViewer.memory(bytes)
+                  ? SfPdfViewer.network(fileUrl)
                   : InteractiveViewer(
                       minScale: 0.8,
                       maxScale: 4.0,
                       child: Center(
-                        child: Image.memory(bytes, fit: BoxFit.contain),
+                        child: Image.network(
+                          fileUrl,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Text(
+                              'Не удалось отобразить изображение',
+                              style: TextStyle(color: Colors.black54),
+                            );
+                          },
+                        ),
                       ),
                     ),
             ),
@@ -1827,6 +2047,103 @@ class _DocumentPreviewDialog extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _ExpensePieChart extends StatelessWidget {
+  final Map<String, double> values;
+  final Map<String, Color> colors;
+  final double total;
+
+  const _ExpensePieChart({
+    required this.values,
+    required this.colors,
+    required this.total,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 220,
+      height: 220,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CustomPaint(
+            size: const Size(220, 220),
+            painter: _ExpensePiePainter(values: values, colors: colors),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Итого',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${total.toStringAsFixed(2)} руб.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExpensePiePainter extends CustomPainter {
+  final Map<String, double> values;
+  final Map<String, Color> colors;
+
+  const _ExpensePiePainter({
+    required this.values,
+    required this.colors,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = math.min(size.width, size.height) / 2 - 8;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    final total = values.values.fold<double>(0, (sum, v) => sum + v);
+
+    if (total <= 0) {
+      final emptyPaint = Paint()
+        ..color = Colors.white.withOpacity(0.18)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 26;
+      canvas.drawCircle(center, radius - 13, emptyPaint);
+      return;
+    }
+
+    var start = -math.pi / 2;
+    values.forEach((key, value) {
+      if (value <= 0) return;
+      final sweep = (value / total) * math.pi * 2;
+      final paint = Paint()
+        ..color = colors[key] ?? colors['other'] ?? Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 26
+        ..strokeCap = StrokeCap.butt;
+      canvas.drawArc(rect, start, sweep, false, paint);
+      start += sweep;
+    });
+  }
+
+  @override
+  bool shouldRepaint(covariant _ExpensePiePainter oldDelegate) {
+    return oldDelegate.values != values || oldDelegate.colors != colors;
   }
 }
 
@@ -1844,8 +2161,16 @@ class _AddExpensePayload {
 
 class _AddExpenseDialog extends StatefulWidget {
   final Map<String, String> categories;
+  final _AddExpensePayload? initial;
+  final String title;
+  final String submitLabel;
 
-  const _AddExpenseDialog({required this.categories});
+  const _AddExpenseDialog({
+    required this.categories,
+    this.initial,
+    this.title = 'Добавить расходы',
+    this.submitLabel = 'Создать',
+  });
 
   @override
   State<_AddExpenseDialog> createState() => _AddExpenseDialogState();
@@ -1853,9 +2178,23 @@ class _AddExpenseDialog extends StatefulWidget {
 
 class _AddExpenseDialogState extends State<_AddExpenseDialog> {
   final _formKey = GlobalKey<FormState>();
-  final _descriptionCtrl = TextEditingController();
-  final _amountCtrl = TextEditingController();
-  String _category = 'food';
+  late final TextEditingController _descriptionCtrl;
+  late final TextEditingController _amountCtrl;
+  late String _category;
+
+  @override
+  void initState() {
+    super.initState();
+    _descriptionCtrl = TextEditingController(
+      text: widget.initial?.description ?? '',
+    );
+    _amountCtrl = TextEditingController(
+      text: widget.initial == null
+          ? ''
+          : widget.initial!.amountRub.toStringAsFixed(2),
+    );
+    _category = widget.initial?.category ?? 'food';
+  }
 
   @override
   void dispose() {
@@ -1867,7 +2206,7 @@ class _AddExpenseDialogState extends State<_AddExpenseDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Добавить расходы'),
+      title: Text(widget.title),
       content: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -1942,7 +2281,7 @@ class _AddExpenseDialogState extends State<_AddExpenseDialog> {
               ),
             );
           },
-          child: const Text('Создать'),
+          child: Text(widget.submitLabel),
         ),
       ],
     );

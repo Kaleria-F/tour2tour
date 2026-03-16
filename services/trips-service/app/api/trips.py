@@ -12,7 +12,7 @@ from app.db.deps import get_db
 from app.models.expense import Expense
 from app.models.stage import Stage
 from app.models.trip import Trip
-from app.schemas.expense import ExpenseCreate, ExpenseOut
+from app.schemas.expense import ExpenseCreate, ExpenseOut, ExpenseUpdate
 from app.schemas.stage import (
     StageCreate,
     StageOut,
@@ -41,6 +41,15 @@ STAGE_SUBTYPES: dict[str, set[str]] = {
     "shopping": {"mall", "market", "souvenirs", "shopping"},
     "activity": {"sport", "entertainment", "walk", "beach"},
     "document": {"tickets", "visa", "insurance", "booking"},
+}
+
+STAGE_TYPE_TO_EXPENSE_CATEGORY: dict[str, str] = {
+    "transport": "transport",
+    "place": "entertainment",
+    "stay": "housing",
+    "food": "food",
+    "shopping": "entertainment",
+    "activity": "entertainment",
 }
 
 
@@ -77,6 +86,18 @@ def _get_user_stage_or_404(db: Session, trip_id: int, stage_id: int) -> Stage:
     return stage
 
 
+def _get_trip_expense_or_404(db: Session, trip_id: int, expense_id: int) -> Expense:
+    expense = db.execute(
+        select(Expense).where(
+            Expense.id == expense_id,
+            Expense.trip_id == trip_id,
+        )
+    ).scalars().first()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return expense
+
+
 def _validate_stage_type_and_subtype(stage_type: str, subtype: str) -> tuple[str, str]:
     normalized_type = stage_type.strip().lower()
     normalized_subtype = subtype.strip().lower()
@@ -85,6 +106,23 @@ def _validate_stage_type_and_subtype(stage_type: str, subtype: str) -> tuple[str
     if normalized_subtype not in STAGE_SUBTYPES[normalized_type]:
         raise HTTPException(status_code=400, detail="Invalid stage subtype for selected type")
     return normalized_type, normalized_subtype
+
+
+def _create_expense_from_stage_if_needed(stage: Stage, db: Session) -> None:
+    if stage.cost_rub is None or stage.cost_rub <= 0:
+        return
+
+    category = STAGE_TYPE_TO_EXPENSE_CATEGORY.get(stage.stage_type)
+    if not category:
+        return
+
+    expense = Expense(
+        trip_id=stage.trip_id,
+        description=stage.title.strip(),
+        amount_rub=stage.cost_rub,
+        category=category,
+    )
+    db.add(expense)
 
 
 @router.post("/", response_model=TripOut)
@@ -149,6 +187,57 @@ def create_expense(
     return expense
 
 
+@router.patch("/{trip_id}/expenses/{expense_id}", response_model=ExpenseOut)
+def update_expense(
+    trip_id: int,
+    expense_id: int,
+    payload: ExpenseUpdate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    _get_user_trip_or_404(db=db, trip_id=trip_id, user_id=user_id)
+    expense = _get_trip_expense_or_404(db=db, trip_id=trip_id, expense_id=expense_id)
+
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    allowed_categories = {"food", "housing", "transport", "entertainment", "other"}
+
+    if "description" in updates and updates["description"] is not None:
+        updates["description"] = updates["description"].strip()
+        if not updates["description"]:
+            raise HTTPException(status_code=400, detail="Description is required")
+
+    if "category" in updates and updates["category"] is not None:
+        normalized = updates["category"].strip().lower()
+        if normalized not in allowed_categories:
+            raise HTTPException(status_code=400, detail="Invalid expense category")
+        updates["category"] = normalized
+
+    for field_name, value in updates.items():
+        setattr(expense, field_name, value)
+
+    db.commit()
+    db.refresh(expense)
+    return expense
+
+
+@router.delete("/{trip_id}/expenses/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_expense(
+    trip_id: int,
+    expense_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    _get_user_trip_or_404(db=db, trip_id=trip_id, user_id=user_id)
+    expense = _get_trip_expense_or_404(db=db, trip_id=trip_id, expense_id=expense_id)
+
+    db.delete(expense)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/{trip_id}/stages", response_model=list[StageOut])
 def list_stages(
     trip_id: int,
@@ -201,6 +290,7 @@ def create_stage(
         document_key=payload.document_key,
     )
     db.add(stage)
+    _create_expense_from_stage_if_needed(stage=stage, db=db)
     db.commit()
     db.refresh(stage)
     return stage

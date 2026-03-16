@@ -13,7 +13,13 @@ from app.schemas.document import (
     UploadInitRequest,
     UploadInitResponse,
 )
-from app.storage.s3_client import build_object_key, build_s3_client, ensure_bucket_exists
+from app.storage.s3_client import (
+    build_object_key,
+    build_s3_client,
+    build_s3_presign_client,
+    ensure_bucket_cors,
+    ensure_bucket_exists,
+)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -74,6 +80,7 @@ def ensure_bucket(
 ):
     s3 = build_s3_client()
     ensure_bucket_exists(s3)
+    ensure_bucket_cors(s3)
     return {"bucket": settings.s3_bucket, "status": "ok"}
 
 
@@ -87,6 +94,8 @@ def upload_init(
 
     s3 = build_s3_client()
     ensure_bucket_exists(s3)
+    ensure_bucket_cors(s3)
+    s3_presign = build_s3_presign_client()
 
     object_key = build_object_key(
         user_id=user_id,
@@ -94,7 +103,7 @@ def upload_init(
         original_file_name=payload.file_name,
     )
     try:
-        upload_url = s3.generate_presigned_url(
+        upload_url = s3_presign.generate_presigned_url(
             ClientMethod="put_object",
             Params={
                 "Bucket": settings.s3_bucket,
@@ -159,7 +168,7 @@ def download_url(
     if not payload.object_key.startswith(prefix):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    s3 = build_s3_client()
+    s3 = build_s3_presign_client()
     visible_name = _extract_visible_file_name(payload.object_key)
     try:
         download_url_value = s3.generate_presigned_url(
