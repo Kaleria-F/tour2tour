@@ -92,7 +92,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     'food': 'Еда',
     'shopping': 'Шопинг',
     'activity': 'Активность',
-    'document': 'Документ',
   };
 
   static const _stageSubtypes = {
@@ -119,7 +118,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     ],
     'shopping': ['mall', 'market', 'souvenirs', 'shopping'],
     'activity': ['sport', 'entertainment', 'walk', 'beach'],
-    'document': ['tickets', 'visa', 'insurance', 'booking'],
   };
 
   @override
@@ -224,6 +222,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           stageTypeLabels: _stageTypeLabels,
           stageSubtypes: _stageSubtypes,
           initialType: pickedType,
+          onUploadDocument: _pickAndUploadDocumentForStage,
         ),
       ),
     );
@@ -287,6 +286,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           stageTypeLabels: _stageTypeLabels,
           stageSubtypes: _stageSubtypes,
           initialType: stage.stageType,
+          onUploadDocument: _pickAndUploadDocumentForStage,
           initial: _AddStagePayload(
             stageType: stage.stageType,
             subtype: stage.subtype,
@@ -762,24 +762,30 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   }
 
   Future<void> _pickAndUploadDocument() async {
+    await _pickAndUploadDocumentForStage(showSuccessSnackBar: true);
+  }
+
+  Future<String?> _pickAndUploadDocumentForStage({
+    bool showSuccessSnackBar = false,
+  }) async {
     if (widget.tripId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Сначала откройте путешествие с корректным ID'),
         ),
       );
-      return;
+      return null;
     }
 
     final picked = await FilePicker.platform.pickFiles(withData: true);
-    if (picked == null || picked.files.isEmpty) return;
+    if (picked == null || picked.files.isEmpty) return null;
     final file = picked.files.first;
     final bytes = file.bytes;
     if (bytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Не удалось прочитать файл')),
       );
-      return;
+      return null;
     }
 
     final contentType = _resolveContentType(file.name);
@@ -787,11 +793,11 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Разрешены только PDF, JPG, PNG')),
       );
-      return;
+      return null;
     }
 
     final customTitle = await _openDocumentTitleDialog(file.name);
-    if (customTitle == null) return;
+    if (customTitle == null) return null;
 
     final targetFileName = _buildTargetFileName(
       customTitle: customTitle,
@@ -817,15 +823,19 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         contentType: contentType,
       );
       await _loadDocuments();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Документ загружен')));
+      if (!mounted) return null;
+      if (showSuccessSnackBar) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Документ загружен')));
+      }
+      return init.objectKey;
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ошибка загрузки документа')),
       );
+      return null;
     } finally {
       if (mounted) {
         setState(() {
@@ -833,6 +843,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         });
       }
     }
+    return null;
   }
 
   Future<String?> _openDocumentTitleDialog(String originalFileName) async {
@@ -910,6 +921,35 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Не удалось открыть предпросмотр')),
+      );
+    }
+  }
+
+  Future<void> _openDocumentByKey(String objectKey, String title) async {
+    try {
+      final downloadUrl = await widget.documentsRepo.getDownloadUrl(objectKey);
+      if (!mounted) return;
+      final fileType = _resolvePreviewType(objectKey);
+      if (fileType == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Предпросмотр доступен только для PDF, JPG и PNG'),
+          ),
+        );
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (_) => _DocumentPreviewDialog(
+          title: title,
+          fileUrl: downloadUrl,
+          fileType: fileType,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось открыть документ этапа')),
       );
     }
   }
@@ -1252,10 +1292,26 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         margin: const EdgeInsets.only(bottom: 12),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(20),
-                          onTap: () {
+                          onTap: () async {
                             setState(() {
                               _selectedStageId = stage.id;
                             });
+                            await Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => _StageDetailsPage(
+                                  stage: stage,
+                                  typeLabel: typeLabel,
+                                  subtypeLabel: subtypeLabel,
+                                  timeRange: timeRange,
+                                  onOpenDocument: (stage.documentKey ?? '').isEmpty
+                                      ? null
+                                      : () => _openDocumentByKey(
+                                            stage.documentKey!,
+                                            stage.title,
+                                          ),
+                                ),
+                              ),
+                            );
                           },
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1335,6 +1391,14 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                               ),
                                             ),
                                           ),
+                                          if ((stage.documentKey ?? '').isNotEmpty) ...[
+                                            const SizedBox(width: 6),
+                                            Icon(
+                                              Icons.attach_file_rounded,
+                                              size: 18,
+                                              color: Colors.white.withOpacity(0.85),
+                                            ),
+                                          ],
                                           if (timeRange != null) ...[
                                             const SizedBox(width: 8),
                                             Container(
@@ -1422,6 +1486,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                             ),
                                           ),
                                           PopupMenuButton<String>(
+                                            tooltip: '',
                                             onSelected: (value) {
                                               if (value == 'edit') {
                                                 _openEditStageDialog(stage);
@@ -1451,9 +1516,19 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                             ),
                                           ),
                                           const SizedBox(width: 4),
-                                          Icon(
-                                            Icons.drag_handle_rounded,
-                                            color: Colors.white.withOpacity(0.85),
+                                          Container(
+                                            width: 26,
+                                            height: 26,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(0.08),
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: Colors.white.withOpacity(0.16)),
+                                            ),
+                                            child: Icon(
+                                              Icons.drag_indicator_rounded,
+                                              size: 18,
+                                              color: Colors.white.withOpacity(0.9),
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -2436,11 +2511,6 @@ class _StageTypePickerPage extends StatelessWidget {
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Открыть форму',
-                                      style: TextStyle(color: Colors.white.withOpacity(0.72), fontSize: 12),
-                                    ),
                                   ],
                                 ),
                               ),
@@ -2466,11 +2536,13 @@ class _StageFormPage extends StatefulWidget {
   final String initialType;
   final _AddStagePayload? initial;
   final String submitLabel;
+  final Future<String?> Function()? onUploadDocument;
 
   const _StageFormPage({
     required this.stageTypeLabels,
     required this.stageSubtypes,
     required this.initialType,
+    this.onUploadDocument,
     this.initial,
     this.submitLabel = 'Добавить',
   });
@@ -2536,6 +2608,7 @@ class _StageFormPageState extends State<_StageFormPage> {
   final _docCtrl = TextEditingController();
   final _startTimeCtrl = TextEditingController();
   final _endTimeCtrl = TextEditingController();
+  bool _uploadingStageDocument = false;
 
   late String _stageType;
   late String _subtype;
@@ -2672,6 +2745,10 @@ class _StageFormPageState extends State<_StageFormPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final stageTypeItems = Map<String, String>.from(widget.stageTypeLabels);
+    if (!stageTypeItems.containsKey(_stageType)) {
+      stageTypeItems[_stageType] = _stageType == 'document' ? 'Документ' : _stageType;
+    }
     final subtypes = widget.stageSubtypes[_stageType] ?? const <String>[];
     final isTransport = _stageType == 'transport';
     final isPlace = _stageType == 'place';
@@ -2680,6 +2757,9 @@ class _StageFormPageState extends State<_StageFormPage> {
     final isShopping = _stageType == 'shopping';
     final isActivity = _stageType == 'activity';
     final isDocument = _stageType == 'document';
+    final needsReference =
+        (isTransport && const {'airplane', 'train', 'bus'}.contains(_subtype)) ||
+        isStay;
     if (!subtypes.contains(_subtype) && subtypes.isNotEmpty) {
       _subtype = subtypes.first;
     }
@@ -2749,7 +2829,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   dropdownColor: const Color(0xFF1E1734),
                                   iconEnabledColor: Colors.white70,
                                   decoration: const InputDecoration(labelText: 'Тип'),
-                                  items: widget.stageTypeLabels.entries
+                                  items: stageTypeItems.entries
                                       .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
                                       .toList(),
                                   onChanged: (value) {
@@ -2762,7 +2842,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                 ),
                                 const SizedBox(height: 8),
                                 DropdownButtonFormField<String>(
-                                  value: _subtype.isEmpty ? null : _subtype,
+                                  value: (_subtype.isNotEmpty && subtypes.contains(_subtype)) ? _subtype : null,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                   dropdownColor: const Color(0xFF1E1734),
                                   iconEnabledColor: Colors.white70,
@@ -2776,6 +2856,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                       )
                                       .toList(),
                                   onChanged: (value) {
+                                    if (subtypes.isEmpty) return;
                                     if (value == null) return;
                                     setState(() {
                                       _subtype = value;
@@ -2828,16 +2909,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   ),
                                   const SizedBox(height: 8),
                                 ],
-                                if (isTransport || isPlace || isShopping || isActivity) ...[
-                                  TextFormField(
-                                    controller: _durationCtrl,
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: const InputDecoration(labelText: 'Длительность, мин'),
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                  const SizedBox(height: 8),
-                                ],
-                                if (isTransport || isStay) ...[
+                                if (needsReference) ...[
                                   TextFormField(
                                     controller: _refCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
@@ -2851,21 +2923,45 @@ class _StageFormPageState extends State<_StageFormPage> {
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                     decoration: const InputDecoration(labelText: 'Сайт'),
                                   ),
-                                  const SizedBox(height: 8),
-                                  TextFormField(
-                                    controller: _ratingCtrl,
-                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: const InputDecoration(labelText: 'Рейтинг'),
-                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  ),
                                 ],
                               ], Colors.greenAccent),
                               _bubble('Файлы и заметки', [
-                                if (isTransport || isStay || isDocument) ...[
+                                if (isTransport || isStay) ...[
                                   TextFormField(
                                     controller: _docCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                     decoration: const InputDecoration(labelText: 'Ключ документа'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
+                                if (isDocument) ...[
+                                  SizedBox(
+                                    width: double.infinity,
+                                    child: OutlinedButton.icon(
+                                      onPressed: (_uploadingStageDocument || widget.onUploadDocument == null)
+                                          ? null
+                                          : () async {
+                                              setState(() => _uploadingStageDocument = true);
+                                              final objectKey = await widget.onUploadDocument!.call();
+                                              if (!mounted) return;
+                                              if (objectKey != null && objectKey.isNotEmpty) {
+                                                _docCtrl.text = objectKey;
+                                              }
+                                              setState(() => _uploadingStageDocument = false);
+                                            },
+                                      icon: _uploadingStageDocument
+                                          ? const SizedBox(
+                                              width: 14,
+                                              height: 14,
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            )
+                                          : const Icon(Icons.upload_file_rounded),
+                                      label: Text(
+                                        _docCtrl.text.trim().isEmpty
+                                            ? 'Загрузить документ'
+                                            : 'Документ загружен',
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -2875,30 +2971,6 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   decoration: const InputDecoration(labelText: 'Комментарий'),
                                   maxLines: 3,
                                 ),
-                                if (isPlace) ...[
-                                  const SizedBox(height: 8),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: _latCtrl,
-                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                          decoration: const InputDecoration(labelText: 'Широта'),
-                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: TextFormField(
-                                          controller: _lngCtrl,
-                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                          decoration: const InputDecoration(labelText: 'Долгота'),
-                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
                               ], Colors.pinkAccent),
                               const SizedBox(height: 8),
                               SizedBox(
@@ -2914,16 +2986,16 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         startLocation: _startLocationCtrl.text.trim().isEmpty ? null : _startLocationCtrl.text.trim(),
                                         endLocation: _endLocationCtrl.text.trim().isEmpty ? null : _endLocationCtrl.text.trim(),
                                         address: _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
-                                        latitude: double.tryParse(_latCtrl.text.trim().replaceAll(',', '.')),
-                                        longitude: double.tryParse(_lngCtrl.text.trim().replaceAll(',', '.')),
+                                        latitude: widget.initial?.latitude,
+                                        longitude: widget.initial?.longitude,
                                         startTime: _parseTime(_startTimeCtrl.text, widget.initial?.startTime),
                                         endTime: _parseTime(_endTimeCtrl.text, widget.initial?.endTime),
-                                        durationMinutes: int.tryParse(_durationCtrl.text.trim()),
+                                        durationMinutes: widget.initial?.durationMinutes,
                                         costRub: double.tryParse(_costCtrl.text.trim().replaceAll(',', '.')),
                                         referenceNumber: _refCtrl.text.trim().isEmpty ? null : _refCtrl.text.trim(),
                                         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
                                         websiteUrl: _websiteCtrl.text.trim().isEmpty ? null : _websiteCtrl.text.trim(),
-                                        rating: double.tryParse(_ratingCtrl.text.trim().replaceAll(',', '.')),
+                                        rating: widget.initial?.rating,
                                         documentKey: _docCtrl.text.trim().isEmpty ? null : _docCtrl.text.trim(),
                                       ),
                                     );
@@ -3041,6 +3113,155 @@ class _StageVisualConfig {
     required this.backgroundColor,
     required this.borderColor,
   });
+}
+
+class _StageDetailsPage extends StatelessWidget {
+  final TripStage stage;
+  final String typeLabel;
+  final String subtypeLabel;
+  final String? timeRange;
+  final VoidCallback? onOpenDocument;
+
+  const _StageDetailsPage({
+    required this.stage,
+    required this.typeLabel,
+    required this.subtypeLabel,
+    required this.timeRange,
+    this.onOpenDocument,
+  });
+
+  Widget _infoChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(0.16)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.9),
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _line(String label, String? value) {
+    final data = (value ?? '').trim();
+    if (data.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        '$label: $data',
+        style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      body: Stack(
+        children: [
+          const _NightBackground(),
+          SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          _Logo(cs: cs),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'Детали этапа',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.white.withOpacity(0.12)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  stage.title,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    _infoChip(typeLabel),
+                                    _infoChip(subtypeLabel),
+                                    if (timeRange != null) _infoChip(timeRange!),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                _line('Адрес / место', stage.address),
+                                _line('Откуда', stage.startLocation),
+                                _line('Куда', stage.endLocation),
+                                _line('Стоимость', stage.costRub == null ? null : '${stage.costRub} руб.'),
+                                _line('Номер рейса / брони', stage.referenceNumber),
+                                _line('Сайт', stage.websiteUrl),
+                                _line('Комментарий', stage.notes),
+                                if ((stage.documentKey ?? '').isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: onOpenDocument,
+                                    icon: const Icon(Icons.attach_file_rounded),
+                                    label: const Text('Открыть документ'),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Logo extends StatelessWidget {

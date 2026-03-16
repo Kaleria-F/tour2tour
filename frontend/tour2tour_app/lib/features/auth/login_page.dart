@@ -31,7 +31,7 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (!mounted) return;
-      context.go('/preferences');
+      context.go('/profile');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
