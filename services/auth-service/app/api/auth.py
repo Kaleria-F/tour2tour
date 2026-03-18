@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
 import pyotp
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -31,6 +32,7 @@ from app.schemas.auth import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 _LOGIN_CHALLENGES: dict[str, dict] = {}
 _STEP_UP_CHALLENGES: dict[str, dict] = {}
@@ -63,6 +65,14 @@ def _find_user(payload: LoginRequest, db: Session) -> User | None:
 def _issue_access_token(user: User) -> TokenResponse:
     token = create_access_token(sub=str(user.id), secret=settings.jwt_secret, alg=settings.jwt_alg)
     return TokenResponse(access_token=token)
+
+
+def _send_email_safely(to_email: str, subject: str, body: str) -> None:
+    try:
+        send_email(to_email=to_email, subject=subject, body=body)
+        logger.info("Email sent to %s", to_email)
+    except Exception:
+        logger.exception("Failed to send email to %s", to_email)
 
 
 @router.post("/register")
@@ -305,7 +315,11 @@ def step_up_verify(
 
 
 @router.post("/recovery/request")
-def recovery_request(payload: RecoveryRequest, db: Session = Depends(get_db)):
+def recovery_request(
+    payload: RecoveryRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     _cleanup_expired()
     user = db.execute(select(User).where(User.email == str(payload.email))).scalars().first()
     if not user:
@@ -318,14 +332,12 @@ def recovery_request(payload: RecoveryRequest, db: Session = Depends(get_db)):
         "code": code,
         "expires_at": _utc_now() + timedelta(minutes=10),
     }
-    try:
-        send_email(
-            to_email=str(payload.email),
-            subject="Tour2Tour: код восстановления доступа",
-            body=f"Ваш код восстановления: {code}\nКод действует 10 минут.",
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Не удалось отправить email: {exc}")
+    background_tasks.add_task(
+        _send_email_safely,
+        to_email=str(payload.email),
+        subject="Tour2Tour: код восстановления доступа",
+        body=f"Ваш код восстановления: {code}\nКод действует 10 минут.",
+    )
     return {"ok": True}
 
 
@@ -396,6 +408,7 @@ def change_password(
 @router.post("/change-password/request-code")
 def request_change_password_code(
     _: ChangePasswordCodeRequest,
+    background_tasks: BackgroundTasks,
     me: User = Depends(get_current_user),
 ):
     if not me.email:
@@ -405,12 +418,10 @@ def request_change_password_code(
         "code": code,
         "expires_at": _utc_now() + timedelta(minutes=10),
     }
-    try:
-        send_email(
-            to_email=me.email,
-            subject="Tour2Tour: код для смены пароля",
-            body=f"Ваш код подтверждения смены пароля: {code}\nКод действует 10 минут.",
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Не удалось отправить email: {exc}")
+    background_tasks.add_task(
+        _send_email_safely,
+        to_email=me.email,
+        subject="Tour2Tour: код для смены пароля",
+        body=f"Ваш код подтверждения смены пароля: {code}\nКод действует 10 минут.",
+    )
     return {"ok": True}
