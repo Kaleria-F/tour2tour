@@ -21,6 +21,11 @@ def validate_password_strength(v: str) -> str:
 
 
 class RegisterRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class RegisterCodeRequest(BaseModel):
     email: EmailStr | None = None
     phone: str | None = None
     password: str
@@ -29,6 +34,22 @@ class RegisterRequest(BaseModel):
     @classmethod
     def validate_password(cls, v: str):
         return validate_password_strength(v)
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, v: str | None):
+        if v is None:
+            return None
+        digits = re.sub(r"\D", "", v)
+        if not digits:
+            return None
+        if len(digits) == 11 and digits.startswith("8"):
+            digits = "7" + digits[1:]
+        if len(digits) == 10:
+            digits = "7" + digits
+        if len(digits) != 11 or not digits.startswith("7"):
+            raise ValueError("Некорректный формат телефона")
+        return f"+{digits}"
 
 
 class TokenResponse(BaseModel):
@@ -83,7 +104,6 @@ class RecoveryConfirmRequest(BaseModel):
     email: EmailStr
     code: str
     new_password: str
-    phone_last4: str | None = None
 
     @field_validator("new_password")
     @classmethod

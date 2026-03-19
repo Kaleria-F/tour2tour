@@ -1,11 +1,16 @@
-// lib/features/auth/register_page.dart
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+
 import 'auth_repo.dart';
+import 'auth_ui.dart';
+import 'phone_input_formatter.dart';
 
 class RegisterPage extends StatefulWidget {
   final AuthRepo auth;
+
   const RegisterPage({super.key, required this.auth});
 
   @override
@@ -14,38 +19,57 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
-
   final _email = TextEditingController();
   final _phone = TextEditingController();
   final _password = TextEditingController();
+  final _code = TextEditingController();
 
   bool _obscure = true;
   bool _loading = false;
+  bool _codeSent = false;
 
-  Future<void> onRegister() async {
+  Future<void> _requestCode() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    setState(() => _loading = true);
+    try {
+      await widget.auth.requestRegisterCode(
+        email: _email.text.trim(),
+        password: _password.text,
+        phone: normalizePhoneForApi(_phone.text),
+      );
+      if (!mounted) return;
+      setState(() => _codeSent = true);
+      showAuthSuccess(context, 'Код подтверждения отправлен на email.');
+    } catch (error) {
+      if (!mounted) return;
+      showAuthError(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _confirmRegistration() async {
+    if (_code.text.trim().length != 6) {
+      showAuthError(context, 'Введите шестизначный код из письма.');
+      return;
+    }
 
     setState(() => _loading = true);
     try {
       await widget.auth.register(
         email: _email.text.trim(),
-        password: _password.text,
-        phone: _phone.text.trim(),
+        code: _code.text.trim(),
       );
-
-      // Сразу логинимся после регистрации
       await widget.auth.login(
         email: _email.text.trim(),
         password: _password.text,
       );
-
       if (!mounted) return;
       context.go('/security-setup');
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      showAuthError(context, error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -56,6 +80,7 @@ class _RegisterPageState extends State<RegisterPage> {
     _email.dispose();
     _phone.dispose();
     _password.dispose();
+    _code.dispose();
     super.dispose();
   }
 
@@ -79,10 +104,10 @@ class _RegisterPageState extends State<RegisterPage> {
                       const SizedBox(height: 14),
                       _Logo(cs: cs),
                       const SizedBox(height: 18),
-                      const Text(
-                        'Регистрация',
+                      Text(
+                        _codeSent ? 'Подтверждение email' : 'Регистрация',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 30,
                           fontWeight: FontWeight.w800,
                           color: Colors.white,
@@ -114,7 +139,6 @@ class _RegisterPageState extends State<RegisterPage> {
                         ],
                       ),
                       const SizedBox(height: 18),
-
                       Form(
                         key: _formKey,
                         child: Container(
@@ -128,17 +152,19 @@ class _RegisterPageState extends State<RegisterPage> {
                                 icon: Icons.mail_outline_rounded,
                                 child: TextFormField(
                                   controller: _email,
+                                  enabled: !_codeSent,
                                   keyboardType: TextInputType.emailAddress,
                                   autofillHints: const [AutofillHints.email],
                                   decoration: const InputDecoration(
                                     hintText: 'Email',
                                     border: InputBorder.none,
                                   ),
-                                  validator: (v) {
-                                    final s = (v ?? '').trim();
-                                    if (s.isEmpty) return 'Введите email';
-                                    final ok = RegExp(r'^\S+@\S+\.\S+$').hasMatch(s);
-                                    if (!ok) return 'Некорректный email';
+                                  validator: (value) {
+                                    final email = (value ?? '').trim();
+                                    if (email.isEmpty) return 'Введите email';
+                                    if (!RegExp(r'^\S+@\S+\.\S+$').hasMatch(email)) {
+                                      return 'Некорректный email';
+                                    }
                                     return null;
                                   },
                                 ),
@@ -148,12 +174,25 @@ class _RegisterPageState extends State<RegisterPage> {
                                 icon: Icons.phone_outlined,
                                 child: TextFormField(
                                   controller: _phone,
+                                  enabled: !_codeSent,
                                   keyboardType: TextInputType.phone,
                                   autofillHints: const [AutofillHints.telephoneNumber],
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(RegExp(r'[\d\s()+-]')),
+                                    RussianPhoneInputFormatter(),
+                                  ],
                                   decoration: const InputDecoration(
                                     hintText: 'Телефон (необязательно)',
                                     border: InputBorder.none,
                                   ),
+                                  validator: (value) {
+                                    final phone = (value ?? '').trim();
+                                    if (phone.isEmpty) return null;
+                                    if (!RegExp(r'^\+7\d{10}$').hasMatch(normalizePhoneForApi(phone))) {
+                                      return 'Некорректный номер телефона';
+                                    }
+                                    return null;
+                                  },
                                 ),
                               ),
                               Divider(height: 1, thickness: 1, color: Colors.black.withOpacity(0.08)),
@@ -168,27 +207,56 @@ class _RegisterPageState extends State<RegisterPage> {
                                 ),
                                 child: TextFormField(
                                   controller: _password,
+                                  enabled: !_codeSent,
                                   obscureText: _obscure,
                                   autofillHints: const [AutofillHints.newPassword],
                                   decoration: const InputDecoration(
                                     hintText: 'Пароль',
                                     border: InputBorder.none,
                                   ),
-                                  validator: (v) {
-                                    final s = v ?? '';
-                                    if (s.isEmpty) return 'Введите пароль';
-                                    if (s.length < 6) return 'Минимум 6 символов';
+                                  validator: (value) {
+                                    final password = value ?? '';
+                                    if (password.isEmpty) return 'Введите пароль';
+                                    if (password.length < 8) return 'Минимум 8 символов';
+                                    if (!RegExp(r'[A-Z]').hasMatch(password)) {
+                                      return 'Добавьте хотя бы одну заглавную букву';
+                                    }
+                                    if (!RegExp(r'[a-z]').hasMatch(password)) {
+                                      return 'Добавьте хотя бы одну строчную букву';
+                                    }
+                                    if (!RegExp(r'\d').hasMatch(password)) {
+                                      return 'Добавьте хотя бы одну цифру';
+                                    }
+                                    if (!RegExp(r"""[~!?@#$%^&*_\-\+()\[\]{}><\/\\|"'.:,]""").hasMatch(password)) {
+                                      return 'Добавьте хотя бы один спецсимвол';
+                                    }
                                     return null;
                                   },
                                 ),
                               ),
+                              if (_codeSent) ...[
+                                Divider(height: 1, thickness: 1, color: Colors.black.withOpacity(0.08)),
+                                _FieldRow(
+                                  icon: Icons.mark_email_read_outlined,
+                                  child: TextField(
+                                    controller: _code,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                      LengthLimitingTextInputFormatter(6),
+                                    ],
+                                    decoration: const InputDecoration(
+                                      hintText: 'Код из email',
+                                      border: InputBorder.none,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 18),
-
                       SizedBox(
                         width: double.infinity,
                         height: 52,
@@ -217,21 +285,30 @@ class _RegisterPageState extends State<RegisterPage> {
                               disabledBackgroundColor: Colors.transparent,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                             ),
-                            onPressed: _loading ? null : onRegister,
+                            onPressed: _loading ? null : (_codeSent ? _confirmRegistration : _requestCode),
                             child: _loading
                                 ? const SizedBox(
                                     height: 22,
                                     width: 22,
                                     child: CircularProgressIndicator(strokeWidth: 2),
                                   )
-                                : const Text(
-                                    'Создать аккаунт',
-                                    style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
+                                : Text(
+                                    _codeSent ? 'Подтвердить email' : 'Получить код',
+                                    style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
                                   ),
                           ),
                         ),
                       ),
-
+                      if (_codeSent) ...[
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: _loading ? null : _requestCode,
+                          child: Text(
+                            'Отправить код еще раз',
+                            style: TextStyle(color: Colors.white.withOpacity(0.85)),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 48),
                     ],
                   ),
@@ -247,6 +324,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
 class _Logo extends StatelessWidget {
   final ColorScheme cs;
+
   const _Logo({required this.cs});
 
   @override

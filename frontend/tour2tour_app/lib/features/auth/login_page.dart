@@ -1,12 +1,15 @@
-// lib/features/auth/login_page.dart
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import 'auth_repo.dart';
+import 'auth_ui.dart';
 
 class LoginPage extends StatefulWidget {
-  final AuthRepo auth; // <-- добавь
-  const LoginPage({super.key, required this.auth}); // <-- измени
+  final AuthRepo auth;
+
+  const LoginPage({super.key, required this.auth});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -42,16 +45,13 @@ class _LoginPageState extends State<LoginPage> {
       } else {
         context.go('/profile');
       }
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      showAuthError(context, error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
-
 
   @override
   void dispose() {
@@ -115,8 +115,6 @@ class _LoginPageState extends State<LoginPage> {
                         ],
                       ),
                       const SizedBox(height: 18),
-
-                      // Card with fields
                       Form(
                         key: _formKey,
                         child: Container(
@@ -136,11 +134,12 @@ class _LoginPageState extends State<LoginPage> {
                                     hintText: 'Email',
                                     border: InputBorder.none,
                                   ),
-                                  validator: (v) {
-                                    final s = (v ?? '').trim();
-                                    if (s.isEmpty) return 'Введите email';
-                                    final ok = RegExp(r'^\S+@\S+\.\S+$').hasMatch(s);
-                                    if (!ok) return 'Некорректный email';
+                                  validator: (value) {
+                                    final email = (value ?? '').trim();
+                                    if (email.isEmpty) return 'Введите email';
+                                    if (!RegExp(r'^\S+@\S+\.\S+$').hasMatch(email)) {
+                                      return 'Некорректный email';
+                                    }
                                     return null;
                                   },
                                 ),
@@ -163,10 +162,10 @@ class _LoginPageState extends State<LoginPage> {
                                     hintText: 'Пароль',
                                     border: InputBorder.none,
                                   ),
-                                  validator: (v) {
-                                    final s = v ?? '';
-                                    if (s.isEmpty) return 'Введите пароль';
-                                    if (s.length < 6) return 'Минимум 6 символов';
+                                  validator: (value) {
+                                    final password = value ?? '';
+                                    if (password.isEmpty) return 'Введите пароль';
+                                    if (password.length < 8) return 'Минимум 8 символов';
                                     return null;
                                   },
                                 ),
@@ -175,20 +174,15 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 12),
                       TextButton(
-                        onPressed: () {
-                          context.go('/recovery');
-                        },
+                        onPressed: () => context.go('/recovery'),
                         child: Text(
                           'Забыли пароль?',
                           style: TextStyle(color: Colors.white.withOpacity(0.85)),
                         ),
                       ),
                       const SizedBox(height: 10),
-
-                      // Login button
                       SizedBox(
                         width: double.infinity,
                         height: 52,
@@ -231,7 +225,6 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                       ),
-
                       const SizedBox(height: 48),
                     ],
                   ),
@@ -247,6 +240,7 @@ class _LoginPageState extends State<LoginPage> {
 
 class _Logo extends StatelessWidget {
   final ColorScheme cs;
+
   const _Logo({required this.cs});
 
   @override
@@ -317,9 +311,9 @@ class _NightPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Base gradient
     final rect = Offset.zero & size;
-    final gradient = const LinearGradient(
+
+    const gradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
@@ -329,7 +323,6 @@ class _NightPainter extends CustomPainter {
     );
     canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
 
-    // Soft vignette
     final vignette = RadialGradient(
       colors: [
         Colors.transparent,
@@ -339,14 +332,13 @@ class _NightPainter extends CustomPainter {
     );
     canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
 
-    // Stars (dots)
     final starPaint = Paint()..color = Colors.white.withOpacity(0.55);
     final starPaintDim = Paint()..color = Colors.white.withOpacity(0.22);
 
     final count = (size.width * size.height / 6500).clamp(70, 170).toInt();
     for (var i = 0; i < count; i++) {
       final x = _rng.nextDouble() * size.width;
-      final y = _rng.nextDouble() * size.height * 0.6; // mostly top part
+      final y = _rng.nextDouble() * size.height * 0.6;
       final r = _rng.nextDouble() * 1.35 + 0.2;
       canvas.drawCircle(Offset(x, y), r, (i % 3 == 0) ? starPaint : starPaintDim);
     }

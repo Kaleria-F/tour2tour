@@ -6,7 +6,12 @@ from email.message import EmailMessage
 from app.core.config import settings
 
 
-def send_email(to_email: str, subject: str, body: str) -> None:
+def send_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    html_body: str | None = None,
+) -> None:
     if not settings.smtp_host or not settings.smtp_from:
         raise RuntimeError("SMTP не настроен: заполните SMTP_HOST и SMTP_FROM")
 
@@ -15,6 +20,8 @@ def send_email(to_email: str, subject: str, body: str) -> None:
     msg["To"] = to_email
     msg["Subject"] = subject
     msg.set_content(body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
 
     if settings.smtp_use_ssl:
         with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=15) as server:

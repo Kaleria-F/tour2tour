@@ -22,6 +22,7 @@ from app.schemas.auth import (
     LoginRequest,
     RecoveryConfirmRequest,
     RecoveryRequest,
+    RegisterCodeRequest,
     RegisterRequest,
     StepUpChallengeOut,
     StepUpVerifyRequest,
@@ -39,9 +40,16 @@ STEP_UP_CHALLENGE_TTL = 5 * 60
 RECOVERY_CODE_TTL = 10 * 60
 CHANGE_PASSWORD_CODE_TTL = 10 * 60
 
+APP_NAME_RU = "Тур2Тур"
+
 
 def _normalize_email(email: str | None) -> str:
     return (email or "").strip().lower()
+
+
+def _normalize_phone(phone: str | None) -> str | None:
+    raw = (phone or "").strip()
+    return raw or None
 
 
 def _request_ip(request: Request) -> str:
@@ -61,6 +69,10 @@ def _step_up_challenge_key(challenge_id: str) -> str:
 
 def _recovery_code_key(email: str) -> str:
     return f"auth:recovery-code:{_normalize_email(email)}"
+
+
+def _register_code_key(email: str) -> str:
+    return f"auth:register-code:{_normalize_email(email)}"
 
 
 def _change_password_code_key(user_id: int) -> str:
@@ -118,9 +130,61 @@ def _issue_access_token(user: User) -> TokenResponse:
     return TokenResponse(access_token=token)
 
 
-def _send_email_safely(to_email: str, subject: str, body: str) -> None:
+def _build_code_email(
+    *,
+    title: str,
+    intro: str,
+    code: str,
+    footer: str,
+) -> tuple[str, str]:
+    text = (
+        f"{APP_NAME_RU}\n\n"
+        f"{title}\n\n"
+        f"{intro}\n"
+        f"Код: {code}\n\n"
+        f"{footer}"
+    )
+    html = f"""
+<html>
+  <body style="margin:0;padding:0;background:#f4f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#172033;">
+    <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+      <div style="background:#ffffff;border-radius:20px;padding:32px 28px;border:1px solid #e6ebf2;box-shadow:0 12px 40px rgba(23,32,51,0.08);">
+        <div style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#4b6bfb;margin-bottom:18px;">
+          {APP_NAME_RU}
+        </div>
+        <h1 style="margin:0 0 12px;font-size:24px;line-height:1.25;color:#172033;">
+          {title}
+        </h1>
+        <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#4b5567;">
+          {intro}
+        </p>
+        <div style="margin:0 0 22px;padding:18px 20px;background:#f7f9fc;border:1px solid #dbe4f0;border-radius:16px;text-align:center;">
+          <div style="margin-bottom:8px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7b8797;">
+            Код подтверждения
+          </div>
+          <div style="font-size:32px;line-height:1;font-weight:800;letter-spacing:0.28em;color:#172033;">
+            {code}
+          </div>
+        </div>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#4b5567;">
+          {footer}
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+    return text, html
+
+
+def _send_email_safely(
+    to_email: str,
+    subject: str,
+    body: str,
+    html_body: str | None = None,
+) -> None:
     try:
-        send_email(to_email=to_email, subject=subject, body=body)
+        send_email(to_email=to_email, subject=subject, body=body, html_body=html_body)
         logger.info("Email sent to %s", to_email)
     except Exception:
         logger.exception("Failed to send email to %s", to_email)
@@ -128,24 +192,24 @@ def _send_email_safely(to_email: str, subject: str, body: str) -> None:
 
 @router.post("/register")
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
-    email = _normalize_email(str(payload.email) if payload.email else None)
-    phone = (payload.phone or "").strip() or None
-    if not email and not phone:
-        raise HTTPException(status_code=400, detail="Email or phone is required.")
+    email = _normalize_email(str(payload.email))
+    code_record = _state_read_or_503(_register_code_key(email))
+    if not code_record or code_record["code"] != payload.code:
+        raise HTTPException(status_code=400, detail="Verification code is invalid or expired.")
 
-    clauses = []
-    if email:
-        clauses.append(User.email == email)
+    phone = _normalize_phone(code_record.get("phone"))
+    clauses = [User.email == email]
     if phone:
         clauses.append(User.phone == phone)
     existing = db.execute(select(User).where(or_(*clauses))).scalars().first()
     if existing:
+        _state_delete_or_503(_register_code_key(email))
         raise HTTPException(status_code=409, detail="User already exists.")
 
     user = User(
         email=email or None,
         phone=phone,
-        password_hash=hash_password(payload.password),
+        password_hash=code_record["password_hash"],
         role="traveler",
         is_2fa_enabled=False,
         totp_enabled=False,
@@ -155,6 +219,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
+    _state_delete_or_503(_register_code_key(email))
     return {
         "id": user.id,
         "email": user.email,
@@ -162,6 +227,49 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         "role": user.role,
         "security_setup_required": True,
     }
+
+
+@router.post("/register/request-code")
+def request_register_code(
+    payload: RegisterCodeRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    email = _normalize_email(str(payload.email))
+    phone = _normalize_phone(payload.phone)
+    ip = _request_ip(request)
+
+    _rate_limit_or_ignore(f"auth:ratelimit:register-code:email:{email}", limit=3, window_seconds=900)
+    _rate_limit_or_ignore(f"auth:ratelimit:register-code:ip:{ip}", limit=10, window_seconds=900)
+
+    clauses = [User.email == email]
+    if phone:
+        clauses.append(User.phone == phone)
+    existing = db.execute(select(User).where(or_(*clauses))).scalars().first()
+    if existing:
+        raise HTTPException(status_code=409, detail="User already exists.")
+
+    code = f"{secrets.randbelow(900000) + 100000}"
+    text_body, html_body = _build_code_email(
+        title="Подтверждение регистрации",
+        intro="Используйте этот код, чтобы завершить создание аккаунта в приложении.",
+        code=code,
+        footer="Код действует 10 минут. Если вы не запрашивали регистрацию, просто проигнорируйте это письмо.",
+    )
+    _state_write_or_503(
+        _register_code_key(email),
+        {"email": email, "phone": phone, "password_hash": hash_password(payload.password), "code": code},
+        ttl_seconds=RECOVERY_CODE_TTL,
+    )
+    background_tasks.add_task(
+        _send_email_safely,
+        to_email=email,
+        subject=f"{APP_NAME_RU}: код подтверждения регистрации",
+        body=text_body,
+        html_body=html_body,
+    )
+    return {"ok": True}
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -396,6 +504,12 @@ def recovery_request(
         return {"ok": True}
 
     code = f"{secrets.randbelow(900000) + 100000}"
+    text_body, html_body = _build_code_email(
+        title="Восстановление пароля",
+        intro="Используйте этот код, чтобы восстановить доступ к вашему аккаунту.",
+        code=code,
+        footer="Код действует 10 минут. Если вы не запрашивали восстановление, рекомендуем изменить пароль от почты и проигнорировать это письмо.",
+    )
     _state_write_or_503(
         _recovery_code_key(email),
         {"user_id": user.id, "code": code},
@@ -404,8 +518,9 @@ def recovery_request(
     background_tasks.add_task(
         _send_email_safely,
         to_email=email,
-        subject="Tour2Tour: recovery code",
-        body=f"Your recovery code is: {code}\nThe code is valid for 10 minutes.",
+        subject=f"{APP_NAME_RU}: код для восстановления пароля",
+        body=text_body,
+        html_body=html_body,
     )
     return {"ok": True}
 
@@ -428,10 +543,6 @@ def recovery_confirm(payload: RecoveryConfirmRequest, request: Request, db: Sess
     if not user:
         _state_delete_or_503(_recovery_code_key(email))
         raise HTTPException(status_code=404, detail="User not found.")
-
-    if user.phone:
-        if not payload.phone_last4 or not user.phone.endswith(payload.phone_last4):
-            raise HTTPException(status_code=400, detail="Additional phone verification failed.")
 
     user.password_hash = hash_password(payload.new_password)
     user.totp_enabled = False
@@ -494,6 +605,12 @@ def request_change_password_code(
     )
 
     code = f"{secrets.randbelow(900000) + 100000}"
+    text_body, html_body = _build_code_email(
+        title="Смена пароля",
+        intro="Используйте этот код, чтобы подтвердить изменение пароля в вашем аккаунте.",
+        code=code,
+        footer="Код действует 10 минут. Если вы не запрашивали смену пароля, немедленно проверьте настройки безопасности аккаунта.",
+    )
     _state_write_or_503(
         _change_password_code_key(me.id),
         {"code": code},
@@ -502,7 +619,8 @@ def request_change_password_code(
     background_tasks.add_task(
         _send_email_safely,
         to_email=me.email,
-        subject="Tour2Tour: password change code",
-        body=f"Your password change code is: {code}\nThe code is valid for 10 minutes.",
+        subject=f"{APP_NAME_RU}: код для смены пароля",
+        body=text_body,
+        html_body=html_body,
     )
     return {"ok": True}

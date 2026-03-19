@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import 'auth_repo.dart';
+import 'auth_ui.dart';
 
 class RecoveryPage extends StatefulWidget {
   final AuthRepo auth;
@@ -18,7 +20,6 @@ class _RecoveryPageState extends State<RecoveryPage> {
   final _email = TextEditingController();
   final _code = TextEditingController();
   final _password = TextEditingController();
-  final _phoneLast4 = TextEditingController();
   bool _codeRequested = false;
   bool _loading = false;
 
@@ -27,44 +28,52 @@ class _RecoveryPageState extends State<RecoveryPage> {
     _email.dispose();
     _code.dispose();
     _password.dispose();
-    _phoneLast4.dispose();
     super.dispose();
   }
 
   Future<void> _requestCode() async {
+    if (!RegExp(r'^\S+@\S+\.\S+$').hasMatch(_email.text.trim())) {
+      showAuthError(context, 'Введите корректный email.');
+      return;
+    }
+
     setState(() => _loading = true);
     try {
       await widget.auth.requestRecoveryCode(_email.text.trim());
       if (!mounted) return;
       setState(() => _codeRequested = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Код отправлен на email')),
-      );
-    } catch (e) {
+      showAuthSuccess(context, 'Код восстановления отправлен на email.');
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      showAuthError(context, error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _confirm() async {
+    if (_code.text.trim().length != 6) {
+      showAuthError(context, 'Введите шестизначный код из письма.');
+      return;
+    }
+    if (_password.text.length < 8) {
+      showAuthError(context, 'Новый пароль должен быть не короче 8 символов.');
+      return;
+    }
+
     setState(() => _loading = true);
     try {
       await widget.auth.confirmRecovery(
         email: _email.text.trim(),
         code: _code.text.trim(),
         newPassword: _password.text,
-        phoneLast4: _phoneLast4.text.trim().isEmpty ? null : _phoneLast4.text.trim(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Пароль восстановлен. Войдите снова.')),
-      );
+      showAuthSuccess(context, 'Пароль изменен. Теперь войдите снова.');
       context.go('/login');
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      showAuthError(context, error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -120,6 +129,7 @@ class _RecoveryPageState extends State<RecoveryPage> {
                               children: [
                                 TextField(
                                   controller: _email,
+                                  enabled: !_codeRequested,
                                   style: const TextStyle(color: Colors.white),
                                   decoration: InputDecoration(
                                     labelText: 'Email',
@@ -146,6 +156,10 @@ class _RecoveryPageState extends State<RecoveryPage> {
                                   TextField(
                                     controller: _code,
                                     keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                      LengthLimitingTextInputFormatter(6),
+                                    ],
                                     style: const TextStyle(color: Colors.white),
                                     decoration: InputDecoration(
                                       labelText: 'Код из email',
@@ -160,17 +174,6 @@ class _RecoveryPageState extends State<RecoveryPage> {
                                     style: const TextStyle(color: Colors.white),
                                     decoration: InputDecoration(
                                       labelText: 'Новый пароль',
-                                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
-                                      border: const OutlineInputBorder(),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  TextField(
-                                    controller: _phoneLast4,
-                                    keyboardType: TextInputType.number,
-                                    style: const TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(
-                                      labelText: 'Последние 4 цифры телефона (если есть)',
                                       labelStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
                                       border: const OutlineInputBorder(),
                                     ),
