@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
     jwt_secret: str = Field(alias="JWT_SECRET")
     jwt_alg: str = Field(default="HS256", alias="JWT_ALG")
+    redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
     smtp_host: str = Field(default="", alias="SMTP_HOST")
     smtp_port: int = Field(default=587, alias="SMTP_PORT")
     smtp_user: str = Field(default="", alias="SMTP_USER")

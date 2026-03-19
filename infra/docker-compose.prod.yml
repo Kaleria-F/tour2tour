@@ -51,6 +51,7 @@ services:
       DATABASE_URL: postgresql+psycopg://auth:${AUTH_DB_PASSWORD}@auth-db:5432/auth
       JWT_SECRET: ${JWT_SECRET}
       JWT_ALG: HS256
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
       SMTP_USER: ${SMTP_USER}
@@ -62,6 +63,7 @@ services:
       - "8001:8000"
     depends_on:
       - auth-db
+      - redis
     restart: unless-stopped
 
   trips-service:
