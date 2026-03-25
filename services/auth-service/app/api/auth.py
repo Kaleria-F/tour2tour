@@ -288,8 +288,6 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status_code=401, detail="Invalid credentials.")
 
     factors: list[str] = []
-    if user.passkey_enabled:
-        factors.append("passkey")
     if user.totp_enabled:
         factors.append("totp")
 
@@ -342,7 +340,7 @@ def security_status(me: User = Depends(get_current_user)):
     return AuthStatusOut(
         passkey_enabled=me.passkey_enabled,
         totp_enabled=me.totp_enabled,
-        second_factor_required=me.is_2fa_enabled,
+        second_factor_required=me.totp_enabled,
     )
 
 
@@ -376,7 +374,7 @@ def totp_enable(
         raise HTTPException(status_code=401, detail="Invalid code.")
 
     me.totp_enabled = True
-    me.is_2fa_enabled = me.totp_enabled or me.passkey_enabled
+    me.is_2fa_enabled = me.totp_enabled
     db.add(me)
     db.commit()
     db.refresh(me)
@@ -398,7 +396,7 @@ def totp_disable(
             raise HTTPException(status_code=401, detail="Invalid code.")
     me.totp_enabled = False
     me.totp_secret = None
-    me.is_2fa_enabled = me.passkey_enabled
+    me.is_2fa_enabled = False
     db.add(me)
     db.commit()
     db.refresh(me)
@@ -412,7 +410,7 @@ def totp_disable(
 @router.post("/passkey/enable", response_model=AuthStatusOut)
 def passkey_enable(me: User = Depends(get_current_user), db: Session = Depends(get_db)):
     me.passkey_enabled = True
-    me.is_2fa_enabled = me.totp_enabled or me.passkey_enabled
+    me.is_2fa_enabled = me.totp_enabled
     db.add(me)
     db.commit()
     db.refresh(me)
@@ -426,7 +424,7 @@ def passkey_enable(me: User = Depends(get_current_user), db: Session = Depends(g
 @router.post("/passkey/disable", response_model=AuthStatusOut)
 def passkey_disable(me: User = Depends(get_current_user), db: Session = Depends(get_db)):
     me.passkey_enabled = False
-    me.is_2fa_enabled = me.totp_enabled or me.passkey_enabled
+    me.is_2fa_enabled = me.totp_enabled
     db.add(me)
     db.commit()
     db.refresh(me)
@@ -442,8 +440,6 @@ def step_up_challenge(me: User = Depends(get_current_user)):
     _rate_limit_or_ignore(f"auth:ratelimit:step-up-challenge:{me.id}", limit=10, window_seconds=300)
 
     factors: list[str] = []
-    if me.passkey_enabled:
-        factors.append("passkey")
     if me.totp_enabled:
         factors.append("totp")
     if not factors:
@@ -566,23 +562,20 @@ def change_password(
     if verify_password(payload.new_password, me.password_hash):
         raise HTTPException(status_code=400, detail="New password must differ from the current one.")
 
+    if not payload.email_code:
+        raise HTTPException(status_code=400, detail="Email confirmation code is required.")
+
+    code_record = _state_read_or_503(_change_password_code_key(me.id))
+    if not code_record or code_record["code"] != payload.email_code:
+        raise HTTPException(status_code=401, detail="Email confirmation code is invalid or expired.")
+
     if me.is_2fa_enabled:
-        is_totp_ok = False
-        if payload.totp_code and me.totp_secret:
-            is_totp_ok = pyotp.TOTP(me.totp_secret).verify(payload.totp_code, valid_window=1)
+        if not payload.totp_code:
+            raise HTTPException(status_code=400, detail="TOTP code is required.")
+        if not me.totp_secret or not pyotp.TOTP(me.totp_secret).verify(payload.totp_code, valid_window=1):
+            raise HTTPException(status_code=401, detail="Invalid TOTP code.")
 
-        is_email_code_ok = False
-        if payload.email_code:
-            code_record = _state_read_or_503(_change_password_code_key(me.id))
-            if code_record and code_record["code"] == payload.email_code:
-                is_email_code_ok = True
-                _state_delete_or_503(_change_password_code_key(me.id))
-
-        if not is_totp_ok and not is_email_code_ok:
-            raise HTTPException(
-                status_code=401,
-                detail="A valid second-factor code is required.",
-            )
+    _state_delete_or_503(_change_password_code_key(me.id))
 
     me.password_hash = hash_password(payload.new_password)
     db.add(me)

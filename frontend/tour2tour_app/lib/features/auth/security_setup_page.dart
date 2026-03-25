@@ -1,9 +1,10 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'auth_repo.dart';
+import 'auth_ui.dart';
 
 class SecuritySetupPage extends StatefulWidget {
   final AuthRepo auth;
@@ -16,9 +17,18 @@ class SecuritySetupPage extends StatefulWidget {
 
 class _SecuritySetupPageState extends State<SecuritySetupPage> {
   bool _loading = false;
+  bool _statusLoading = true;
+  bool _totpEnabled = false;
+  bool _secondFactorRequired = false;
   String? _totpSecret;
   String? _totpUri;
   final _totpCode = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStatus();
+  }
 
   @override
   void dispose() {
@@ -26,19 +36,20 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
     super.dispose();
   }
 
-  Future<void> _enablePasskeyStub() async {
-    setState(() => _loading = true);
+  Future<void> _loadStatus() async {
+    setState(() => _statusLoading = true);
     try {
-      await widget.auth.enablePasskey();
+      final data = await widget.auth.securityStatus();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passkey включен (текущий этап — stub).')),
-      );
-    } catch (e) {
+      setState(() {
+        _totpEnabled = data['totp_enabled'] == true;
+        _secondFactorRequired = data['second_factor_required'] == true;
+      });
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      showAuthError(context, error.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _statusLoading = false);
     }
   }
 
@@ -51,9 +62,9 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
         _totpSecret = data['secret']?.toString();
         _totpUri = data['otpauth_uri']?.toString();
       });
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      showAuthError(context, error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -61,17 +72,22 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
 
   Future<void> _confirmTotp() async {
     final code = _totpCode.text.trim();
-    if (code.isEmpty) return;
+    if (code.length != 6) {
+      showAuthError(context, 'Р’РІРµРґРёС‚Рµ С€РµСЃС‚РёР·РЅР°С‡РЅС‹Р№ TOTP-РєРѕРґ.');
+      return;
+    }
     setState(() => _loading = true);
     try {
       await widget.auth.enableTotp(code);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('TOTP подключен')),
-      );
-    } catch (e) {
+      showAuthSuccess(context, 'TOTP СѓСЃРїРµС€РЅРѕ РїРѕРґРєР»СЋС‡РµРЅ.');
+      _totpSecret = null;
+      _totpUri = null;
+      _totpCode.clear();
+      await _loadStatus();
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      showAuthError(context, error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -80,6 +96,8 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isConfigured = _secondFactorRequired || _totpEnabled;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -97,10 +115,10 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                         children: [
                           _Logo(cs: cs),
                           const SizedBox(width: 10),
-                          const Expanded(
+                          Expanded(
                             child: Text(
-                              'Защита аккаунта',
-                              style: TextStyle(
+                              isConfigured ? 'РќР°СЃС‚СЂРѕР№РєРё Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё' : 'РџРѕРґРєР»СЋС‡РµРЅРёРµ Р·Р°С‰РёС‚С‹',
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
                                 fontSize: 20,
@@ -121,54 +139,43 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                                 border: Border.all(color: Colors.white.withOpacity(0.12)),
                               ),
                               child: Text(
-                                'После регистрации подключите Passkey или TOTP. '
-                                'При входе по паролю приложение запросит второй фактор.',
+                                _statusLoading
+                                    ? 'РџСЂРѕРІРµСЂСЏРµРј С‚РµРєСѓС‰РёРµ РЅР°СЃС‚СЂРѕР№РєРё Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё...'
+                                    : isConfigured
+                                        ? 'Р—Р°С‰РёС‚Р° Р°РєРєР°СѓРЅС‚Р° СѓР¶Рµ РЅР°СЃС‚СЂРѕРµРЅР°. Р—РґРµСЃСЊ РјРѕР¶РЅРѕ РїРѕСЃРјРѕС‚СЂРµС‚СЊ Р°РєС‚РёРІРЅС‹Рµ СЃРїРѕСЃРѕР±С‹ РІС…РѕРґР° Рё РґРѕР±Р°РІРёС‚СЊ РЅРµРґРѕСЃС‚Р°СЋС‰РёРµ.'
+                                        : 'РџРѕРґРєР»СЋС‡РёС‚Рµ РІС‚РѕСЂРѕР№ С„Р°РєС‚РѕСЂ, С‡С‚РѕР±С‹ СѓСЃРёР»РёС‚СЊ Р·Р°С‰РёС‚Сѓ РІС…РѕРґР° РІ Р°РєРєР°СѓРЅС‚.',
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.85),
                                   fontSize: 13.5,
-                                  height: 1.4,
+                                  height: 1.45,
                                 ),
                               ),
                             ),
                             const SizedBox(height: 12),
                             _sectionCard(
-                              title: '1) Passkey',
+                              title: 'TOTP',
+                              status: _statusLoading
+                                  ? 'РџСЂРѕРІРµСЂРєР°...'
+                                  : (_totpEnabled ? 'РџРѕРґРєР»СЋС‡РµРЅ' : 'РќРµ РїРѕРґРєР»СЋС‡РµРЅ'),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Рекомендуемый способ. Поддержка WebAuthn будет добавлена полностью на следующем этапе.',
+                                    _totpEnabled
+                                        ? 'Р’С…РѕРґ РїРѕ РїР°СЂРѕР»СЋ Р±СѓРґРµС‚ РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ РїРѕРґС‚РІРµСЂР¶РґР°С‚СЊСЃСЏ РєРѕРґРѕРј РёР· РїСЂРёР»РѕР¶РµРЅРёСЏ-Р°СѓС‚РµРЅС‚РёС„РёРєР°С‚РѕСЂР°.'
+                                        : 'Google Authenticator, Microsoft Authenticator РёР»Рё 1Password.',
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.82),
                                       fontSize: 12.5,
                                     ),
                                   ),
-                                  const SizedBox(height: 10),
-                                  ElevatedButton(
-                                    onPressed: _loading ? null : _enablePasskeyStub,
-                                    child: const Text('Включить passkey'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _sectionCard(
-                              title: '2) TOTP',
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Google Authenticator / Microsoft Authenticator / 1Password',
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.82),
-                                      fontSize: 12.5,
+                                  if (!_totpEnabled) ...[
+                                    const SizedBox(height: 10),
+                                    OutlinedButton(
+                                      onPressed: _loading ? null : _startTotp,
+                                      child: const Text('РЎРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ TOTP-СЃРµРєСЂРµС‚'),
                                     ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  OutlinedButton(
-                                    onPressed: _loading ? null : _startTotp,
-                                    child: const Text('Сгенерировать TOTP-секрет'),
-                                  ),
+                                  ],
                                   if (_totpSecret != null) ...[
                                     const SizedBox(height: 10),
                                     SelectableText(
@@ -189,17 +196,15 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                                       keyboardType: TextInputType.number,
                                       style: const TextStyle(color: Colors.white),
                                       decoration: InputDecoration(
-                                        labelText: 'Код из приложения',
-                                        labelStyle: TextStyle(
-                                          color: Colors.white.withOpacity(0.85),
-                                        ),
+                                        labelText: 'РљРѕРґ РёР· РїСЂРёР»РѕР¶РµРЅРёСЏ',
+                                        labelStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
                                         border: const OutlineInputBorder(),
                                       ),
                                     ),
                                     const SizedBox(height: 10),
                                     ElevatedButton(
                                       onPressed: _loading ? null : _confirmTotp,
-                                      child: const Text('Подтвердить TOTP'),
+                                      child: const Text('РџРѕРґС‚РІРµСЂРґРёС‚СЊ TOTP'),
                                     ),
                                   ],
                                 ],
@@ -232,7 +237,7 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                             ),
                             onPressed: () => context.go('/preferences'),
                             child: const Text(
-                              'Продолжить',
+                              'РџСЂРѕРґРѕР»Р¶РёС‚СЊ',
                               style: TextStyle(
                                 fontSize: 16.5,
                                 fontWeight: FontWeight.w800,
@@ -244,7 +249,7 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                       TextButton(
                         onPressed: () => context.go('/profile'),
                         child: Text(
-                          'Пропустить сейчас',
+                          'Р’РµСЂРЅСѓС‚СЊСЃСЏ РІ РїСЂРѕС„РёР»СЊ',
                           style: TextStyle(color: Colors.white.withOpacity(0.85)),
                         ),
                       ),
@@ -260,7 +265,11 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
     );
   }
 
-  Widget _sectionCard({required String title, required Widget child}) {
+  Widget _sectionCard({
+    required String title,
+    required String status,
+    required Widget child,
+  }) {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -271,13 +280,33 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 16,
-            ),
+          Row(
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           child,
@@ -349,3 +378,4 @@ class _NightPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+

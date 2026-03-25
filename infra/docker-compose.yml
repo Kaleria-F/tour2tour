@@ -32,6 +32,28 @@ services:
     volumes:
       - rec_db_data:/var/lib/postgresql/data
 
+  places-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: places
+      POSTGRES_USER: places
+      POSTGRES_PASSWORD: places
+    ports:
+      - "5437:5432"
+    volumes:
+      - places_db_data:/var/lib/postgresql/data
+
+  interactions-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: interactions
+      POSTGRES_USER: interactions
+      POSTGRES_PASSWORD: interactions
+    ports:
+      - "5438:5432"
+    volumes:
+      - interactions_db_data:/var/lib/postgresql/data
+
   payments-db:
     image: postgres:16
     environment:
@@ -71,6 +93,8 @@ services:
       - auth-service
       - trips-service
       - recommendations-service
+      - places-service
+      - interactions-service
       - payments-service
       - documents-service
 
@@ -140,6 +164,42 @@ services:
       - rec-db
       - redis
 
+  places-service:
+    build:
+      context: ../services/places-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://places:places@places-db:5432/places
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      - places-db
+
+  interactions-service:
+    build:
+      context: ../services/interactions-service
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://interactions:interactions@interactions-db:5432/interactions
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      - interactions-db
+
   payments-service:
     build:
       context: ../services/payments-service
@@ -187,5 +247,7 @@ volumes:
   auth_db_data:
   trips_db_data:
   rec_db_data:
+  places_db_data:
+  interactions_db_data:
   payments_db_data:
   minio_data:

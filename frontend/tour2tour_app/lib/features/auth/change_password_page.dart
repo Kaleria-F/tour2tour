@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'auth_repo.dart';
+import 'auth_ui.dart';
 
 class ChangePasswordPage extends StatefulWidget {
   final AuthRepo auth;
@@ -19,8 +20,34 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   final _next = TextEditingController();
   final _totp = TextEditingController();
   final _emailCode = TextEditingController();
+
   bool _loading = false;
   bool _requestingCode = false;
+  bool _statusLoading = true;
+  bool _totpEnabled = false;
+  bool _secondFactorRequired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStatus();
+  }
+
+  Future<void> _loadStatus() async {
+    try {
+      final status = await widget.auth.securityStatus();
+      if (!mounted) return;
+      setState(() {
+        _totpEnabled = status['totp_enabled'] == true;
+        _secondFactorRequired = status['second_factor_required'] == true;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      showAuthError(context, error.toString());
+    } finally {
+      if (mounted) setState(() => _statusLoading = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -32,38 +59,60 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   }
 
   Future<void> _requestEmailCode() async {
+    if (_current.text.isEmpty) {
+      showAuthError(context, 'Сначала введите текущий пароль.');
+      return;
+    }
+    if (_next.text.length < 8) {
+      showAuthError(context, 'Новый пароль должен быть не короче 8 символов.');
+      return;
+    }
+
     setState(() => _requestingCode = true);
     try {
       await widget.auth.requestChangePasswordCode();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Код отправлен на email')),
-      );
-    } catch (e) {
+      showAuthSuccess(context, 'Код подтверждения отправлен на email.');
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      showAuthError(context, error.toString());
     } finally {
       if (mounted) setState(() => _requestingCode = false);
     }
   }
 
   Future<void> _submit() async {
+    if (_current.text.isEmpty) {
+      showAuthError(context, 'Введите текущий пароль.');
+      return;
+    }
+    if (_next.text.length < 8) {
+      showAuthError(context, 'Новый пароль должен быть не короче 8 символов.');
+      return;
+    }
+    if (_emailCode.text.trim().length != 6) {
+      showAuthError(context, 'Введите код подтверждения из email.');
+      return;
+    }
+    if (_secondFactorRequired && _totpEnabled && _totp.text.trim().length != 6) {
+      showAuthError(context, 'Введите TOTP-код из приложения-аутентификатора.');
+      return;
+    }
+
     setState(() => _loading = true);
     try {
       await widget.auth.changePassword(
         currentPassword: _current.text,
         newPassword: _next.text,
         totpCode: _totp.text.trim().isEmpty ? null : _totp.text.trim(),
-        emailCode: _emailCode.text.trim().isEmpty ? null : _emailCode.text.trim(),
+        emailCode: _emailCode.text.trim(),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Пароль успешно изменен')),
-      );
-      context.pop();
-    } catch (e) {
+      showAuthSuccess(context, 'Пароль успешно изменен.');
+      context.go('/profile');
+    } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      showAuthError(context, error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -100,7 +149,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                             ),
                           ),
                           IconButton(
-                            onPressed: () => context.pop(),
+                            onPressed: () => context.go('/profile'),
                             icon: const Icon(Icons.close_rounded, color: Colors.white),
                           ),
                         ],
@@ -116,7 +165,21 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                               border: Border.all(color: Colors.white.withOpacity(0.12)),
                             ),
                             child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                Text(
+                                  _statusLoading
+                                      ? 'Проверяем настройки безопасности...'
+                                      : _secondFactorRequired
+                                          ? 'Для смены пароля нужен текущий пароль, код из email и TOTP-код.'
+                                          : 'Для смены пароля нужен текущий пароль и код из email.',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.82),
+                                    fontSize: 13.5,
+                                    height: 1.45,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
                                 _field(
                                   controller: _current,
                                   label: 'Текущий пароль',
@@ -129,35 +192,36 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                                   obscure: true,
                                 ),
                                 const SizedBox(height: 10),
-                                _field(
-                                  controller: _totp,
-                                  label: 'TOTP код (если 2FA включен)',
-                                  keyboardType: TextInputType.number,
-                                ),
-                                const SizedBox(height: 10),
                                 Row(
                                   children: [
                                     Expanded(
                                       child: _field(
                                         controller: _emailCode,
-                                        label: 'Email-код (альтернатива TOTP)',
+                                        label: 'Код из email',
                                         keyboardType: TextInputType.number,
                                       ),
                                     ),
                                     const SizedBox(width: 8),
                                     OutlinedButton(
-                                      onPressed:
-                                          _requestingCode ? null : _requestEmailCode,
+                                      onPressed: _requestingCode ? null : _requestEmailCode,
                                       child: _requestingCode
                                           ? const SizedBox(
                                               width: 16,
                                               height: 16,
                                               child: CircularProgressIndicator(strokeWidth: 2),
                                             )
-                                          : const Text('Код'),
+                                          : const Text('Отправить'),
                                     ),
                                   ],
                                 ),
+                                if (_secondFactorRequired && _totpEnabled) ...[
+                                  const SizedBox(height: 10),
+                                  _field(
+                                    controller: _totp,
+                                    label: 'TOTP-код',
+                                    keyboardType: TextInputType.number,
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -185,7 +249,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
-                            onPressed: _loading ? null : _submit,
+                            onPressed: (_loading || _statusLoading) ? null : _submit,
                             child: _loading
                                 ? const SizedBox(
                                     width: 18,

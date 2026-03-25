@@ -1,26 +1,41 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-from fastapi import FastAPI, Query
+from typing import Any
 
+import httpx
+from fastapi import FastAPI, Query
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    places_service_url: str = Field(default="http://places-service:8000", alias="PLACES_SERVICE_URL")
+    interactions_service_url: str = Field(
+        default="http://interactions-service:8000",
+        alias="INTERACTIONS_SERVICE_URL",
+    )
+
+    model_config = SettingsConfigDict(extra="ignore")
+
+
+settings = Settings()
 app = FastAPI(title="Tour2Tour Recommendations Service")
 
 
 class Place(BaseModel):
     id: str
-    title: str
-    description: str
+    name: str
+    description: str | None = None
     category: str
-    subcategory: str
-    latitude: float
-    longitude: float
+    subcategory: str | None = None
+    lat: float | None = None
+    lon: float | None = None
     city: str
-    address: str
-    price_level: str
-    visit_minutes: int
-    rating: float
-    tags: dict[str, int]
-    trip_type_tags: list[str] = Field(default_factory=list)
+    address: str | None = None
+    price_level: str | None = None
+    avg_visit_duration_min: int | None = None
+    rating: float | None = None
+    tags: dict[str, int] = Field(default_factory=dict)
 
 
 class SurveyProfile(BaseModel):
@@ -37,6 +52,7 @@ class RecommendationsRequest(BaseModel):
     profile: SurveyProfile
     city: str | None = None
     near_route: bool = False
+    user_id: str | None = None
 
 
 class RecommendationItem(BaseModel):
@@ -58,119 +74,8 @@ class RecommendationItem(BaseModel):
     popularity_bonus: float
 
 
-PLACES: list[Place] = [
-    Place(
-        id="hermitage",
-        title="Эрмитаж",
-        description="Крупнейший музей искусства и истории",
-        category="place",
-        subcategory="museum",
-        latitude=59.9398,
-        longitude=30.3146,
-        city="Санкт-Петербург",
-        address="Дворцовая площадь, 2",
-        price_level="middle",
-        visit_minutes=180,
-        rating=4.9,
-        tags={
-            "history": 5,
-            "culture": 5,
-            "museums": 5,
-            "architecture": 4,
-            "family": 3,
-        },
-        trip_type_tags=["family", "solo", "friends"],
-    ),
-    Place(
-        id="gorky-park",
-        title="Парк Горького",
-        description="Городской парк для прогулок и активностей",
-        category="place",
-        subcategory="park",
-        latitude=55.7298,
-        longitude=37.6034,
-        city="Москва",
-        address="ул. Крымский Вал, 9",
-        price_level="economy",
-        visit_minutes=120,
-        rating=4.7,
-        tags={
-            "nature": 4,
-            "active": 4,
-            "family": 4,
-            "photo": 3,
-            "local": 3,
-        },
-        trip_type_tags=["family", "friends", "solo"],
-    ),
-    Place(
-        id="rooftop-view",
-        title="Смотровая площадка Ривьера",
-        description="Панорамный вид на город и море",
-        category="place",
-        subcategory="attraction",
-        latitude=43.6031,
-        longitude=39.7340,
-        city="Сочи",
-        address="Центральный район",
-        price_level="comfort",
-        visit_minutes=90,
-        rating=4.6,
-        tags={
-            "photo": 5,
-            "nature": 3,
-            "romantic": 4,
-            "culture": 2,
-        },
-        trip_type_tags=["couple", "solo", "friends"],
-    ),
-    Place(
-        id="local-food-market",
-        title="Центральный гастромаркет",
-        description="Локальная кухня и фермерские продукты",
-        category="food",
-        subcategory="market",
-        latitude=55.7541,
-        longitude=37.6207,
-        city="Москва",
-        address="ул. Петровка, 10",
-        price_level="middle",
-        visit_minutes=80,
-        rating=4.5,
-        tags={
-            "gastronomy": 5,
-            "local": 4,
-            "shopping": 3,
-            "culture": 2,
-        },
-        trip_type_tags=["friends", "couple", "solo"],
-    ),
-    Place(
-        id="mountain-park",
-        title="Горный парк",
-        description="Природа, тропы, смотровые точки",
-        category="activity",
-        subcategory="nature",
-        latitude=43.6805,
-        longitude=40.2073,
-        city="Сочи",
-        address="Красная Поляна",
-        price_level="comfort",
-        visit_minutes=220,
-        rating=4.8,
-        tags={
-            "nature": 5,
-            "active": 4,
-            "photo": 5,
-            "family": 4,
-        },
-        trip_type_tags=["family", "friends", "solo"],
-    ),
-]
-
-
-def _budget_bonus(user_budget: str | None, place_budget: str) -> float:
-    if not user_budget:
+def _budget_bonus(user_budget: str | None, place_budget: str | None) -> float:
+    if not user_budget or not place_budget:
         return 0.0
     order = {"economy": 1, "middle": 2, "comfort": 3, "premium": 4}
     user = order.get(user_budget, 2)
@@ -191,10 +96,10 @@ def _distance_bonus(near_route: bool, request_city: str | None, place_city: str)
     return 0.0
 
 
-def _trip_type_bonus(travel_mode: str | None, trip_type_tags: list[str]) -> float:
+def _trip_type_bonus(travel_mode: str | None, place_tags: dict[str, int]) -> float:
     if not travel_mode:
         return 0.0
-    return 6.0 if travel_mode in trip_type_tags else 0.0
+    return 6.0 if place_tags.get(travel_mode, 0) > 0 else 0.0
 
 
 def _trip_format_bonus(trip_formats: list[str], place_tags: dict[str, int]) -> float:
@@ -218,9 +123,39 @@ def _popularity_bonus(rating: float) -> float:
 def _interest_score(interest_weights: dict[str, int], place_tags: dict[str, int]) -> float:
     score = 0.0
     for tag, user_weight in interest_weights.items():
-        place_weight = place_tags.get(tag, 0)
-        score += float(user_weight * place_weight)
+        score += float(user_weight * place_tags.get(tag, 0))
     return score
+
+
+def _behavior_bonus(place_id: str, user_summary: dict[str, Any] | None) -> float:
+    if not user_summary:
+        return 0.0
+    top_places = user_summary.get("top_places") or {}
+    raw_score = float(top_places.get(place_id, 0.0) or 0.0)
+    return max(min(raw_score, 12.0), -12.0)
+
+
+def _fetch_places(city: str | None) -> list[Place]:
+    params: dict[str, Any] = {"status": "approved", "limit": 200}
+    if city:
+        params["city"] = city
+    with httpx.Client(timeout=10.0) as client:
+        response = client.get(f"{settings.places_service_url.rstrip('/')}/places", params=params)
+        response.raise_for_status()
+        payload = response.json()
+    items = payload.get("items") or []
+    return [Place.model_validate(item) for item in items]
+
+
+def _fetch_user_summary(user_id: str | None) -> dict[str, Any] | None:
+    if not user_id:
+        return None
+    with httpx.Client(timeout=5.0) as client:
+        response = client.get(
+            f"{settings.interactions_service_url.rstrip('/')}/interactions/users/{user_id}/summary"
+        )
+        response.raise_for_status()
+        return response.json()
 
 
 @app.post("/recommendations/personalized")
@@ -233,30 +168,34 @@ def personalized_recommendations(payload: RecommendationsRequest):
             if tag:
                 weights[tag] = 3
 
-    for place in PLACES:
+    places = _fetch_places(payload.city)
+    user_summary = _fetch_user_summary(payload.user_id)
+
+    for place in places:
         interest_score = _interest_score(weights, place.tags)
         budget_bonus = _budget_bonus(payload.profile.budget, place.price_level)
         distance_bonus = _distance_bonus(payload.near_route, payload.city, place.city)
         trip_type_bonus = (
-            _trip_type_bonus(payload.profile.travel_mode, place.trip_type_tags)
+            _trip_type_bonus(payload.profile.travel_mode, place.tags)
             + _trip_format_bonus(payload.profile.trip_formats, place.tags)
+            + _behavior_bonus(place.id, user_summary)
         )
-        popularity_bonus = _popularity_bonus(place.rating)
+        popularity_bonus = _popularity_bonus(place.rating or 0.0)
         final_score = (
             interest_score + budget_bonus + distance_bonus + trip_type_bonus + popularity_bonus
         )
         items.append(
             RecommendationItem(
                 id=place.id,
-                title=place.title,
-                description=place.description,
+                title=place.name,
+                description=place.description or "",
                 category=place.category,
-                subcategory=place.subcategory,
+                subcategory=place.subcategory or "",
                 city=place.city,
-                address=place.address,
-                latitude=place.latitude,
-                longitude=place.longitude,
-                rating=place.rating,
+                address=place.address or "",
+                latitude=place.lat or 0.0,
+                longitude=place.lon or 0.0,
+                rating=place.rating or 0.0,
                 final_score=round(final_score, 2),
                 interest_score=round(interest_score, 2),
                 budget_bonus=round(budget_bonus, 2),
@@ -266,11 +205,11 @@ def personalized_recommendations(payload: RecommendationsRequest):
             )
         )
 
-    ranked = sorted(items, key=lambda i: i.final_score, reverse=True)
+    ranked = sorted(items, key=lambda item: item.final_score, reverse=True)
     return {"items": ranked}
 
 
-SUGGESTION_TEMPLATES: dict[tuple[str, str], list[dict]] = {
+SUGGESTION_TEMPLATES: dict[tuple[str, str], list[dict[str, Any]]] = {
     ("transport", "airplane"): [
         {
             "title": "Заселение рядом с аэропортом",
@@ -285,12 +224,6 @@ SUGGESTION_TEMPLATES: dict[tuple[str, str], list[dict]] = {
             "subtype": "restaurant",
             "reason": "После перелета часто нужен быстрый прием пищи",
             "estimated_cost_rub": "1800.00",
-        },
-        {
-            "title": "Популярное место рядом",
-            "stage_type": "place",
-            "subtype": "attraction",
-            "reason": "Можно добавить точку рядом с местом прибытия",
         },
     ],
     ("transport", "train"): [
@@ -327,7 +260,7 @@ SUGGESTION_TEMPLATES: dict[tuple[str, str], list[dict]] = {
     ],
 }
 
-DEFAULT_SUGGESTIONS: list[dict] = [
+DEFAULT_SUGGESTIONS: list[dict[str, Any]] = [
     {
         "title": "Добавить место по пути",
         "stage_type": "place",
@@ -356,7 +289,7 @@ def stage_suggestions(
     base_items = SUGGESTION_TEMPLATES.get(key, DEFAULT_SUGGESTIONS)
     suffix = location.strip() if location else None
 
-    items: list[dict] = []
+    items: list[dict[str, Any]] = []
     for item in base_items:
         prepared = dict(item)
         if suffix and not prepared.get("address"):

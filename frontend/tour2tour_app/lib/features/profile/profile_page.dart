@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'profile_repo.dart';
@@ -61,7 +61,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final title = _me?.email ?? _me?.phone ?? 'Профиль';
+    final title = _me?.email ?? _me?.phone ?? 'РџСЂРѕС„РёР»СЊ';
 
     return Scaffold(
       body: Stack(
@@ -80,7 +80,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       _Logo(cs: cs),
                       const SizedBox(height: 18),
                       const Text(
-                        'Профиль',
+                        'РџСЂРѕС„РёР»СЊ',
                         style: TextStyle(
                           fontSize: 30,
                           fontWeight: FontWeight.w800,
@@ -117,18 +117,18 @@ class _ProfilePageState extends State<ProfilePage> {
                                     OutlinedButton.icon(
                                       onPressed: () => context.go('/change-password'),
                                       icon: const Icon(Icons.lock_reset),
-                                      label: const Text('Сменить пароль'),
+                                      label: const Text('РЎРјРµРЅРёС‚СЊ РїР°СЂРѕР»СЊ'),
                                     ),
                                     OutlinedButton.icon(
                                       onPressed: () => context.go('/security-setup'),
                                       icon: const Icon(Icons.security),
-                                      label: const Text('2FA / Passkey'),
+                                      label: const Text('2FA'),
                                     ),
                                   ],
                                 ),
                                 const SizedBox(height: 12),
                                 const Text(
-                                  'Мои путешествия',
+                                  'РњРѕРё РїСѓС‚РµС€РµСЃС‚РІРёСЏ',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w700,
@@ -144,12 +144,12 @@ class _ProfilePageState extends State<ProfilePage> {
                                   )
                                 else if (_error != null)
                                   Text(
-                                    'Ошибка загрузки профиля: $_error',
+                                    'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»СЏ: $_error',
                                     style: const TextStyle(color: Colors.redAccent),
                                   )
                                 else if (_trips.isEmpty)
                                   Text(
-                                    'Пока нет путешествий. Создай первое.',
+                                    'РџРѕРєР° РЅРµС‚ РїСѓС‚РµС€РµСЃС‚РІРёР№. РЎРѕР·РґР°Р№ РїРµСЂРІРѕРµ.',
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.85),
                                       fontSize: 14,
@@ -243,7 +243,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                             onPressed: () => context.go('/create-trip'),
                             child: const Text(
-                              'Создать путешествие',
+                              'РЎРѕР·РґР°С‚СЊ РїСѓС‚РµС€РµСЃС‚РІРёРµ',
                               style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
                             ),
                           ),
@@ -336,3 +336,4 @@ class _NightPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+

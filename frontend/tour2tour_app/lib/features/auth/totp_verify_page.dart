@@ -1,9 +1,10 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'auth_repo.dart';
+import 'auth_ui.dart';
 
 class TotpVerifyPage extends StatefulWidget {
   final AuthRepo auth;
@@ -44,9 +45,7 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
       context.go('/profile');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      showAuthError(context, e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -55,7 +54,6 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final hasPasskey = widget.factors.contains('passkey');
     return Scaffold(
       body: Stack(
         children: [
@@ -75,7 +73,7 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
                           const SizedBox(width: 10),
                           const Expanded(
                             child: Text(
-                              'Подтверждение входа',
+                              'РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РІС…РѕРґР°',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -101,17 +99,8 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (hasPasskey)
-                              Text(
-                                'Passkey пока в режиме заглушки. Для входа используйте TOTP-код.',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.82),
-                                  fontSize: 13,
-                                ),
-                              ),
-                            if (hasPasskey) const SizedBox(height: 10),
                             Text(
-                              'Введите 6-значный код из Authenticator',
+                              'Р’РІРµРґРёС‚Рµ 6-Р·РЅР°С‡РЅС‹Р№ РєРѕРґ РёР· Authenticator',
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.9),
                                 fontSize: 14,
@@ -124,7 +113,7 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
                               keyboardType: TextInputType.number,
                               style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
-                                labelText: 'TOTP код',
+                                labelText: 'TOTP РєРѕРґ',
                                 labelStyle:
                                     TextStyle(color: Colors.white.withOpacity(0.85)),
                                 border: const OutlineInputBorder(),
@@ -163,7 +152,7 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
                                     child: CircularProgressIndicator(strokeWidth: 2),
                                   )
                                 : const Text(
-                                    'Подтвердить',
+                                    'РџРѕРґС‚РІРµСЂРґРёС‚СЊ',
                                     style: TextStyle(
                                       fontSize: 16.5,
                                       fontWeight: FontWeight.w800,
@@ -247,3 +236,4 @@ class _NightPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+

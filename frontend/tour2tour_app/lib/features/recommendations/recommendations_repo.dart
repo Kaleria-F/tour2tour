@@ -71,6 +71,7 @@ class RecommendationsRepo {
     required SurveyProfile profile,
     String? city,
     bool nearRoute = false,
+    String? userId,
   }) async {
     final res = await api.dio.post(
       '/recommendations/personalized',
@@ -78,6 +79,7 @@ class RecommendationsRepo {
         'profile': profile.toJson(),
         'city': city,
         'near_route': nearRoute,
+        'user_id': userId,
       },
     );
     final data = res.data;

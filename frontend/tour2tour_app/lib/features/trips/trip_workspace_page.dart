@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../documents/documents_repo.dart';
+import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
+import '../profile/profile_repo.dart';
 import '../recommendations/recommendations_repo.dart';
 import 'trips_repo.dart';
 
@@ -18,6 +20,8 @@ class TripWorkspacePage extends StatefulWidget {
   final DocumentsRepo documentsRepo;
   final PreferencesRepo preferencesRepo;
   final RecommendationsRepo recommendationsRepo;
+  final InteractionsRepo interactionsRepo;
+  final ProfileRepo profileRepo;
 
   const TripWorkspacePage({
     super.key,
@@ -26,6 +30,8 @@ class TripWorkspacePage extends StatefulWidget {
     required this.documentsRepo,
     required this.preferencesRepo,
     required this.recommendationsRepo,
+    required this.interactionsRepo,
+    required this.profileRepo,
     this.tripId,
     this.startDate,
     this.endDate,
@@ -61,6 +67,11 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   bool _recommendationsLoading = false;
   List<RecommendationItem> _recommendations = const [];
   SurveyProfile? _surveyProfile;
+  String? _currentUserId;
+  final Set<String> _sentRecommendationImpressions = <String>{};
+  final Set<String> _likedRecommendationIds = <String>{};
+  final Set<String> _dislikedRecommendationIds = <String>{};
+  final Set<String> _savedRecommendationIds = <String>{};
 
   static const _sectionTitles = [
     'Рекомендации',
@@ -976,15 +987,24 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       _recommendationsLoading = true;
     });
     try {
-      final profile = await widget.preferencesRepo.getSurveyProfile();
+      final results = await Future.wait([
+        widget.preferencesRepo.getSurveyProfile(),
+        widget.profileRepo.getMe(),
+      ]);
+      final profile = results[0] as SurveyProfile;
+      final me = results[1] as UserMe;
       final items = await widget.recommendationsRepo.getPersonalized(
         profile: profile,
+        userId: me.id.toString(),
       );
       if (!mounted) return;
       setState(() {
         _surveyProfile = profile;
+        _currentUserId = me.id.toString();
         _recommendations = items;
+        _sentRecommendationImpressions.clear();
       });
+      _trackRecommendationImpressions(items);
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -1000,6 +1020,169 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         });
       }
     }
+  }
+
+  Future<void> _trackRecommendationImpressions(List<RecommendationItem> items) async {
+    final userId = _currentUserId;
+    if (userId == null || userId.isEmpty) return;
+
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      if (_sentRecommendationImpressions.contains(item.id)) continue;
+      _sentRecommendationImpressions.add(item.id);
+      try {
+        await widget.interactionsRepo.trackImpression(
+          userId: userId,
+          placeId: item.id,
+          recommendationId: item.id,
+          position: i,
+        );
+        await widget.interactionsRepo.trackEvent(
+          userId: userId,
+          placeId: item.id,
+          action: 'shown',
+          recommendationId: item.id,
+        );
+      } catch (_) {
+        // Do not block UI on analytics failures.
+      }
+    }
+  }
+
+  Future<void> _trackRecommendationAction(
+    RecommendationItem item,
+    String action, {
+    double weight = 1.0,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final userId = _currentUserId;
+    if (userId == null || userId.isEmpty) return;
+    try {
+      await widget.interactionsRepo.trackEvent(
+        userId: userId,
+        placeId: item.id,
+        action: action,
+        recommendationId: item.id,
+        weight: weight,
+        metadata: metadata,
+      );
+    } catch (_) {
+      // Ignore analytics transport failures in the main UX flow.
+    }
+  }
+
+  Future<void> _openRecommendationDetails(RecommendationItem item) async {
+    await _trackRecommendationAction(
+      item,
+      'opened',
+      weight: 2,
+      metadata: {'city': item.city, 'category': item.category},
+    );
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF18122B),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                if (item.description.isNotEmpty)
+                  Text(
+                    item.description,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.84),
+                      height: 1.45,
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _scoreTag(item.city),
+                    if (item.address.isNotEmpty) _scoreTag(item.address),
+                    _scoreTag('★ ${item.rating.toStringAsFixed(1)}'),
+                    _scoreTag(item.subcategory.isEmpty ? item.category : item.subcategory),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _likeRecommendation(RecommendationItem item) async {
+    setState(() {
+      _likedRecommendationIds.add(item.id);
+      _dislikedRecommendationIds.remove(item.id);
+    });
+    await _trackRecommendationAction(item, 'liked', weight: 4);
+  }
+
+  Future<void> _dislikeRecommendation(RecommendationItem item) async {
+    setState(() {
+      _dislikedRecommendationIds.add(item.id);
+      _likedRecommendationIds.remove(item.id);
+      _recommendations = _recommendations.where((e) => e.id != item.id).toList();
+    });
+    await _trackRecommendationAction(item, 'disliked', weight: -4);
+  }
+
+  Future<void> _saveRecommendation(RecommendationItem item) async {
+    setState(() {
+      _savedRecommendationIds.add(item.id);
+    });
+    await _trackRecommendationAction(item, 'saved', weight: 3);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Сохранено: ${item.title}')),
+    );
+  }
+
+  Future<void> _addRecommendationToTrip(RecommendationItem item) async {
+    if (widget.tripId == null) return;
+    final created = await widget.tripsRepo.createStage(
+      tripId: widget.tripId!,
+      stageType: 'place',
+      subtype: item.subcategory.isEmpty ? 'attraction' : item.subcategory,
+      title: item.title,
+      address: item.address.isEmpty ? null : item.address,
+      latitude: item.latitude == 0 ? null : item.latitude,
+      longitude: item.longitude == 0 ? null : item.longitude,
+      notes: item.description.isEmpty ? null : item.description,
+      rating: item.rating == 0 ? null : item.rating,
+    );
+    if (created == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось добавить рекомендацию в маршрут')),
+      );
+      return;
+    }
+    await _trackRecommendationAction(item, 'added_to_trip', weight: 5);
+    if (!mounted) return;
+    await _loadStages();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Добавлено в маршрут: ${item.title}')),
+    );
   }
 
   Future<void> _openSurveyFromRecommendations() async {
@@ -1156,49 +1339,128 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         separatorBuilder: (_, __) => const SizedBox(height: 8),
                         itemBuilder: (_, index) {
                           final item = _recommendations[index];
-                          return Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.06),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.white.withOpacity(0.12)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item.title,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
+                          final isLiked = _likedRecommendationIds.contains(item.id);
+                          final isSaved = _savedRecommendationIds.contains(item.id);
+                          return InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () => _openRecommendationDetails(item),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.06),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white.withOpacity(0.12)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.title,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  item.description,
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.78),
-                                    fontSize: 12,
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item.description,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.78),
+                                      fontSize: 12,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 6),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 4,
-                                  children: [
-                                    _scoreTag('Score ${item.finalScore.toStringAsFixed(1)}'),
-                                    _scoreTag('Int ${item.interestScore.toStringAsFixed(1)}'),
-                                    _scoreTag(item.city),
-                                    _scoreTag('★ ${item.rating.toStringAsFixed(1)}'),
-                                  ],
-                                ),
-                              ],
+                                  const SizedBox(height: 6),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: [
+                                      _scoreTag('Score ${item.finalScore.toStringAsFixed(1)}'),
+                                      _scoreTag(item.city),
+                                      _scoreTag('★ ${item.rating.toStringAsFixed(1)}'),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      _recommendationAction(
+                                        icon: isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                        label: 'Нравится',
+                                        active: isLiked,
+                                        onTap: () => _likeRecommendation(item),
+                                      ),
+                                      _recommendationAction(
+                                        icon: Icons.close_rounded,
+                                        label: 'Не нравится',
+                                        active: false,
+                                        onTap: () => _dislikeRecommendation(item),
+                                      ),
+                                      _recommendationAction(
+                                        icon: isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                                        label: 'Сохранить',
+                                        active: isSaved,
+                                        onTap: () => _saveRecommendation(item),
+                                      ),
+                                      _recommendationAction(
+                                        icon: Icons.route_rounded,
+                                        label: 'В маршрут',
+                                        active: false,
+                                        onTap: () => _addRecommendationToTrip(item),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         },
                       ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _recommendationAction({
+    required IconData icon,
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? const Color(0x24FFD86B) : Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: active ? const Color(0x55FFD86B) : Colors.white.withOpacity(0.12),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: active ? const Color(0xFFFFD86B) : Colors.white.withOpacity(0.9),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: active ? const Color(0xFFFFD86B) : Colors.white.withOpacity(0.9),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
