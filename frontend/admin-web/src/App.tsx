@@ -1,0 +1,827 @@
+﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
+
+import {
+  createPlace,
+  decideCandidate,
+  deletePlace,
+  getMe,
+  getStoredToken,
+  listCandidates,
+  listImportJobs,
+  listPlaces,
+  login,
+  setStoredToken,
+  updatePlace,
+  uploadImportCsv,
+  uploadPlaceImage,
+  verify2fa,
+} from './api';
+import type { AdminImportJob, AdminPlace, AdminPlaceCandidate, UserMe } from './types';
+
+type TabKey = 'places' | 'candidates' | 'imports';
+
+type Option = {
+  value: string;
+  label: string;
+};
+
+type TagOption = {
+  key: string;
+  label: string;
+  color: string;
+};
+
+type PlaceFormState = {
+  name: string;
+  city: string;
+  address: string;
+  image_url: string;
+  category: string;
+  subcategory: string;
+  source: string;
+  price_level: string;
+  description: string;
+  rating: string;
+  tags: Record<string, number>;
+};
+
+const CATEGORY_OPTIONS: Array<Option & { subcategories: Option[] }> = [
+  {
+    value: 'place',
+    label: 'Место',
+    subcategories: [
+      { value: 'museum', label: 'Музей' },
+      { value: 'park', label: 'Парк' },
+      { value: 'landmark', label: 'Достопримечательность' },
+      { value: 'gallery', label: 'Галерея' },
+      { value: 'theatre', label: 'Театр' },
+      { value: 'embankment', label: 'Набережная' },
+    ],
+  },
+  {
+    value: 'food',
+    label: 'Еда и гастрономия',
+    subcategories: [
+      { value: 'restaurant', label: 'Ресторан' },
+      { value: 'cafe', label: 'Кафе' },
+      { value: 'bar', label: 'Бар' },
+      { value: 'food_market', label: 'Фуд-маркет' },
+    ],
+  },
+  {
+    value: 'activity',
+    label: 'Активность',
+    subcategories: [
+      { value: 'walk', label: 'Прогулка' },
+      { value: 'sport', label: 'Спорт' },
+      { value: 'kids', label: 'С детьми' },
+      { value: 'quest', label: 'Квест/аттракцион' },
+    ],
+  },
+  {
+    value: 'stay',
+    label: 'Проживание',
+    subcategories: [
+      { value: 'hotel', label: 'Отель' },
+      { value: 'hostel', label: 'Хостел' },
+      { value: 'apartment', label: 'Апартаменты' },
+    ],
+  },
+];
+
+const SOURCE_OPTIONS: Option[] = [
+  { value: 'manual', label: 'Ручное добавление' },
+  { value: 'csv', label: 'CSV импорт' },
+  { value: 'open_data', label: 'Открытые данные' },
+  { value: 'partner', label: 'Партнерский источник' },
+  { value: 'ai_agent', label: 'ИИ-агент' },
+];
+
+const PRICE_OPTIONS: Option[] = [
+  { value: 'economy', label: 'Бюджетно' },
+  { value: 'middle', label: 'Средний чек' },
+  { value: 'premium', label: 'Премиум' },
+];
+
+const TAG_OPTIONS: TagOption[] = [
+  { key: 'history', label: 'История', color: 'tag-blue' },
+  { key: 'culture', label: 'Культура', color: 'tag-violet' },
+  { key: 'museums', label: 'Музеи', color: 'tag-amber' },
+  { key: 'architecture', label: 'Архитектура', color: 'tag-cyan' },
+  { key: 'nature', label: 'Природа', color: 'tag-green' },
+  { key: 'active', label: 'Активный отдых', color: 'tag-orange' },
+  { key: 'family', label: 'Семейный отдых', color: 'tag-pink' },
+  { key: 'food', label: 'Гастрономия', color: 'tag-red' },
+  { key: 'romantic', label: 'Романтика', color: 'tag-rose' },
+  { key: 'nightlife', label: 'Ночная жизнь', color: 'tag-purple' },
+];
+
+const EMPTY_FORM: PlaceFormState = {
+  name: '',
+  city: '',
+  address: '',
+  image_url: '',
+  category: 'place',
+  subcategory: 'museum',
+  source: 'manual',
+  price_level: 'middle',
+  description: '',
+  rating: '',
+  tags: { history: 5, culture: 4, museums: 4 },
+};
+
+function normalizeTags(tags: Record<string, number>) {
+  return Object.fromEntries(Object.entries(tags).filter(([, weight]) => weight > 0));
+}
+
+function formatCategory(category: string) {
+  return CATEGORY_OPTIONS.find((item) => item.value === category)?.label ?? category;
+}
+
+function formatSubcategory(category: string, subcategory?: string | null) {
+  if (!subcategory) return '-';
+  return (
+    CATEGORY_OPTIONS.find((item) => item.value === category)?.subcategories.find(
+      (item) => item.value === subcategory,
+    )?.label ?? subcategory
+  );
+}
+
+function formatSource(source: string) {
+  return SOURCE_OPTIONS.find((item) => item.value === source)?.label ?? source;
+}
+
+function formatPrice(priceLevel?: string | null) {
+  if (!priceLevel) return '-';
+  return PRICE_OPTIONS.find((item) => item.value === priceLevel)?.label ?? priceLevel;
+}
+
+function getCandidateValue(candidate: AdminPlaceCandidate, key: string) {
+  const normalized = (candidate.normalized_json ?? {}) as Record<string, unknown>;
+  const payload = (candidate.payload_json ?? {}) as Record<string, unknown>;
+  return normalized[key] ?? payload[key];
+}
+
+export function App() {
+  const [token, setToken] = useState<string | null>(() => getStoredToken());
+  const [me, setMe] = useState<UserMe | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [challengeId, setChallengeId] = useState('');
+  const [tab, setTab] = useState<TabKey>('places');
+  const [places, setPlaces] = useState<AdminPlace[]>([]);
+  const [candidates, setCandidates] = useState<AdminPlaceCandidate[]>([]);
+  const [imports, setImports] = useState<AdminImportJob[]>([]);
+  const [placeEditor, setPlaceEditor] = useState<AdminPlace | null>(null);
+  const [placeForm, setPlaceForm] = useState<PlaceFormState>(EMPTY_FORM);
+
+  const selectedCategory = useMemo(
+    () => CATEGORY_OPTIONS.find((item) => item.value === placeForm.category) ?? CATEGORY_OPTIONS[0],
+    [placeForm.category],
+  );
+
+  useEffect(() => {
+    if (!token) {
+      setMe(null);
+      return;
+    }
+    void refreshAll(token);
+  }, [token]);
+
+  useEffect(() => {
+    if (!placeEditor) {
+      setPlaceForm(EMPTY_FORM);
+      return;
+    }
+    setPlaceForm({
+      name: placeEditor.name ?? '',
+      city: placeEditor.city ?? '',
+      address: placeEditor.address ?? '',
+      image_url: placeEditor.image_url ?? '',
+      category: placeEditor.category ?? 'place',
+      subcategory: placeEditor.subcategory ?? 'museum',
+      source: placeEditor.source ?? 'manual',
+      price_level: placeEditor.price_level ?? 'middle',
+      description: placeEditor.description ?? '',
+      rating: placeEditor.rating != null ? String(placeEditor.rating) : '',
+      tags: placeEditor.tags ?? {},
+    });
+  }, [placeEditor]);
+
+  async function refreshAll(activeToken: string) {
+    setLoading(true);
+    setError('');
+    try {
+      const user = await getMe(activeToken);
+      setMe(user);
+      if (user.role !== 'admin') {
+        setPlaces([]);
+        setCandidates([]);
+        setImports([]);
+        return;
+      }
+      const [placeItems, candidateItems, importItems] = await Promise.all([
+        listPlaces(activeToken),
+        listCandidates(activeToken),
+        listImportJobs(activeToken),
+      ]);
+      setPlaces(placeItems);
+      setCandidates(candidateItems);
+      setImports(importItems);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка загрузки');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get('email') || '');
+    const password = String(form.get('password') || '');
+    try {
+      const result = await login(email, password);
+      if (result.requires_2fa && result.challenge_id) {
+        setChallengeId(result.challenge_id);
+        return;
+      }
+      if (!result.access_token) {
+        throw new Error('Сервер не вернул access token');
+      }
+      setStoredToken(result.access_token);
+      setToken(result.access_token);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка входа');
+    }
+  }
+
+  async function handle2fa(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    const form = new FormData(event.currentTarget);
+    const code = String(form.get('code') || '');
+    try {
+      const result = await verify2fa(challengeId, code);
+      if (!result.access_token) {
+        throw new Error('Сервер не вернул access token');
+      }
+      setStoredToken(result.access_token);
+      setToken(result.access_token);
+      setChallengeId('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка подтверждения');
+    }
+  }
+
+  async function handleSavePlace(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    setError('');
+    const form = new FormData(event.currentTarget);
+    try {
+      const imageFile = form.get('image_file');
+      let imageUrl = placeForm.image_url.trim();
+      if (imageFile instanceof File && imageFile.size > 0) {
+        const uploaded = await uploadPlaceImage(token, imageFile);
+        imageUrl = uploaded.url;
+      }
+
+      const payload = {
+        source: placeForm.source,
+        status: 'approved',
+        name: placeForm.name.trim(),
+        city: placeForm.city.trim(),
+        address: placeForm.address.trim(),
+        image_url: imageUrl || null,
+        category: placeForm.category,
+        subcategory: placeForm.subcategory,
+        description: placeForm.description.trim(),
+        price_level: placeForm.price_level,
+        rating: placeForm.rating ? Number(placeForm.rating) : null,
+        tags: normalizeTags(placeForm.tags),
+      };
+
+      if (placeEditor) {
+        await updatePlace(token, placeEditor.id, payload);
+      } else {
+        await createPlace(token, payload);
+      }
+      setPlaceEditor(null);
+      setPlaceForm(EMPTY_FORM);
+      await refreshAll(token);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка сохранения места');
+    }
+  }
+
+  async function handleDeletePlace(id: string) {
+    if (!token) return;
+    try {
+      await deletePlace(token, id);
+      await refreshAll(token);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка удаления');
+    }
+  }
+
+  async function handleCandidateDecision(id: string, status: 'approved' | 'rejected') {
+    if (!token) return;
+    try {
+      await decideCandidate(token, id, status);
+      await refreshAll(token);
+      if (status === 'approved') {
+        setTab('places');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка модерации');
+    }
+  }
+
+  async function handleImport(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !me) return;
+    const form = new FormData(event.currentTarget);
+    const file = form.get('file');
+    if (!(file instanceof File)) {
+      setError('Нужно выбрать CSV файл');
+      return;
+    }
+    try {
+      await uploadImportCsv(
+        token,
+        file,
+        String(form.get('source') || 'csv'),
+        String(form.get('kind') || 'places'),
+        me.email || me.phone || 'admin',
+      );
+      await refreshAll(token);
+      event.currentTarget.reset();
+      setTab('candidates');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка импорта');
+    }
+  }
+
+  const isAdmin = me?.role === 'admin';
+  const title = useMemo(() => {
+    switch (tab) {
+      case 'places':
+        return 'Каталог мест';
+      case 'candidates':
+        return 'Кандидаты на модерацию';
+      case 'imports':
+        return 'Импорт CSV';
+    }
+  }, [tab]);
+
+  if (!token) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <div className="brand">Tour2Tour Admin</div>
+          <h1>{challengeId ? 'Подтверждение входа' : 'Вход администратора'}</h1>
+          <p>{challengeId ? 'Введите TOTP-код' : 'Используйте отдельную учетную запись администратора.'}</p>
+          {error && <div className="error">{error}</div>}
+          {!challengeId ? (
+            <form onSubmit={handleLogin} className="stack">
+              <input name="email" placeholder="Email" required />
+              <input name="password" type="password" placeholder="Пароль" required />
+              <button type="submit">Войти</button>
+            </form>
+          ) : (
+            <form onSubmit={handle2fa} className="stack">
+              <input name="code" placeholder="TOTP код" required />
+              <button type="submit">Подтвердить</button>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div>
+          <div className="brand">Tour2Tour Admin</div>
+          <div className="muted">{me?.email || me?.phone}</div>
+        </div>
+        <div className="nav">
+          <button className={tab === 'places' ? 'nav-active' : ''} onClick={() => setTab('places')}>
+            Места
+          </button>
+          <button className={tab === 'candidates' ? 'nav-active' : ''} onClick={() => setTab('candidates')}>
+            Кандидаты
+          </button>
+          <button className={tab === 'imports' ? 'nav-active' : ''} onClick={() => setTab('imports')}>
+            Импорт
+          </button>
+        </div>
+        <button
+          className="ghost"
+          onClick={() => {
+            setStoredToken(null);
+            setToken(null);
+          }}
+        >
+          Выйти
+        </button>
+      </aside>
+
+      <main className="content">
+        <div className="topbar">
+          <div>
+            <h1>{title}</h1>
+            <div className="muted">{isAdmin ? 'Роль администратора подтверждена' : 'Доступ ограничен'}</div>
+          </div>
+          <div className="row">
+            {tab === 'candidates' && (
+              <button className="ghost" onClick={() => setTab('places')}>
+                Вернуться к местам
+              </button>
+            )}
+            <button className="ghost" onClick={() => token && refreshAll(token)}>
+              Обновить
+            </button>
+          </div>
+        </div>
+
+        {error && <div className="error">{error}</div>}
+        {loading && <div className="card">Загрузка...</div>}
+        {!loading && !isAdmin && <div className="card">Доступ запрещен. Нужна роль admin.</div>}
+
+        {!loading && isAdmin && (
+          <>
+            {tab === 'places' && (
+              <div className="grid-2">
+                <div className="card">
+                  <div className="section-head">
+                    <h2>Места</h2>
+                    <div className="row">
+                      <span className="muted small">Всего: {places.length}</span>
+                      <button
+                        onClick={() => {
+                          setPlaceEditor(null);
+                          setPlaceForm(EMPTY_FORM);
+                        }}
+                      >
+                        Новое место
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="table-wrap">
+                    <table className="places-table">
+                      <thead>
+                        <tr>
+                          <th>Название</th>
+                          <th>Город</th>
+                          <th>Категория</th>
+                          <th>Источник</th>
+                          <th>Цена</th>
+                          <th>Рейтинг</th>
+                          <th>Фото</th>
+                          <th>Теги</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {places.map((place) => (
+                          <tr key={place.id}>
+                            <td className={!place.address ? 'missing-cell' : ''}>
+                              <div className="cell-title">{place.name}</div>
+                              <div className="muted small">{place.address || 'Адрес не заполнен'}</div>
+                            </td>
+                            <td>{place.city}</td>
+                            <td>
+                              <div>{formatCategory(place.category)}</div>
+                              <div className="muted small">{formatSubcategory(place.category, place.subcategory)}</div>
+                            </td>
+                            <td>{formatSource(place.source)}</td>
+                            <td className={!place.price_level ? 'missing-cell' : ''}>{formatPrice(place.price_level)}</td>
+                            <td className={place.rating == null ? 'missing-cell' : ''}>{place.rating ?? '-'}</td>
+                            <td className={!place.image_url ? 'missing-cell' : ''}>
+                              {place.image_url ? (
+                                <img className="place-thumb" src={place.image_url} alt={place.name} />
+                              ) : (
+                                'Нет фото'
+                              )}
+                            </td>
+                            <td>
+                              <div className="tag-cloud">
+                                {Object.entries(place.tags || {}).map(([key, weight]) => {
+                                  const option = TAG_OPTIONS.find((item) => item.key === key);
+                                  return (
+                                    <span key={key} className={`tag-pill ${option?.color ?? 'tag-default'}`}>
+                                      {option?.label ?? key}: {weight}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="row">
+                                <button className="ghost" onClick={() => setPlaceEditor(place)}>
+                                  Изменить
+                                </button>
+                                <button className="danger" onClick={() => handleDeletePlace(place.id)}>
+                                  Удалить
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <h2>{placeEditor ? 'Редактирование места' : 'Создание места'}</h2>
+                  <form className="stack" onSubmit={handleSavePlace}>
+                    <input
+                      value={placeForm.name}
+                      onChange={(event) => setPlaceForm((current) => ({ ...current, name: event.target.value }))}
+                      placeholder="Название"
+                      required
+                    />
+                    <input
+                      value={placeForm.city}
+                      onChange={(event) => setPlaceForm((current) => ({ ...current, city: event.target.value }))}
+                      placeholder="Город"
+                      required
+                    />
+                    <input
+                      value={placeForm.address}
+                      onChange={(event) => setPlaceForm((current) => ({ ...current, address: event.target.value }))}
+                      placeholder="Адрес"
+                    />
+                    <input
+                      value={placeForm.image_url}
+                      onChange={(event) => setPlaceForm((current) => ({ ...current, image_url: event.target.value }))}
+                      placeholder="Ссылка на фото (если уже есть)"
+                    />
+                    <input name="image_file" type="file" accept="image/*" />
+                    {placeForm.image_url && <img className="form-image-preview" src={placeForm.image_url} alt="preview" />}
+
+                    <div className="field-group">
+                      <label>Категория</label>
+                      <div className="chip-group">
+                        {CATEGORY_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={placeForm.category === option.value ? 'chip chip-active' : 'chip'}
+                            onClick={() =>
+                              setPlaceForm((current) => ({
+                                ...current,
+                                category: option.value,
+                                subcategory: option.subcategories[0]?.value ?? '',
+                              }))
+                            }
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="field-group">
+                      <label>Подкатегория</label>
+                      <div className="chip-group">
+                        {selectedCategory.subcategories.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={placeForm.subcategory === option.value ? 'chip chip-active' : 'chip'}
+                            onClick={() => setPlaceForm((current) => ({ ...current, subcategory: option.value }))}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="field-group">
+                      <label>Источник</label>
+                      <div className="chip-group">
+                        {SOURCE_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={placeForm.source === option.value ? 'chip chip-active' : 'chip'}
+                            onClick={() => setPlaceForm((current) => ({ ...current, source: option.value }))}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="field-group">
+                      <label>Уровень цены</label>
+                      <div className="chip-group">
+                        {PRICE_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={placeForm.price_level === option.value ? 'chip chip-active' : 'chip'}
+                            onClick={() => setPlaceForm((current) => ({ ...current, price_level: option.value }))}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <input
+                      value={placeForm.rating}
+                      onChange={(event) => setPlaceForm((current) => ({ ...current, rating: event.target.value }))}
+                      placeholder="Рейтинг от 0 до 5"
+                    />
+
+                    <textarea
+                      rows={4}
+                      value={placeForm.description}
+                      onChange={(event) => setPlaceForm((current) => ({ ...current, description: event.target.value }))}
+                      placeholder="Описание"
+                    />
+
+                    <div className="field-group">
+                      <label>Теги и веса для рекомендаций</label>
+                      <div className="tag-editor">
+                        {TAG_OPTIONS.map((tag) => {
+                          const value = placeForm.tags[tag.key] ?? 0;
+                          return (
+                            <div key={tag.key} className="tag-editor-row">
+                              <span className={`tag-pill ${tag.color}`}>{tag.label}</span>
+                              <div className="score-group">
+                                {[0, 1, 2, 3, 4, 5].map((score) => (
+                                  <button
+                                    key={score}
+                                    type="button"
+                                    className={value === score ? 'score-chip score-chip-active' : 'score-chip'}
+                                    onClick={() =>
+                                      setPlaceForm((current) => ({
+                                        ...current,
+                                        tags: { ...current.tags, [tag.key]: score },
+                                      }))
+                                    }
+                                  >
+                                    {score}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="row">
+                      <button type="submit">Сохранить</button>
+                      {placeEditor && (
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            setPlaceEditor(null);
+                            setPlaceForm(EMPTY_FORM);
+                          }}
+                        >
+                          Сбросить
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {tab === 'candidates' && (
+              <div className="card">
+                <div className="section-head">
+                  <h2>Кандидаты</h2>
+                  <button className="ghost" onClick={() => setTab('places')}>
+                    Вернуться
+                  </button>
+                </div>
+                <div className="candidate-list">
+                  {candidates.map((candidate) => {
+                    const tags = (getCandidateValue(candidate, 'tags') as Record<string, number>) || {};
+                    const imageUrl = String(getCandidateValue(candidate, 'image_url') || '');
+                    return (
+                      <div key={candidate.id} className="candidate-card">
+                        <div className="candidate-main">
+                          <div className="candidate-head">
+                            <strong>{String(getCandidateValue(candidate, 'name') || 'Без названия')}</strong>
+                            <span className="status-badge">{candidate.status}</span>
+                          </div>
+                          <div className="muted">
+                            {String(getCandidateValue(candidate, 'city') || '-')} ·{' '}
+                            {formatCategory(String(getCandidateValue(candidate, 'category') || 'place'))} ·{' '}
+                            {formatSource(candidate.source)}
+                          </div>
+                          {imageUrl && <img className="candidate-preview" src={imageUrl} alt="candidate" />}
+                          <div className="candidate-grid">
+                            <div>
+                              <span className="label">Адрес</span>
+                              <div>{String(getCandidateValue(candidate, 'address') || '-')}</div>
+                            </div>
+                            <div>
+                              <span className="label">Подкатегория</span>
+                              <div>
+                                {formatSubcategory(
+                                  String(getCandidateValue(candidate, 'category') || 'place'),
+                                  String(getCandidateValue(candidate, 'subcategory') || ''),
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="label">Цена</span>
+                              <div>{formatPrice(String(getCandidateValue(candidate, 'price_level') || ''))}</div>
+                            </div>
+                            <div>
+                              <span className="label">Скор валидации</span>
+                              <div>{candidate.validation_score ?? '-'}</div>
+                            </div>
+                          </div>
+                          <div className="tag-cloud">
+                            {Object.entries(tags).map(([key, weight]) => {
+                              const option = TAG_OPTIONS.find((item) => item.key === key);
+                              return (
+                                <span key={key} className={`tag-pill ${option?.color ?? 'tag-default'}`}>
+                                  {option?.label ?? key}: {weight}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <pre>{JSON.stringify(candidate.normalized_json || candidate.payload_json, null, 2)}</pre>
+                        </div>
+                        <div className="candidate-actions">
+                          <button onClick={() => handleCandidateDecision(candidate.id, 'approved')}>Одобрить</button>
+                          <button className="danger" onClick={() => handleCandidateDecision(candidate.id, 'rejected')}>
+                            Отклонить
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {tab === 'imports' && (
+              <div className="grid-2">
+                <div className="card">
+                  <h2>Загрузить CSV</h2>
+                  <form className="stack" onSubmit={handleImport}>
+                    <div className="field-group">
+                      <label>Источник</label>
+                      <div className="chip-group">
+                        {SOURCE_OPTIONS.map((option) => (
+                          <label key={option.value} className="chip chip-radio">
+                            <input type="radio" name="source" value={option.value} defaultChecked={option.value === 'csv'} />
+                            {option.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <input name="kind" placeholder="Тип" defaultValue="places" />
+                    <input name="file" type="file" accept=".csv,text/csv" required />
+                    <div className="muted small">
+                      Поддерживаются CSV в UTF-8 или CP1251, разделители: запятая, точка с запятой или tab.
+                    </div>
+                    <button type="submit">Загрузить</button>
+                  </form>
+                </div>
+                <div className="card">
+                  <h2>История импортов</h2>
+                  <div className="list">
+                    {imports.map((job) => (
+                      <div key={job.id} className="item">
+                        <div>
+                          <strong>{job.file_name || 'Без файла'}</strong>
+                          <div className="muted">
+                            {job.source} · {job.kind} · {job.status}
+                          </div>
+                          {job.stats_json && (
+                            <div className="muted small">
+                              Всего: {String(job.stats_json.rows_total || 0)} · Создано: {String(job.stats_json.candidates_created || 0)} · Ошибок: {String(job.stats_json.rows_failed || 0)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}

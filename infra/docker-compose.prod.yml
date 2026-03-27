@@ -117,11 +117,17 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://places:${PLACES_DB_PASSWORD}@places-db:5432/places
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALG: HS256
+      PLACE_IMAGES_DIR: /app/place-images
+      PLACE_IMAGES_BASE_URL: /media/places
     ports:
       - "8006:8000"
     depends_on:
       - places-db
     restart: unless-stopped
+    volumes:
+      - place_images_data:/app/place-images
 
   interactions-service:
     build:
@@ -164,10 +170,21 @@ services:
       - "8005:8000"
     restart: unless-stopped
 
+  admin-web:
+    build:
+      context: ../frontend/admin-web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${ADMIN_WEB_API_BASE_URL:-https://api.24tour2tour.ru}
+    ports:
+      - "${ADMIN_WEB_PORT:-3001}:80"
+    restart: unless-stopped
+
 volumes:
   auth_db_data:
   trips_db_data:
   rec_db_data:
   places_db_data:
+  place_images_data:
   interactions_db_data:
   payments_db_data:

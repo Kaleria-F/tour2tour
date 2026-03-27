@@ -126,7 +126,12 @@ def _find_user(payload: LoginRequest, db: Session) -> User | None:
 
 
 def _issue_access_token(user: User) -> TokenResponse:
-    token = create_access_token(sub=str(user.id), secret=settings.jwt_secret, alg=settings.jwt_alg)
+    token = create_access_token(
+        sub=str(user.id),
+        secret=settings.jwt_secret,
+        alg=settings.jwt_alg,
+        extra_claims={"role": user.role},
+    )
     return TokenResponse(access_token=token)
 
 

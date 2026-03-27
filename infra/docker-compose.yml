@@ -98,6 +98,16 @@ services:
       - payments-service
       - documents-service
 
+  admin-web:
+    build:
+      context: ../frontend/admin-web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://127.0.0.1:8888
+    ports:
+      - "3001:80"
+    restart: unless-stopped
+
   auth-service:
     build:
       context: ../services/auth-service
@@ -170,6 +180,10 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://places:places@places-db:5432/places
+      JWT_SECRET: dev_secret
+      JWT_ALG: HS256
+      PLACE_IMAGES_DIR: /app/place-images
+      PLACE_IMAGES_BASE_URL: /media/places
     expose:
       - "8000"
     restart: unless-stopped
@@ -181,6 +195,8 @@ services:
       start_period: 10s
     depends_on:
       - places-db
+    volumes:
+      - place_images_data:/app/place-images
 
   interactions-service:
     build:
@@ -248,6 +264,7 @@ volumes:
   trips_db_data:
   rec_db_data:
   places_db_data:
+  place_images_data:
   interactions_db_data:
   payments_db_data:
   minio_data:

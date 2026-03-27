@@ -18,6 +18,7 @@ class Place(Base):
     status: Mapped[str] = mapped_column(String(24), default="approved")
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     country: Mapped[str | None] = mapped_column(String(64), nullable=True)
     city: Mapped[str] = mapped_column(String(128), index=True)
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)

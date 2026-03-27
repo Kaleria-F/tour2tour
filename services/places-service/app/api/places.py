@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import csv
+import io
+from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.deps import require_admin
+from app.core.config import settings
 from app.db.deps import get_db
-from app.models.place import Place, PlaceCandidate, PlaceTag
+from app.models.place import Place, PlaceCandidate, PlaceImportJob, PlaceTag
 from app.schemas.place import (
     ImportJobCreate,
     ImportJobOut,
@@ -34,6 +39,7 @@ def _to_place_out(place: Place) -> PlaceOut:
         status=place.status,
         name=place.name,
         description=place.description,
+        image_url=place.image_url,
         country=place.country,
         city=place.city,
         address=place.address,
@@ -59,6 +65,131 @@ def _replace_tags(db: Session, place: Place, tags: dict[str, int]) -> None:
         db.add(PlaceTag(id=str(uuid4()), place_id=place.id, tag=tag, weight=weight))
 
 
+def _pick(row: dict[str, str], keys: list[str]) -> str | None:
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            value = value.strip()
+            if value:
+                return value
+    return None
+
+
+def _parse_tags(raw: str | None) -> dict[str, int]:
+    if not raw:
+        return {}
+    raw = raw.strip()
+    if not raw:
+        return {}
+    try:
+        import json
+
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return {str(key): int(value) for key, value in parsed.items() if str(key).strip()}
+    except Exception:
+        pass
+
+    result: dict[str, int] = {}
+    for chunk in raw.split(","):
+        part = chunk.strip()
+        if not part:
+            continue
+        if ":" in part:
+            tag, weight = part.split(":", 1)
+        elif "=" in part:
+            tag, weight = part.split("=", 1)
+        else:
+            tag, weight = part, "3"
+        tag = tag.strip()
+        if not tag:
+            continue
+        result[tag] = int(weight.strip() or "3")
+    return result
+
+
+def _normalize_candidate_row(row: dict[str, str], default_source: str) -> dict:
+    source = _pick(row, ["source"]) or default_source
+    return {
+        "external_id": _pick(row, ["external_id", "source_id", "id", "externalId"]),
+        "source": source,
+        "status": "approved",
+        "name": _pick(row, ["name", "title"]),
+        "description": _pick(row, ["description"]),
+        "image_url": _pick(row, ["image_url", "photo_url", "image", "photo"]),
+        "country": _pick(row, ["country"]),
+        "city": _pick(row, ["city"]),
+        "address": _pick(row, ["address"]),
+        "lat": _pick(row, ["lat", "latitude"]),
+        "lon": _pick(row, ["lon", "longitude"]),
+        "category": _pick(row, ["category"]) or "place",
+        "subcategory": _pick(row, ["subcategory", "subtype"]),
+        "price_level": _pick(row, ["price_level", "budget"]),
+        "avg_visit_duration_min": _pick(row, ["avg_visit_duration_min", "visit_minutes", "duration_minutes"]),
+        "rating": _pick(row, ["rating"]),
+        "reviews_count": _pick(row, ["reviews_count"]),
+        "tags": _parse_tags(_pick(row, ["tags_json", "tags"])),
+    }
+
+
+def _build_place_from_payload(payload: dict) -> Place:
+    def _as_float(value):
+        if value in (None, ""):
+            return None
+        return float(str(value).replace(",", "."))
+
+    def _as_int(value):
+        if value in (None, ""):
+            return None
+        return int(float(str(value).replace(",", ".")))
+
+    return Place(
+        id=str(uuid4()),
+        external_id=payload.get("external_id"),
+        source=payload.get("source") or "import",
+        status=payload.get("status") or "approved",
+        name=(payload.get("name") or "").strip(),
+        description=payload.get("description"),
+        image_url=payload.get("image_url"),
+        country=payload.get("country"),
+        city=(payload.get("city") or "").strip(),
+        address=payload.get("address"),
+        lat=_as_float(payload.get("lat")),
+        lon=_as_float(payload.get("lon")),
+        category=(payload.get("category") or "place").strip(),
+        subcategory=payload.get("subcategory"),
+        price_level=payload.get("price_level"),
+        avg_visit_duration_min=_as_int(payload.get("avg_visit_duration_min")),
+        rating=_as_float(payload.get("rating")),
+        reviews_count=_as_int(payload.get("reviews_count")) or 0,
+        working_hours_json=payload.get("working_hours_json"),
+        metadata_json=payload.get("metadata_json"),
+    )
+
+
+def _create_place_from_candidate(db: Session, candidate: PlaceCandidate) -> Place | None:
+    normalized = candidate.normalized_json or candidate.payload_json
+    if not isinstance(normalized, dict):
+        return None
+    if not normalized.get("name") or not normalized.get("city"):
+        return None
+
+    existing_query = select(Place).where(
+        Place.name == str(normalized.get("name")).strip(),
+        Place.city == str(normalized.get("city")).strip(),
+        Place.address == normalized.get("address"),
+    )
+    existing = db.execute(existing_query).scalar_one_or_none()
+    if existing:
+        return existing
+
+    place = _build_place_from_payload(normalized)
+    db.add(place)
+    db.flush()
+    _replace_tags(db, place, dict(normalized.get("tags") or {}))
+    return place
+
+
 @router.get("", response_model=PlaceListResponse)
 def list_places(
     city: str | None = None,
@@ -69,20 +200,28 @@ def list_places(
     db: Session = Depends(get_db),
 ):
     query = _place_query().order_by(Place.updated_at.desc())
+    count_query = select(func.count()).select_from(Place)
     if city:
         query = query.where(Place.city == city)
+        count_query = count_query.where(Place.city == city)
     if category:
         query = query.where(Place.category == category)
+        count_query = count_query.where(Place.category == category)
     if status_filter:
         query = query.where(Place.status == status_filter)
+        count_query = count_query.where(Place.status == status_filter)
 
     items = db.execute(query.offset(offset).limit(limit)).scalars().unique().all()
-    total = len(db.execute(query).scalars().unique().all())
+    total = db.execute(count_query).scalar_one()
     return PlaceListResponse(items=[_to_place_out(item) for item in items], total=total)
 
 
 @router.post("", response_model=PlaceOut, status_code=status.HTTP_201_CREATED)
-def create_place(payload: PlaceCreate, db: Session = Depends(get_db)):
+def create_place(
+    payload: PlaceCreate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
     place = Place(
         id=str(uuid4()),
         external_id=payload.external_id,
@@ -90,6 +229,7 @@ def create_place(payload: PlaceCreate, db: Session = Depends(get_db)):
         status=payload.status,
         name=payload.name,
         description=payload.description,
+        image_url=payload.image_url,
         country=payload.country,
         city=payload.city,
         address=payload.address,
@@ -117,6 +257,7 @@ def list_candidates(
     status_filter: str | None = Query(default=None, alias="status"),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
 ):
     query = select(PlaceCandidate).order_by(PlaceCandidate.updated_at.desc())
     if status_filter:
@@ -140,13 +281,26 @@ def list_candidates(
 
 
 @router.post("/candidates/{candidate_id}/decision", response_model=PlaceCandidateOut)
-def decide_candidate(candidate_id: str, payload: PlaceCandidateDecision, db: Session = Depends(get_db)):
+def decide_candidate(
+    candidate_id: str,
+    payload: PlaceCandidateDecision,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
     candidate = db.get(PlaceCandidate, candidate_id)
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
+    should_create_place = payload.status == "approved" and candidate.status != "approved"
     candidate.status = payload.status
     candidate.notes = payload.notes
     db.add(candidate)
+    if should_create_place:
+        created_place = _create_place_from_candidate(db, candidate)
+        if created_place is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Candidate is missing required fields to create a place",
+            )
     db.commit()
     db.refresh(candidate)
     return PlaceCandidateOut(
@@ -164,8 +318,12 @@ def decide_candidate(candidate_id: str, payload: PlaceCandidateDecision, db: Ses
 
 
 @router.post("/imports", response_model=ImportJobOut, status_code=status.HTTP_201_CREATED)
-def create_import_job(payload: ImportJobCreate):
-    return ImportJobOut(
+def create_import_job(
+    payload: ImportJobCreate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    job = PlaceImportJob(
         id=str(uuid4()),
         source=payload.source,
         kind=payload.kind,
@@ -173,6 +331,149 @@ def create_import_job(payload: ImportJobCreate):
         file_name=payload.file_name,
         stats_json={},
         created_by=payload.created_by,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return ImportJobOut(
+        id=job.id,
+        source=job.source,
+        kind=job.kind,
+        status=job.status,
+        file_name=job.file_name,
+        stats_json=job.stats_json or {},
+        created_by=job.created_by,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
+
+
+@router.get("/imports/list", response_model=list[ImportJobOut])
+def list_import_jobs(
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    jobs = db.execute(
+        select(PlaceImportJob).order_by(PlaceImportJob.updated_at.desc()).limit(limit)
+    ).scalars().all()
+    return [
+        ImportJobOut(
+            id=job.id,
+            source=job.source,
+            kind=job.kind,
+            status=job.status,
+            file_name=job.file_name,
+            stats_json=job.stats_json or {},
+            created_by=job.created_by,
+            created_at=job.created_at,
+            updated_at=job.updated_at,
+        )
+        for job in jobs
+    ]
+
+
+@router.post("/upload-image")
+async def upload_place_image(
+    file: UploadFile = File(...),
+    _: dict = Depends(require_admin),
+):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+
+    extension = Path(file.filename or "image").suffix.lower()
+    if extension not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+        extension = ".jpg"
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    target_name = f"{uuid4()}{extension}"
+    target_path = Path(settings.place_images_dir) / target_name
+    target_path.write_bytes(content)
+    return {"url": f"{settings.place_images_base_url.rstrip('/')}/{target_name}"}
+
+
+@router.post("/imports/upload", response_model=ImportJobOut, status_code=status.HTTP_201_CREATED)
+async def upload_import_csv(
+    source: str = Form(...),
+    kind: str = Form(default="places"),
+    created_by: str | None = Form(default=None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    raw_bytes = await file.read()
+    decoded = None
+    for encoding in ("utf-8-sig", "utf-8", "cp1251"):
+        try:
+            decoded = raw_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if decoded is None:
+        raise HTTPException(status_code=400, detail="Unable to decode CSV file")
+
+    job = PlaceImportJob(
+        id=str(uuid4()),
+        source=source,
+        kind=kind,
+        status="processing",
+        file_name=file.filename,
+        stats_json={},
+        created_by=created_by,
+    )
+    db.add(job)
+    db.flush()
+
+    created = 0
+    failed = 0
+    sample = decoded[:4096]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    reader = csv.DictReader(io.StringIO(decoded), dialect=dialect)
+
+    for row in reader:
+        payload_row = {str(key): str(value or "") for key, value in row.items()}
+        normalized = _normalize_candidate_row(payload_row, source)
+        if not normalized.get("name") or not normalized.get("city"):
+            failed += 1
+            continue
+        candidate = PlaceCandidate(
+            id=str(uuid4()),
+            source=normalized.get("source") or source,
+            source_record_id=normalized.get("external_id"),
+            status="pending_review",
+            payload_json=payload_row,
+            normalized_json=normalized,
+            validation_score=0.9,
+            notes=None,
+        )
+        db.add(candidate)
+        created += 1
+
+    job.status = "completed"
+    job.stats_json = {
+        "rows_total": created + failed,
+        "candidates_created": created,
+        "rows_failed": failed,
+    }
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return ImportJobOut(
+        id=job.id,
+        source=job.source,
+        kind=job.kind,
+        status=job.status,
+        file_name=job.file_name,
+        stats_json=job.stats_json or {},
+        created_by=job.created_by,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
     )
 
 
@@ -185,7 +486,12 @@ def get_place(place_id: str, db: Session = Depends(get_db)):
 
 
 @router.patch("/{place_id}", response_model=PlaceOut)
-def update_place(place_id: str, payload: PlaceUpdate, db: Session = Depends(get_db)):
+def update_place(
+    place_id: str,
+    payload: PlaceUpdate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
     place = db.execute(_place_query().where(Place.id == place_id)).scalar_one_or_none()
     if not place:
         raise HTTPException(status_code=404, detail="Place not found")
@@ -201,3 +507,16 @@ def update_place(place_id: str, payload: PlaceUpdate, db: Session = Depends(get_
     db.commit()
     place = db.execute(_place_query().where(Place.id == place_id)).scalar_one()
     return _to_place_out(place)
+
+
+@router.delete("/{place_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_place(
+    place_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    place = db.get(Place, place_id)
+    if not place:
+        raise HTTPException(status_code=404, detail="Place not found")
+    db.delete(place)
+    db.commit()

@@ -5,6 +5,7 @@ class RecommendationItem {
   final String id;
   final String title;
   final String description;
+  final String imageUrl;
   final String category;
   final String subcategory;
   final String city;
@@ -23,6 +24,7 @@ class RecommendationItem {
     required this.id,
     required this.title,
     required this.description,
+    required this.imageUrl,
     required this.category,
     required this.subcategory,
     required this.city,
@@ -45,6 +47,7 @@ class RecommendationItem {
       id: json['id']?.toString() ?? '',
       title: json['title']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
+      imageUrl: json['image_url']?.toString() ?? '',
       category: json['category']?.toString() ?? '',
       subcategory: json['subcategory']?.toString() ?? '',
       city: json['city']?.toString() ?? '',

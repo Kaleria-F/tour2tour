@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from app.api.places import router as places_router
+from app.core.config import settings
 
 app = FastAPI(
     title="Tour2Tour Places Service",
@@ -27,6 +30,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+images_dir = Path(settings.place_images_dir)
+images_dir.mkdir(parents=True, exist_ok=True)
+app.mount(settings.place_images_base_url, StaticFiles(directory=str(images_dir)), name="place-images")
 
 app.include_router(places_router)
 

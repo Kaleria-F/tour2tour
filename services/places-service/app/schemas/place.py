@@ -12,6 +12,7 @@ class PlaceBase(BaseModel):
     status: str = "approved"
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
+    image_url: str | None = None
     country: str | None = None
     city: str = Field(min_length=1, max_length=128)
     address: str | None = None
@@ -38,6 +39,7 @@ class PlaceUpdate(BaseModel):
     status: str | None = None
     name: str | None = None
     description: str | None = None
+    image_url: str | None = None
     country: str | None = None
     city: str | None = None
     address: str | None = None
@@ -94,3 +96,5 @@ class ImportJobOut(ImportJobCreate):
     id: str
     status: str
     stats_json: dict[str, Any]
+    created_at: datetime | None = None
+    updated_at: datetime | None = None

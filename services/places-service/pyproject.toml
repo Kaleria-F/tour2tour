@@ -12,6 +12,8 @@ dependencies = [
     "alembic (>=1.18.1,<2.0.0)",
     "pydantic-settings (>=2.12.0,<3.0.0)",
     "python-dotenv (>=1.2.1,<2.0.0)",
+    "python-multipart (>=0.0.20,<0.0.21)",
+    "python-jose[cryptography] (>=3.5.0,<4.0.0)",
 ]
 
 [build-system]

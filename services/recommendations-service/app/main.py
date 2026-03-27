@@ -26,6 +26,7 @@ class Place(BaseModel):
     id: str
     name: str
     description: str | None = None
+    image_url: str | None = None
     category: str
     subcategory: str | None = None
     lat: float | None = None
@@ -59,6 +60,7 @@ class RecommendationItem(BaseModel):
     id: str
     title: str
     description: str
+    image_url: str
     category: str
     subcategory: str
     city: str
@@ -136,14 +138,21 @@ def _behavior_bonus(place_id: str, user_summary: dict[str, Any] | None) -> float
 
 
 def _fetch_places(city: str | None) -> list[Place]:
-    params: dict[str, Any] = {"status": "approved", "limit": 200}
-    if city:
-        params["city"] = city
     with httpx.Client(timeout=10.0) as client:
+        params: dict[str, Any] = {"status": "approved", "limit": 200}
+        if city:
+            params["city"] = city
         response = client.get(f"{settings.places_service_url.rstrip('/')}/places", params=params)
         response.raise_for_status()
         payload = response.json()
-    items = payload.get("items") or []
+        items = payload.get("items") or []
+        if city and not items:
+            fallback = client.get(
+                f"{settings.places_service_url.rstrip('/')}/places",
+                params={"status": "approved", "limit": 200},
+            )
+            fallback.raise_for_status()
+            items = (fallback.json() or {}).get("items") or []
     return [Place.model_validate(item) for item in items]
 
 
@@ -189,6 +198,7 @@ def personalized_recommendations(payload: RecommendationsRequest):
                 id=place.id,
                 title=place.name,
                 description=place.description or "",
+                image_url=place.image_url or "",
                 category=place.category,
                 subcategory=place.subcategory or "",
                 city=place.city,
