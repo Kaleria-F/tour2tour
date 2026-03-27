@@ -176,6 +176,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: ${ADMIN_WEB_API_BASE_URL:-https://api.24tour2tour.ru}
+        VITE_BASE_PATH: ${ADMIN_WEB_BASE_PATH:-/admin/}
     ports:
       - "${ADMIN_WEB_PORT:-3001}:80"
     restart: unless-stopped
