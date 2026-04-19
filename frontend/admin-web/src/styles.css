@@ -25,6 +25,12 @@ table {
   font: inherit;
 }
 
+input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: #ffd86b;
+}
+
 .auth-shell,
 .app-shell {
   min-height: 100vh;
@@ -425,6 +431,11 @@ button.danger {
   flex-direction: column;
   gap: 8px;
   min-width: 160px;
+}
+
+.candidate-description {
+  color: rgba(255, 255, 255, 0.86);
+  line-height: 1.5;
 }
 
 .candidate-head {

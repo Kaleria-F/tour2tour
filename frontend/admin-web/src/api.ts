@@ -99,7 +99,7 @@ export async function deletePlace(token: string, id: string): Promise<void> {
 }
 
 export async function listCandidates(token: string): Promise<AdminPlaceCandidate[]> {
-  return request<AdminPlaceCandidate[]>('/places/candidates/list', { method: 'GET' }, token);
+  return request<AdminPlaceCandidate[]>('/places/candidates/list?status=pending_review', { method: 'GET' }, token);
 }
 
 export async function decideCandidate(
@@ -113,6 +113,10 @@ export async function decideCandidate(
     { method: 'POST', body: JSON.stringify({ status, notes }) },
     token,
   );
+}
+
+export async function deleteCandidate(token: string, id: string): Promise<void> {
+  return request<void>(`/places/candidates/${id}`, { method: 'DELETE' }, token);
 }
 
 export async function listImportJobs(token: string): Promise<AdminImportJob[]> {

@@ -254,7 +254,7 @@ def create_place(
 
 @router.get("/candidates/list", response_model=list[PlaceCandidateOut])
 def list_candidates(
-    status_filter: str | None = Query(default=None, alias="status"),
+    status_filter: str | None = Query(default="pending_review", alias="status"),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
     _: dict = Depends(require_admin),
@@ -278,6 +278,19 @@ def list_candidates(
         )
         for item in items
     ]
+
+
+@router.delete("/candidates/{candidate_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_candidate(
+    candidate_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    candidate = db.get(PlaceCandidate, candidate_id)
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+    db.delete(candidate)
+    db.commit()
 
 
 @router.post("/candidates/{candidate_id}/decision", response_model=PlaceCandidateOut)

@@ -3,6 +3,7 @@
 import {
   createPlace,
   decideCandidate,
+  deleteCandidate,
   deletePlace,
   getMe,
   getStoredToken,
@@ -56,6 +57,7 @@ const CATEGORY_OPTIONS: Array<Option & { subcategories: Option[] }> = [
       { value: 'gallery', label: 'Галерея' },
       { value: 'theatre', label: 'Театр' },
       { value: 'embankment', label: 'Набережная' },
+      { value: 'architecture', label: 'Архитектура' },
     ],
   },
   {
@@ -98,9 +100,17 @@ const SOURCE_OPTIONS: Option[] = [
 ];
 
 const PRICE_OPTIONS: Option[] = [
+  { value: '', label: '-' },
   { value: 'economy', label: 'Бюджетно' },
   { value: 'middle', label: 'Средний чек' },
   { value: 'premium', label: 'Премиум' },
+];
+
+const IMPORT_KIND_OPTIONS: Option[] = [
+  { value: 'place', label: 'Места' },
+  { value: 'food', label: 'Гастрономия' },
+  { value: 'activity', label: 'Активности' },
+  { value: 'stay', label: 'Проживание' },
 ];
 
 const TAG_OPTIONS: TagOption[] = [
@@ -124,10 +134,10 @@ const EMPTY_FORM: PlaceFormState = {
   category: 'place',
   subcategory: 'museum',
   source: 'manual',
-  price_level: 'middle',
+  price_level: '',
   description: '',
   rating: '',
-  tags: { history: 5, culture: 4, museums: 4 },
+  tags: {},
 };
 
 function normalizeTags(tags: Record<string, number>) {
@@ -162,6 +172,22 @@ function getCandidateValue(candidate: AdminPlaceCandidate, key: string) {
   return normalized[key] ?? payload[key];
 }
 
+function getTagLabel(key: string) {
+  return TAG_OPTIONS.find((item) => item.key === key)?.label ?? key;
+}
+
+function getTagColor(key: string) {
+  return TAG_OPTIONS.find((item) => item.key === key)?.color ?? 'tag-default';
+}
+
+function isPlaceFieldMissing(
+  place: AdminPlace,
+  field: 'name' | 'city' | 'address' | 'category' | 'source' | 'price_level' | 'rating' | 'image_url',
+) {
+  const value = place[field];
+  return value == null || String(value).trim() === '';
+}
+
 export function App() {
   const [token, setToken] = useState<string | null>(() => getStoredToken());
   const [me, setMe] = useState<UserMe | null>(null);
@@ -174,6 +200,8 @@ export function App() {
   const [imports, setImports] = useState<AdminImportJob[]>([]);
   const [placeEditor, setPlaceEditor] = useState<AdminPlace | null>(null);
   const [placeForm, setPlaceForm] = useState<PlaceFormState>(EMPTY_FORM);
+  const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([]);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
 
   const selectedCategory = useMemo(
     () => CATEGORY_OPTIONS.find((item) => item.value === placeForm.category) ?? CATEGORY_OPTIONS[0],
@@ -201,7 +229,7 @@ export function App() {
       category: placeEditor.category ?? 'place',
       subcategory: placeEditor.subcategory ?? 'museum',
       source: placeEditor.source ?? 'manual',
-      price_level: placeEditor.price_level ?? 'middle',
+      price_level: placeEditor.price_level ?? '',
       description: placeEditor.description ?? '',
       rating: placeEditor.rating != null ? String(placeEditor.rating) : '',
       tags: placeEditor.tags ?? {},
@@ -228,6 +256,7 @@ export function App() {
       setPlaces(placeItems);
       setCandidates(candidateItems);
       setImports(importItems);
+      setSelectedPlaceIds((current) => current.filter((id) => placeItems.some((place) => place.id === id)));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка загрузки');
     } finally {
@@ -298,7 +327,7 @@ export function App() {
         category: placeForm.category,
         subcategory: placeForm.subcategory,
         description: placeForm.description.trim(),
-        price_level: placeForm.price_level,
+        price_level: placeForm.price_level || null,
         rating: placeForm.rating ? Number(placeForm.rating) : null,
         tags: normalizeTags(placeForm.tags),
       };
@@ -320,9 +349,31 @@ export function App() {
     if (!token) return;
     try {
       await deletePlace(token, id);
-      await refreshAll(token);
+      setPlaces((current) => current.filter((place) => place.id !== id));
+      setSelectedPlaceIds((current) => current.filter((item) => item !== id));
+      if (placeEditor?.id === id) {
+        setPlaceEditor(null);
+        setPlaceForm(EMPTY_FORM);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка удаления');
+    }
+  }
+
+  async function handleDeleteSelectedPlaces() {
+    if (!token || selectedPlaceIds.length === 0) return;
+    setBulkProcessing(true);
+    setError('');
+    try {
+      for (const id of selectedPlaceIds) {
+        await deletePlace(token, id);
+      }
+      setPlaces((current) => current.filter((place) => !selectedPlaceIds.includes(place.id)));
+      setSelectedPlaceIds([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка массового удаления');
+    } finally {
+      setBulkProcessing(false);
     }
   }
 
@@ -330,12 +381,41 @@ export function App() {
     if (!token) return;
     try {
       await decideCandidate(token, id, status);
-      await refreshAll(token);
-      if (status === 'approved') {
-        setTab('places');
-      }
+      setCandidates((current) => current.filter((candidate) => candidate.id !== id));
+      const [placeItems, importItems] = await Promise.all([listPlaces(token), listImportJobs(token)]);
+      setPlaces(placeItems);
+      setImports(importItems);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка модерации');
+    }
+  }
+
+  async function handleDeleteCandidate(id: string) {
+    if (!token) return;
+    try {
+      await deleteCandidate(token, id);
+      setCandidates((current) => current.filter((candidate) => candidate.id !== id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка удаления кандидата');
+    }
+  }
+
+  async function handleApproveAllCandidates() {
+    if (!token || candidates.length === 0) return;
+    setBulkProcessing(true);
+    setError('');
+    try {
+      for (const candidate of candidates) {
+        await decideCandidate(token, candidate.id, 'approved');
+      }
+      setCandidates([]);
+      const [placeItems, importItems] = await Promise.all([listPlaces(token), listImportJobs(token)]);
+      setPlaces(placeItems);
+      setImports(importItems);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка массового одобрения');
+    } finally {
+      setBulkProcessing(false);
     }
   }
 
@@ -353,7 +433,7 @@ export function App() {
         token,
         file,
         String(form.get('source') || 'csv'),
-        String(form.get('kind') || 'places'),
+        String(form.get('kind') || 'place'),
         me.email || me.phone || 'admin',
       );
       await refreshAll(token);
@@ -362,6 +442,20 @@ export function App() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка импорта');
     }
+  }
+
+  function togglePlaceSelection(id: string) {
+    setSelectedPlaceIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  }
+
+  function toggleAllPlaces() {
+    if (selectedPlaceIds.length === places.length) {
+      setSelectedPlaceIds([]);
+      return;
+    }
+    setSelectedPlaceIds(places.map((place) => place.id));
   }
 
   const isAdmin = me?.role === 'admin';
@@ -461,6 +555,11 @@ export function App() {
                     <h2>Места</h2>
                     <div className="row">
                       <span className="muted small">Всего: {places.length}</span>
+                      {selectedPlaceIds.length > 0 && (
+                        <button className="danger" onClick={handleDeleteSelectedPlaces} disabled={bulkProcessing}>
+                          Удалить выбранные ({selectedPlaceIds.length})
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           setPlaceEditor(null);
@@ -476,6 +575,13 @@ export function App() {
                     <table className="places-table">
                       <thead>
                         <tr>
+                          <th>
+                            <input
+                              type="checkbox"
+                              checked={places.length > 0 && selectedPlaceIds.length === places.length}
+                              onChange={toggleAllPlaces}
+                            />
+                          </th>
                           <th>Название</th>
                           <th>Город</th>
                           <th>Категория</th>
@@ -490,35 +596,53 @@ export function App() {
                       <tbody>
                         {places.map((place) => (
                           <tr key={place.id}>
-                            <td className={!place.address ? 'missing-cell' : ''}>
-                              <div className="cell-title">{place.name}</div>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={selectedPlaceIds.includes(place.id)}
+                                onChange={() => togglePlaceSelection(place.id)}
+                              />
+                            </td>
+                            <td
+                              className={
+                                isPlaceFieldMissing(place, 'name') || isPlaceFieldMissing(place, 'address')
+                                  ? 'missing-cell'
+                                  : ''
+                              }
+                            >
+                              <div className="cell-title">{place.name || '-'}</div>
                               <div className="muted small">{place.address || 'Адрес не заполнен'}</div>
                             </td>
-                            <td>{place.city}</td>
-                            <td>
+                            <td className={isPlaceFieldMissing(place, 'city') ? 'missing-cell' : ''}>
+                              {place.city || '-'}
+                            </td>
+                            <td className={isPlaceFieldMissing(place, 'category') ? 'missing-cell' : ''}>
                               <div>{formatCategory(place.category)}</div>
                               <div className="muted small">{formatSubcategory(place.category, place.subcategory)}</div>
                             </td>
-                            <td>{formatSource(place.source)}</td>
+                            <td className={isPlaceFieldMissing(place, 'source') ? 'missing-cell' : ''}>
+                              {formatSource(place.source)}
+                            </td>
                             <td className={!place.price_level ? 'missing-cell' : ''}>{formatPrice(place.price_level)}</td>
                             <td className={place.rating == null ? 'missing-cell' : ''}>{place.rating ?? '-'}</td>
-                            <td className={!place.image_url ? 'missing-cell' : ''}>
+                            <td className={isPlaceFieldMissing(place, 'image_url') ? 'missing-cell' : ''}>
                               {place.image_url ? (
                                 <img className="place-thumb" src={place.image_url} alt={place.name} />
                               ) : (
                                 'Нет фото'
                               )}
                             </td>
-                            <td>
+                            <td className={!Object.keys(place.tags || {}).length ? 'missing-cell' : ''}>
                               <div className="tag-cloud">
-                                {Object.entries(place.tags || {}).map(([key, weight]) => {
-                                  const option = TAG_OPTIONS.find((item) => item.key === key);
-                                  return (
-                                    <span key={key} className={`tag-pill ${option?.color ?? 'tag-default'}`}>
-                                      {option?.label ?? key}: {weight}
+                                {Object.entries(place.tags || {}).length > 0 ? (
+                                  Object.entries(place.tags || {}).map(([key, weight]) => (
+                                    <span key={key} className={`tag-pill ${getTagColor(key)}`}>
+                                      {getTagLabel(key)}: {weight}
                                     </span>
-                                  );
-                                })}
+                                  ))
+                                ) : (
+                                  <span className="muted small">Теги не заданы</span>
+                                )}
                               </div>
                             </td>
                             <td>
@@ -625,7 +749,7 @@ export function App() {
                       <div className="chip-group">
                         {PRICE_OPTIONS.map((option) => (
                           <button
-                            key={option.value}
+                            key={option.value || 'empty'}
                             type="button"
                             className={placeForm.price_level === option.value ? 'chip chip-active' : 'chip'}
                             onClick={() => setPlaceForm((current) => ({ ...current, price_level: option.value }))}
@@ -704,71 +828,88 @@ export function App() {
               <div className="card">
                 <div className="section-head">
                   <h2>Кандидаты</h2>
-                  <button className="ghost" onClick={() => setTab('places')}>
-                    Вернуться
-                  </button>
+                  <div className="row">
+                    <span className="muted small">На модерации: {candidates.length}</span>
+                    {candidates.length > 0 && (
+                      <button onClick={handleApproveAllCandidates} disabled={bulkProcessing}>
+                        Одобрить все
+                      </button>
+                    )}
+                    <button className="ghost" onClick={() => setTab('places')}>
+                      Вернуться
+                    </button>
+                  </div>
                 </div>
                 <div className="candidate-list">
                   {candidates.map((candidate) => {
                     const tags = (getCandidateValue(candidate, 'tags') as Record<string, number>) || {};
                     const imageUrl = String(getCandidateValue(candidate, 'image_url') || '');
+                    const name = String(getCandidateValue(candidate, 'name') || 'Без названия');
+                    const city = String(getCandidateValue(candidate, 'city') || '-');
+                    const category = String(getCandidateValue(candidate, 'category') || 'place');
+                    const subcategory = String(getCandidateValue(candidate, 'subcategory') || '');
+                    const description = String(getCandidateValue(candidate, 'description') || '').trim();
+                    const address = String(getCandidateValue(candidate, 'address') || '').trim();
+                    const sourceRecordId = candidate.source_record_id ? String(candidate.source_record_id) : '';
                     return (
                       <div key={candidate.id} className="candidate-card">
                         <div className="candidate-main">
                           <div className="candidate-head">
-                            <strong>{String(getCandidateValue(candidate, 'name') || 'Без названия')}</strong>
-                            <span className="status-badge">{candidate.status}</span>
+                            <strong>{name}</strong>
+                            <span className="status-badge">На модерации</span>
                           </div>
                           <div className="muted">
-                            {String(getCandidateValue(candidate, 'city') || '-')} ·{' '}
-                            {formatCategory(String(getCandidateValue(candidate, 'category') || 'place'))} ·{' '}
+                            {city} · {formatCategory(category)} ·{' '}
+                            {formatSubcategory(category, subcategory)} ·{' '}
                             {formatSource(candidate.source)}
                           </div>
+                          {description && <div className="candidate-description">{description}</div>}
                           {imageUrl && <img className="candidate-preview" src={imageUrl} alt="candidate" />}
                           <div className="candidate-grid">
                             <div>
                               <span className="label">Адрес</span>
-                              <div>{String(getCandidateValue(candidate, 'address') || '-')}</div>
-                            </div>
-                            <div>
-                              <span className="label">Подкатегория</span>
-                              <div>
-                                {formatSubcategory(
-                                  String(getCandidateValue(candidate, 'category') || 'place'),
-                                  String(getCandidateValue(candidate, 'subcategory') || ''),
-                                )}
-                              </div>
+                              <div>{address || '-'}</div>
                             </div>
                             <div>
                               <span className="label">Цена</span>
                               <div>{formatPrice(String(getCandidateValue(candidate, 'price_level') || ''))}</div>
                             </div>
                             <div>
-                              <span className="label">Скор валидации</span>
-                              <div>{candidate.validation_score ?? '-'}</div>
+                              <span className="label">Координаты</span>
+                              <div>
+                                {String(getCandidateValue(candidate, 'lat') || '-')} / {String(getCandidateValue(candidate, 'lon') || '-')}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="label">Запись источника</span>
+                              <div>{sourceRecordId || '-'}</div>
                             </div>
                           </div>
                           <div className="tag-cloud">
-                            {Object.entries(tags).map(([key, weight]) => {
-                              const option = TAG_OPTIONS.find((item) => item.key === key);
-                              return (
-                                <span key={key} className={`tag-pill ${option?.color ?? 'tag-default'}`}>
-                                  {option?.label ?? key}: {weight}
+                            {Object.entries(tags).length > 0 ? (
+                              Object.entries(tags).map(([key, weight]) => (
+                                <span key={key} className={`tag-pill ${getTagColor(key)}`}>
+                                  {getTagLabel(key)}: {weight}
                                 </span>
-                              );
-                            })}
+                              ))
+                            ) : (
+                              <span className="muted small">Теги не заданы</span>
+                            )}
                           </div>
-                          <pre>{JSON.stringify(candidate.normalized_json || candidate.payload_json, null, 2)}</pre>
                         </div>
                         <div className="candidate-actions">
                           <button onClick={() => handleCandidateDecision(candidate.id, 'approved')}>Одобрить</button>
-                          <button className="danger" onClick={() => handleCandidateDecision(candidate.id, 'rejected')}>
+                          <button className="ghost" onClick={() => handleCandidateDecision(candidate.id, 'rejected')}>
                             Отклонить
+                          </button>
+                          <button className="danger" onClick={() => handleDeleteCandidate(candidate.id)}>
+                            Удалить
                           </button>
                         </div>
                       </div>
                     );
                   })}
+                  {candidates.length === 0 && <div className="item">Кандидатов на модерации нет.</div>}
                 </div>
               </div>
             )}
@@ -789,7 +930,19 @@ export function App() {
                         ))}
                       </div>
                     </div>
-                    <input name="kind" placeholder="Тип" defaultValue="places" />
+
+                    <div className="field-group">
+                      <label>Тип данных</label>
+                      <div className="chip-group">
+                        {IMPORT_KIND_OPTIONS.map((option) => (
+                          <label key={option.value} className="chip chip-radio">
+                            <input type="radio" name="kind" value={option.value} defaultChecked={option.value === 'place'} />
+                            {option.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
                     <input name="file" type="file" accept=".csv,text/csv" required />
                     <div className="muted small">
                       Поддерживаются CSV в UTF-8 или CP1251, разделители: запятая, точка с запятой или tab.
@@ -805,7 +958,7 @@ export function App() {
                         <div>
                           <strong>{job.file_name || 'Без файла'}</strong>
                           <div className="muted">
-                            {job.source} · {job.kind} · {job.status}
+                            {formatSource(job.source)} · {formatCategory(job.kind)} · {job.status}
                           </div>
                           {job.stats_json && (
                             <div className="muted small">
