@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     jwt_alg: str = Field(alias="JWT_ALG", default="HS256")
     place_images_dir: str = Field(alias="PLACE_IMAGES_DIR", default="/app/place-images")
     place_images_base_url: str = Field(alias="PLACE_IMAGES_BASE_URL", default="/media/places")
+    city_data_path: str = Field(alias="CITY_DATA_PATH", default="/app/data/russian_cities.json")
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_PATH),

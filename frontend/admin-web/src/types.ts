@@ -54,3 +54,16 @@ export type AdminImportJob = {
   created_by?: string | null;
   stats_json?: Record<string, unknown>;
 };
+
+export type CitySuggestion = {
+  city: string;
+  region?: string | null;
+  district?: string | null;
+  country: string;
+  display_name: string;
+  lat?: number | null;
+  lon?: number | null;
+  population?: number | null;
+  type?: string | null;
+  source: string;
+};

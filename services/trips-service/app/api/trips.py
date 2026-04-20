@@ -140,6 +140,7 @@ def create_trip(
     new_trip = Trip(
         title=trip.title,
         description=trip.description,
+        destination_city=trip.destination_city.strip() if trip.destination_city else None,
         start_date=trip.start_date,
         end_date=trip.end_date,
         user_id=user_id,

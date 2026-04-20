@@ -67,6 +67,19 @@ class PlaceListResponse(BaseModel):
     total: int
 
 
+class CitySuggestionOut(BaseModel):
+    city: str
+    region: str | None = None
+    district: str | None = None
+    country: str = "Россия"
+    display_name: str
+    lat: float | None = None
+    lon: float | None = None
+    population: int | None = None
+    type: str | None = None
+    source: str
+
+
 class PlaceCandidateOut(BaseModel):
     id: str
     source: str

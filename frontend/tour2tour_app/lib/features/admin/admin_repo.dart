@@ -1,6 +1,29 @@
 import '../../api/api_client.dart';
 import 'package:dio/dio.dart';
 
+class CitySuggestion {
+  final String city;
+  final String? region;
+  final String displayName;
+  final String source;
+
+  const CitySuggestion({
+    required this.city,
+    required this.region,
+    required this.displayName,
+    required this.source,
+  });
+
+  factory CitySuggestion.fromJson(Map<String, dynamic> json) {
+    return CitySuggestion(
+      city: json['city']?.toString() ?? '',
+      region: json['region']?.toString(),
+      displayName: (json['display_name'] ?? json['city'] ?? '').toString(),
+      source: json['source']?.toString() ?? '',
+    );
+  }
+}
+
 class AdminPlace {
   final String id;
   final String source;
@@ -160,6 +183,24 @@ class AdminRepo {
   Future<AdminPlace> updatePlace(String id, Map<String, dynamic> payload) async {
     final res = await api.dio.patch('/places/$id', data: payload);
     return AdminPlace.fromJson(Map<String, dynamic>.from(res.data as Map));
+  }
+
+  Future<List<CitySuggestion>> suggestCities(String query, {int limit = 8}) async {
+    final normalized = query.trim();
+    if (normalized.length < 2) return const [];
+
+    final res = await api.dio.get(
+      '/places/cities/suggest',
+      queryParameters: {
+        'q': normalized,
+        'limit': limit,
+      },
+    );
+    final items = (res.data as List?) ?? const [];
+    return items
+        .whereType<Map>()
+        .map((item) => CitySuggestion.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
   }
 
   Future<void> deletePlace(String id) async {

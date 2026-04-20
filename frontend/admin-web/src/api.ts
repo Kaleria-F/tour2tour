@@ -2,6 +2,7 @@ import type {
   AdminImportJob,
   AdminPlace,
   AdminPlaceCandidate,
+  CitySuggestion,
   TokenResponse,
   UserMe,
 } from './types';
@@ -148,4 +149,9 @@ export async function uploadPlaceImage(token: string, file: File): Promise<{ url
   const form = new FormData();
   form.append('file', file);
   return request<{ url: string }>('/places/upload-image', { method: 'POST', body: form }, token);
+}
+
+export async function suggestCities(query: string, token?: string): Promise<CitySuggestion[]> {
+  const params = new URLSearchParams({ q: query, limit: '8' });
+  return request<CitySuggestion[]>(`/places/cities/suggest?${params.toString()}`, { method: 'GET' }, token);
 }

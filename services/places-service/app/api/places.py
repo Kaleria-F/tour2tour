@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import csv
 import io
@@ -6,14 +6,16 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps import require_admin
 from app.core.config import settings
 from app.db.deps import get_db
 from app.models.place import Place, PlaceCandidate, PlaceImportJob, PlaceTag
+from app.services.city_index import load_city_records
 from app.schemas.place import (
+    CitySuggestionOut,
     ImportJobCreate,
     ImportJobOut,
     PlaceCandidateDecision,
@@ -25,6 +27,96 @@ from app.schemas.place import (
 )
 
 router = APIRouter(prefix="/places", tags=["places"])
+
+
+def _normalize_city_query(value: str | None) -> str:
+    if not value:
+        return ""
+    return " ".join(value.casefold().replace("С‘", "Рµ").split())
+
+
+def _search_city_records(
+    query: str,
+    limit: int,
+    db: Session,
+) -> list[CitySuggestionOut]:
+    normalized_query = _normalize_city_query(query)
+    if len(normalized_query) < 2:
+        return []
+
+    ranked_items: list[tuple[int, int, CitySuggestionOut]] = []
+    seen: set[str] = set()
+
+    for record in load_city_records(settings.city_data_path):
+        city = str(record.get("city") or "").strip()
+        region = str(record.get("region") or "").strip()
+        display_name = str(record.get("display_name") or city).strip()
+        searchable = [
+            _normalize_city_query(city),
+            _normalize_city_query(region),
+            _normalize_city_query(display_name),
+        ]
+        if not any(normalized_query in candidate for candidate in searchable if candidate):
+            continue
+        match_priority = 3
+        normalized_city = _normalize_city_query(city)
+        normalized_display = _normalize_city_query(display_name)
+        if normalized_city.startswith(normalized_query):
+            match_priority = 0
+        elif normalized_display.startswith(normalized_query):
+            match_priority = 1
+        elif normalized_query == normalized_city:
+            match_priority = 0
+        key = f"{_normalize_city_query(city)}|{_normalize_city_query(region)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        ranked_items.append(
+            (
+                match_priority,
+                -int(record.get("population") or 0),
+                CitySuggestionOut(
+                city=city,
+                region=region or None,
+                district=str(record.get("district") or "").strip() or None,
+                country=str(record.get("country") or "Р РѕСЃСЃРёСЏ"),
+                display_name=display_name,
+                lat=record.get("lat"),
+                lon=record.get("lon"),
+                population=record.get("population"),
+                type=str(record.get("type") or "").strip() or None,
+                source="city_dataset",
+                ),
+            )
+        )
+
+    ranked_items.sort(key=lambda item: (item[0], item[1], _normalize_city_query(item[2].city)))
+    items = [item[2] for item in ranked_items[:limit]]
+    if len(items) >= limit:
+        return items
+
+    known_cities = db.execute(
+        select(distinct(Place.city)).where(Place.city.is_not(None)).order_by(Place.city.asc()).limit(500)
+    ).scalars().all()
+    for city in known_cities:
+        normalized_city = _normalize_city_query(city)
+        if normalized_query not in normalized_city:
+            continue
+        key = f"{normalized_city}|"
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(
+            CitySuggestionOut(
+                city=city,
+                display_name=city,
+                source="places_db",
+            )
+        )
+        if len(items) >= limit:
+            break
+
+    return items
 
 
 def _place_query():
@@ -250,6 +342,15 @@ def create_place(
     db.commit()
     place = db.execute(_place_query().where(Place.id == place.id)).scalar_one()
     return _to_place_out(place)
+
+
+@router.get("/cities/suggest", response_model=list[CitySuggestionOut])
+def suggest_cities(
+    q: str = Query(..., min_length=2, max_length=128),
+    limit: int = Query(default=8, ge=1, le=20),
+    db: Session = Depends(get_db),
+):
+    return _search_city_records(q, limit, db)
 
 
 @router.get("/candidates/list", response_model=list[PlaceCandidateOut])
@@ -533,3 +634,4 @@ def delete_place(
         raise HTTPException(status_code=404, detail="Place not found")
     db.delete(place)
     db.commit()
+

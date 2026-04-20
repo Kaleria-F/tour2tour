@@ -168,6 +168,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                               extra: {
                                                 'id': trip.id,
                                                 'title': trip.title,
+                                                'destination_city': trip.destinationCity,
                                                 'start_date': trip.startDate,
                                                 'end_date': trip.endDate,
                                               },

@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -80,71 +80,155 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
     final tagsCtrl = TextEditingController(
       text: place == null ? '{"history": 5, "culture": 4}' : jsonEncode(place.tags),
     );
+    List<CitySuggestion> citySuggestions = const [];
+    int cityRequestId = 0;
 
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF171126),
-          title: Text(
-            place == null ? 'Новое место' : 'Редактировать место',
-            style: const TextStyle(color: Colors.white),
-          ),
-          content: SizedBox(
-            width: 480,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _adminField(nameCtrl, 'Название'),
-                  _adminField(cityCtrl, 'Город'),
-                  _adminField(addressCtrl, 'Адрес'),
-                  _adminField(categoryCtrl, 'Категория'),
-                  _adminField(subtypeCtrl, 'Подкатегория'),
-                  _adminField(sourceCtrl, 'Источник'),
-                  _adminField(priceCtrl, 'Уровень цены'),
-                  _adminField(ratingCtrl, 'Рейтинг'),
-                  _adminField(descriptionCtrl, 'Описание', maxLines: 4),
-                  _adminField(tagsCtrl, 'Теги JSON', maxLines: 4),
-                ],
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> loadCitySuggestions(String value) async {
+              final query = value.trim();
+              if (query.length < 2) {
+                setDialogState(() => citySuggestions = const []);
+                return;
+              }
+
+              final requestId = ++cityRequestId;
+              try {
+                final items = await widget.repo.suggestCities(query);
+                if (!context.mounted || requestId != cityRequestId) return;
+                setDialogState(() => citySuggestions = items);
+              } catch (_) {
+                if (!context.mounted || requestId != cityRequestId) return;
+                setDialogState(() => citySuggestions = const []);
+              }
+            }
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF171126),
+              title: Text(
+                place == null ? 'Новое место' : 'Редактировать место',
+                style: const TextStyle(color: Colors.white),
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Отмена'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                try {
-                  final payload = {
-                    'name': nameCtrl.text.trim(),
-                    'city': cityCtrl.text.trim(),
-                    'address': addressCtrl.text.trim(),
-                    'category': categoryCtrl.text.trim(),
-                    'subcategory': subtypeCtrl.text.trim(),
-                    'source': sourceCtrl.text.trim(),
-                    'description': descriptionCtrl.text.trim().isEmpty ? null : descriptionCtrl.text.trim(),
-                    'price_level': priceCtrl.text.trim().isEmpty ? null : priceCtrl.text.trim(),
-                    'rating': double.tryParse(ratingCtrl.text.trim()),
-                    'status': place?.status ?? 'approved',
-                    'tags': Map<String, dynamic>.from(jsonDecode(tagsCtrl.text.trim()) as Map),
-                  };
-                  if (place == null) {
-                    await widget.repo.createPlace(payload);
-                  } else {
-                    await widget.repo.updatePlace(place.id, payload);
-                  }
-                  if (!context.mounted) return;
-                  Navigator.of(context).pop(true);
-                } catch (e) {
-                  showAuthError(context, 'Не удалось сохранить место: $e');
-                }
-              },
-              child: const Text('Сохранить'),
-            ),
-          ],
+              content: SizedBox(
+                width: 480,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _adminField(nameCtrl, 'Название'),
+                      Autocomplete<CitySuggestion>(
+                        displayStringForOption: (option) => option.city,
+                        optionsBuilder: (textEditingValue) {
+                          final query = textEditingValue.text.trim().toLowerCase();
+                          if (query.length < 2) {
+                            return const Iterable<CitySuggestion>.empty();
+                          }
+                          return citySuggestions.where((item) {
+                            return item.city.toLowerCase().contains(query) ||
+                                item.displayName.toLowerCase().contains(query);
+                          });
+                        },
+                        onSelected: (option) {
+                          cityCtrl.value = TextEditingValue(
+                            text: option.city,
+                            selection: TextSelection.collapsed(offset: option.city.length),
+                          );
+                        },
+                        fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                          if (controller.text != cityCtrl.text) {
+                            controller.value = cityCtrl.value;
+                          }
+                          return _adminField(
+                            controller,
+                            'Город / населенный пункт',
+                            focusNode: focusNode,
+                            onChanged: (value) {
+                              cityCtrl.value = controller.value;
+                              loadCitySuggestions(value);
+                            },
+                          );
+                        },
+                        optionsViewBuilder: (context, onSelected, options) {
+                          final items = options.toList();
+                          return Align(
+                            alignment: Alignment.topLeft,
+                            child: Material(
+                              elevation: 8,
+                              borderRadius: BorderRadius.circular(12),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 420, maxHeight: 240),
+                                child: ListView.separated(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  shrinkWrap: true,
+                                  itemCount: items.length,
+                                  separatorBuilder: (_, __) => const Divider(height: 1),
+                                  itemBuilder: (context, index) {
+                                    final option = items[index];
+                                    return ListTile(
+                                      dense: true,
+                                      title: Text(option.city),
+                                      subtitle: Text(option.displayName),
+                                      onTap: () => onSelected(option),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      _adminField(addressCtrl, 'Адрес'),
+                      _adminField(categoryCtrl, 'Категория'),
+                      _adminField(subtypeCtrl, 'Подкатегория'),
+                      _adminField(sourceCtrl, 'Источник'),
+                      _adminField(priceCtrl, 'Уровень цены'),
+                      _adminField(ratingCtrl, 'Рейтинг'),
+                      _adminField(descriptionCtrl, 'Описание', maxLines: 4),
+                      _adminField(tagsCtrl, 'Теги JSON', maxLines: 4),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Отмена'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    try {
+                      final payload = {
+                        'name': nameCtrl.text.trim(),
+                        'city': cityCtrl.text.trim(),
+                        'address': addressCtrl.text.trim(),
+                        'category': categoryCtrl.text.trim(),
+                        'subcategory': subtypeCtrl.text.trim(),
+                        'source': sourceCtrl.text.trim(),
+                        'description': descriptionCtrl.text.trim().isEmpty ? null : descriptionCtrl.text.trim(),
+                        'price_level': priceCtrl.text.trim().isEmpty ? null : priceCtrl.text.trim(),
+                        'rating': double.tryParse(ratingCtrl.text.trim()),
+                        'status': place?.status ?? 'approved',
+                        'tags': Map<String, dynamic>.from(jsonDecode(tagsCtrl.text.trim()) as Map),
+                      };
+                      if (place == null) {
+                        await widget.repo.createPlace(payload);
+                      } else {
+                        await widget.repo.updatePlace(place.id, payload);
+                      }
+                      if (!context.mounted) return;
+                      Navigator.of(context).pop(true);
+                    } catch (e) {
+                      showAuthError(context, 'Не удалось сохранить место: $e');
+                    }
+                  },
+                  child: const Text('Сохранить'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -177,14 +261,14 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
       builder: (context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF171126),
-          title: const Text('Создать import job', style: TextStyle(color: Colors.white)),
+          title: const Text('РЎРѕР·РґР°С‚СЊ import job', style: TextStyle(color: Colors.white)),
           content: SizedBox(
             width: 420,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _adminField(sourceCtrl, 'Источник'),
-                _adminField(kindCtrl, 'Тип'),
+                _adminField(sourceCtrl, 'РСЃС‚РѕС‡РЅРёРє'),
+                _adminField(kindCtrl, 'РўРёРї'),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: OutlinedButton.icon(
@@ -199,11 +283,11 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                       fileName = file!.name;
                       fileBytes = file.bytes!;
                       if (context.mounted) {
-                        showAuthSuccess(context, 'Файл выбран: $fileName');
+                        showAuthSuccess(context, 'Р¤Р°Р№Р» РІС‹Р±СЂР°РЅ: $fileName');
                       }
                     },
                     icon: const Icon(Icons.attach_file_rounded),
-                    label: Text(fileName == null ? 'Выбрать CSV' : fileName!),
+                    label: Text(fileName == null ? 'Р’С‹Р±СЂР°С‚СЊ CSV' : fileName!),
                   ),
                 ),
               ],
@@ -212,13 +296,13 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Отмена'),
+              child: const Text('РћС‚РјРµРЅР°'),
             ),
             ElevatedButton(
               onPressed: () async {
                 try {
                   if (fileBytes == null || fileName == null) {
-                    showAuthError(context, 'Сначала выберите CSV файл');
+                    showAuthError(context, 'РЎРЅР°С‡Р°Р»Р° РІС‹Р±РµСЂРёС‚Рµ CSV С„Р°Р№Р»');
                     return;
                   }
                   await widget.repo.uploadCsvImport(
@@ -231,10 +315,10 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                   if (!context.mounted) return;
                   Navigator.of(context).pop(true);
                 } catch (e) {
-                  showAuthError(context, 'Не удалось создать import job: $e');
+                  showAuthError(context, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ import job: $e');
                 }
               },
-              child: const Text('Создать'),
+              child: const Text('РЎРѕР·РґР°С‚СЊ'),
             ),
           ],
         );
@@ -269,7 +353,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                             Row(
                               children: [
                                 Text(
-                                  'Админка рекомендаций',
+                                  'РђРґРјРёРЅРєР° СЂРµРєРѕРјРµРЅРґР°С†РёР№',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 30,
@@ -280,7 +364,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                                 TextButton.icon(
                                   onPressed: () => context.go('/profile'),
                                   icon: const Icon(Icons.arrow_back_rounded),
-                                  label: const Text('В профиль'),
+                                  label: const Text('Р’ РїСЂРѕС„РёР»СЊ'),
                                 ),
                               ],
                             ),
@@ -289,7 +373,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                               Expanded(
                                 child: Center(
                                   child: Text(
-                                    'Доступ запрещен. Требуется роль администратора.',
+                                    'Р”РѕСЃС‚СѓРї Р·Р°РїСЂРµС‰РµРЅ. РўСЂРµР±СѓРµС‚СЃСЏ СЂРѕР»СЊ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°.',
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.9),
                                       fontSize: 16,
@@ -310,9 +394,9 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                                   labelColor: Colors.white,
                                   unselectedLabelColor: Colors.white60,
                                   tabs: const [
-                                    Tab(text: 'Места'),
-                                    Tab(text: 'Кандидаты'),
-                                    Tab(text: 'Импорты'),
+                                    Tab(text: 'РњРµСЃС‚Р°'),
+                                    Tab(text: 'РљР°РЅРґРёРґР°С‚С‹'),
+                                    Tab(text: 'РРјРїРѕСЂС‚С‹'),
                                   ],
                                 ),
                               ),
@@ -345,12 +429,12 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
         children: [
           Row(
             children: [
-              const Text('Каталог мест', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+              const Text('РљР°С‚Р°Р»РѕРі РјРµСЃС‚', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
               const Spacer(),
               ElevatedButton.icon(
                 onPressed: () => _openPlaceDialog(),
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('Добавить место'),
+                label: const Text('Р”РѕР±Р°РІРёС‚СЊ РјРµСЃС‚Рѕ'),
               ),
             ],
           ),
@@ -386,7 +470,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        place.address ?? 'Без адреса',
+                        place.address ?? 'Р‘РµР· Р°РґСЂРµСЃР°',
                         style: TextStyle(color: Colors.white.withOpacity(0.78)),
                       ),
                       const SizedBox(height: 8),
@@ -394,7 +478,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _pill('★ ${(place.rating ?? 0).toStringAsFixed(1)}'),
+                          _pill('в… ${(place.rating ?? 0).toStringAsFixed(1)}'),
                           _pill(place.priceLevel ?? 'price?'),
                           _pill(place.status),
                         ],
@@ -405,11 +489,11 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         children: [
                           OutlinedButton(
                             onPressed: () => _openPlaceDialog(place),
-                            child: const Text('Редактировать'),
+                            child: const Text('Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ'),
                           ),
                           OutlinedButton(
                             onPressed: () => _deletePlace(place),
-                            child: const Text('Удалить'),
+                            child: const Text('РЈРґР°Р»РёС‚СЊ'),
                           ),
                         ],
                       ),
@@ -430,7 +514,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
         children: [
           const Align(
             alignment: Alignment.centerLeft,
-            child: Text('Кандидаты на модерацию', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+            child: Text('РљР°РЅРґРёРґР°С‚С‹ РЅР° РјРѕРґРµСЂР°С†РёСЋ', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(height: 14),
           Expanded(
@@ -453,7 +537,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         children: [
                           Expanded(
                             child: Text(
-                              candidate.payload['name']?.toString() ?? 'Без названия',
+                              candidate.payload['name']?.toString() ?? 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ',
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
                             ),
                           ),
@@ -473,11 +557,11 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         children: [
                           ElevatedButton(
                             onPressed: () => _decideCandidate(candidate, 'approved'),
-                            child: const Text('Одобрить'),
+                            child: const Text('РћРґРѕР±СЂРёС‚СЊ'),
                           ),
                           OutlinedButton(
                             onPressed: () => _decideCandidate(candidate, 'rejected'),
-                            child: const Text('Отклонить'),
+                            child: const Text('РћС‚РєР»РѕРЅРёС‚СЊ'),
                           ),
                         ],
                       ),
@@ -498,12 +582,12 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
         children: [
           Row(
             children: [
-              const Text('Импорты', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+              const Text('РРјРїРѕСЂС‚С‹', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
               const Spacer(),
               ElevatedButton.icon(
                 onPressed: _openImportDialog,
                 icon: const Icon(Icons.upload_file_rounded),
-                label: const Text('Новый import job'),
+                label: const Text('РќРѕРІС‹Р№ import job'),
               ),
             ],
           ),
@@ -527,16 +611,16 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(job.fileName ?? 'Без файла', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                            Text(job.fileName ?? 'Р‘РµР· С„Р°Р№Р»Р°', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                             const SizedBox(height: 4),
                             Text(
-                              '${job.source} · ${job.kind}',
+                              '${job.source} В· ${job.kind}',
                               style: TextStyle(color: Colors.white.withOpacity(0.78)),
                             ),
                             if (job.stats.isNotEmpty) ...[
                               const SizedBox(height: 6),
                               Text(
-                                'Всего: ${job.stats['rows_total'] ?? 0} · Создано: ${job.stats['candidates_created'] ?? 0} · Ошибок: ${job.stats['rows_failed'] ?? 0}',
+                                'Р’СЃРµРіРѕ: ${job.stats['rows_total'] ?? 0} В· РЎРѕР·РґР°РЅРѕ: ${job.stats['candidates_created'] ?? 0} В· РћС€РёР±РѕРє: ${job.stats['rows_failed'] ?? 0}',
                                 style: TextStyle(color: Colors.white.withOpacity(0.72), fontSize: 12),
                               ),
                             ],
@@ -583,12 +667,14 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
     );
   }
 
-  Widget _adminField(TextEditingController controller, String label, {int maxLines = 1}) {
+  Widget _adminField(TextEditingController controller, String label, {int maxLines = 1, FocusNode? focusNode, ValueChanged<String>? onChanged}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
         maxLines: maxLines,
+        onChanged: onChanged,
         style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           labelText: label,
@@ -621,3 +707,4 @@ class _NightBackground extends StatelessWidget {
     );
   }
 }
+

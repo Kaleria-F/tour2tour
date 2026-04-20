@@ -32,10 +32,18 @@ class ImpressionCreate(BaseModel):
     context: str = Field(default="recommendation", max_length=32)
 
 
+class PlaceSignal(BaseModel):
+    score: float = 0.0
+    actions: dict[str, int] = Field(default_factory=dict)
+    last_action: str | None = None
+    last_interacted_at: datetime | None = None
+
+
 class UserInteractionSummary(BaseModel):
     user_id: str
     actions: dict[str, int]
     top_places: dict[str, float]
+    place_signals: dict[str, PlaceSignal] = Field(default_factory=dict)
 
 
 class PlaceInteractionSummary(BaseModel):

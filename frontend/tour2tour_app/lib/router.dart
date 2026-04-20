@@ -99,11 +99,13 @@ GoRouter buildRouter() {
               : <String, dynamic>{};
           final title = (payload['title'] ?? 'Путешествие').toString();
           final tripId = payload['id'] is int ? payload['id'] as int : null;
+          final destinationCity = payload['destination_city']?.toString();
           final startDate = payload['start_date'] is DateTime ? payload['start_date'] as DateTime : null;
           final endDate = payload['end_date'] is DateTime ? payload['end_date'] as DateTime : null;
           return TripWorkspacePage(
             tripTitle: title,
             tripId: tripId,
+            destinationCity: destinationCity,
             startDate: startDate,
             endDate: endDate,
             tripsRepo: trips,

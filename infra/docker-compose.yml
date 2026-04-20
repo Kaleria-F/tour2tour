@@ -185,6 +185,7 @@ services:
       JWT_ALG: HS256
       PLACE_IMAGES_DIR: /app/place-images
       PLACE_IMAGES_BASE_URL: /media/places
+      CITY_DATA_PATH: /app/data/russian_cities.json
     expose:
       - "8000"
     restart: unless-stopped

@@ -12,12 +12,13 @@ import {
   listPlaces,
   login,
   setStoredToken,
+  suggestCities,
   updatePlace,
   uploadImportCsv,
   uploadPlaceImage,
   verify2fa,
 } from './api';
-import type { AdminImportJob, AdminPlace, AdminPlaceCandidate, UserMe } from './types';
+import type { AdminImportJob, AdminPlace, AdminPlaceCandidate, CitySuggestion, UserMe } from './types';
 
 type TabKey = 'places' | 'candidates' | 'imports';
 
@@ -202,6 +203,7 @@ export function App() {
   const [placeForm, setPlaceForm] = useState<PlaceFormState>(EMPTY_FORM);
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([]);
   const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([]);
 
   const selectedCategory = useMemo(
     () => CATEGORY_OPTIONS.find((item) => item.value === placeForm.category) ?? CATEGORY_OPTIONS[0],
@@ -235,6 +237,22 @@ export function App() {
       tags: placeEditor.tags ?? {},
     });
   }, [placeEditor]);
+
+  useEffect(() => {
+    const query = placeForm.city.trim();
+    if (query.length < 2) {
+      setCitySuggestions([]);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void suggestCities(query, token ?? undefined)
+        .then(setCitySuggestions)
+        .catch(() => setCitySuggestions([]));
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [placeForm.city, token]);
 
   async function refreshAll(activeToken: string) {
     setLoading(true);
@@ -675,8 +693,18 @@ export function App() {
                       value={placeForm.city}
                       onChange={(event) => setPlaceForm((current) => ({ ...current, city: event.target.value }))}
                       placeholder="Город"
+                      list="city-suggestions"
                       required
                     />
+                    <datalist id="city-suggestions">
+                      {citySuggestions.map((suggestion) => (
+                        <option
+                          key={`${suggestion.city}-${suggestion.region ?? ''}`}
+                          value={suggestion.city}
+                          label={suggestion.display_name}
+                        />
+                      ))}
+                    </datalist>
                     <input
                       value={placeForm.address}
                       onChange={(event) => setPlaceForm((current) => ({ ...current, address: event.target.value }))}

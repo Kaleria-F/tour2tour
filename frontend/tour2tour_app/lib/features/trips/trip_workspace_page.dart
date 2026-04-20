@@ -14,6 +14,7 @@ import 'trips_repo.dart';
 class TripWorkspacePage extends StatefulWidget {
   final String tripTitle;
   final int? tripId;
+  final String? destinationCity;
   final DateTime? startDate;
   final DateTime? endDate;
   final TripsRepo tripsRepo;
@@ -33,6 +34,7 @@ class TripWorkspacePage extends StatefulWidget {
     required this.interactionsRepo,
     required this.profileRepo,
     this.tripId,
+    this.destinationCity,
     this.startDate,
     this.endDate,
   });
@@ -197,6 +199,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           _stageSuggestions = const [];
         });
       }
+      await _loadRecommendations();
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -982,6 +985,61 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
   }
 
+  String? _guessRecommendationCity() {
+    if ((widget.destinationCity ?? '').trim().isNotEmpty) {
+      return widget.destinationCity!.trim();
+    }
+
+    final scores = <String, int>{};
+
+    void addCandidate(String? raw, {int weight = 1}) {
+      if (raw == null) return;
+      final normalizedRaw = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (normalizedRaw.isEmpty) return;
+
+      final parts = normalizedRaw
+          .split(RegExp(r'[,;/|]'))
+          .map((part) => part.trim())
+          .where((part) => part.isNotEmpty)
+          .toList();
+
+      for (var i = 0; i < parts.length; i++) {
+        final part = parts[i];
+        if (part.length < 3 || part.length > 40) continue;
+        if (!RegExp(r'[A-Za-zА-Яа-яЁё]').hasMatch(part)) continue;
+        if (RegExp(r'^\d').hasMatch(part)) continue;
+        if (RegExp(
+          r'^(улица|ул\.?|проспект|пр\.?|дом|д\.?|street|st\.?)$',
+          caseSensitive: false,
+        ).hasMatch(part)) {
+          continue;
+        }
+        final current = scores[part] ?? 0;
+        scores[part] = current + (i == 0 ? weight + 2 : weight);
+      }
+    }
+
+    for (final stage in _stages) {
+      addCandidate(stage.address, weight: 3);
+      addCandidate(stage.startLocation, weight: 2);
+      addCandidate(stage.endLocation, weight: 2);
+    }
+
+    final title = widget.tripTitle.trim();
+    if (title.isNotEmpty && title.split(RegExp(r'\s+')).length <= 4) {
+      addCandidate(title, weight: 1);
+    }
+
+    if (scores.isEmpty) return null;
+    final sorted = scores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return sorted.first.key;
+  }
+
+  bool _isNearRouteContext() {
+    return _stages.isNotEmpty;
+  }
+
   Future<void> _loadRecommendations() async {
     setState(() {
       _recommendationsLoading = true;
@@ -993,8 +1051,11 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       ]);
       final profile = results[0] as SurveyProfile;
       final me = results[1] as UserMe;
+      final recommendationCity = _guessRecommendationCity();
       final items = await widget.recommendationsRepo.getPersonalized(
         profile: profile,
+        city: recommendationCity,
+        nearRoute: _isNearRouteContext(),
         userId: me.id.toString(),
       );
       if (!mounted) return;

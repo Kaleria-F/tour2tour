@@ -3,12 +3,14 @@ import '../../api/api_client.dart';
 class TripSummary {
   final int id;
   final String title;
+  final String? destinationCity;
   final DateTime startDate;
   final DateTime endDate;
 
   TripSummary({
     required this.id,
     required this.title,
+    required this.destinationCity,
     required this.startDate,
     required this.endDate,
   });
@@ -17,8 +19,60 @@ class TripSummary {
     return TripSummary(
       id: json['id'] as int,
       title: (json['title'] ?? '').toString(),
+      destinationCity: json['destination_city']?.toString(),
       startDate: DateTime.parse((json['start_date'] ?? '').toString()),
       endDate: DateTime.parse((json['end_date'] ?? '').toString()),
+    );
+  }
+}
+
+class CitySuggestion {
+  final String city;
+  final String? region;
+  final String? district;
+  final String country;
+  final String displayName;
+  final double? latitude;
+  final double? longitude;
+  final int? population;
+  final String? type;
+  final String source;
+
+  const CitySuggestion({
+    required this.city,
+    required this.region,
+    required this.district,
+    required this.country,
+    required this.displayName,
+    required this.latitude,
+    required this.longitude,
+    required this.population,
+    required this.type,
+    required this.source,
+  });
+
+  factory CitySuggestion.fromJson(Map<String, dynamic> json) {
+    double? parseDouble(dynamic raw) {
+      if (raw == null) return null;
+      return double.tryParse(raw.toString());
+    }
+
+    int? parseInt(dynamic raw) {
+      if (raw == null) return null;
+      return int.tryParse(raw.toString());
+    }
+
+    return CitySuggestion(
+      city: (json['city'] ?? '').toString(),
+      region: json['region']?.toString(),
+      district: json['district']?.toString(),
+      country: (json['country'] ?? 'Россия').toString(),
+      displayName: (json['display_name'] ?? json['city'] ?? '').toString(),
+      latitude: parseDouble(json['lat']),
+      longitude: parseDouble(json['lon']),
+      population: parseInt(json['population']),
+      type: json['type']?.toString(),
+      source: (json['source'] ?? '').toString(),
     );
   }
 }
@@ -192,6 +246,7 @@ class TripsRepo {
   Future<TripSummary?> createTrip({
     required String title,
     String? description,
+    String? destinationCity,
     required DateTime startDate,
     required DateTime endDate,
   }) async {
@@ -200,6 +255,7 @@ class TripsRepo {
       data: {
         'title': title,
         'description': description,
+        'destination_city': destinationCity,
         'start_date': startDate.toIso8601String().split('T')[0],
         'end_date': endDate.toIso8601String().split('T')[0],
       },
@@ -216,6 +272,24 @@ class TripsRepo {
     return data
         .whereType<Map>()
         .map((raw) => TripSummary.fromJson(Map<String, dynamic>.from(raw)))
+        .toList();
+  }
+
+  Future<List<CitySuggestion>> suggestCities(String query, {int limit = 8}) async {
+    final normalized = query.trim();
+    if (normalized.length < 2) return [];
+    final res = await api.dio.get(
+      '/places/cities/suggest',
+      queryParameters: {
+        'q': normalized,
+        'limit': limit,
+      },
+    );
+    final data = res.data;
+    if (data is! List) return [];
+    return data
+        .whereType<Map>()
+        .map((raw) => CitySuggestion.fromJson(Map<String, dynamic>.from(raw)))
         .toList();
   }
 
