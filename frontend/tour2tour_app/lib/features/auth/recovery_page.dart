@@ -1,9 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import 'auth_chrome.dart';
 import 'auth_repo.dart';
 import 'auth_ui.dart';
 
@@ -20,7 +19,9 @@ class _RecoveryPageState extends State<RecoveryPage> {
   final _email = TextEditingController();
   final _code = TextEditingController();
   final _password = TextEditingController();
+
   bool _codeRequested = false;
+  bool _obscure = true;
   bool _loading = false;
 
   @override
@@ -32,14 +33,15 @@ class _RecoveryPageState extends State<RecoveryPage> {
   }
 
   Future<void> _requestCode() async {
-    if (!RegExp(r'^\S+@\S+\.\S+$').hasMatch(_email.text.trim())) {
+    final email = _email.text.trim();
+    if (!RegExp(r'^\S+@\S+\.\S+$').hasMatch(email)) {
       showAuthError(context, 'Введите корректный email.');
       return;
     }
 
     setState(() => _loading = true);
     try {
-      await widget.auth.requestRecoveryCode(_email.text.trim());
+      await widget.auth.requestRecoveryCode(email);
       if (!mounted) return;
       setState(() => _codeRequested = true);
       showAuthSuccess(context, 'Код восстановления отправлен на email.');
@@ -81,197 +83,97 @@ class _RecoveryPageState extends State<RecoveryPage> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      body: Stack(
-        children: [
-          const _NightBackground(),
-          SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          _Logo(cs: cs),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Text(
-                              'Восстановление пароля',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 20,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => context.go('/login'),
-                            icon: const Icon(Icons.close_rounded, color: Colors.white),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: Colors.white.withOpacity(0.12)),
-                            ),
-                            child: Column(
-                              children: [
-                                TextField(
-                                  controller: _email,
-                                  enabled: !_codeRequested,
-                                  style: const TextStyle(color: Colors.white),
-                                  decoration: InputDecoration(
-                                    labelText: 'Email',
-                                    labelStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
-                                    border: const OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                if (!_codeRequested)
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton(
-                                      onPressed: _loading ? null : _requestCode,
-                                      child: _loading
-                                          ? const SizedBox(
-                                              width: 18,
-                                              height: 18,
-                                              child: CircularProgressIndicator(strokeWidth: 2),
-                                            )
-                                          : const Text('Отправить код'),
-                                    ),
-                                  )
-                                else ...[
-                                  TextField(
-                                    controller: _code,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly,
-                                      LengthLimitingTextInputFormatter(6),
-                                    ],
-                                    style: const TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(
-                                      labelText: 'Код из email',
-                                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
-                                      border: const OutlineInputBorder(),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  TextField(
-                                    controller: _password,
-                                    obscureText: true,
-                                    style: const TextStyle(color: Colors.white),
-                                    decoration: InputDecoration(
-                                      labelText: 'Новый пароль',
-                                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
-                                      border: const OutlineInputBorder(),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton(
-                                      onPressed: _loading ? null : _confirm,
-                                      child: _loading
-                                          ? const SizedBox(
-                                              width: 18,
-                                              height: 18,
-                                              child: CircularProgressIndicator(strokeWidth: 2),
-                                            )
-                                          : const Text('Подтвердить восстановление'),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                    ],
+    return AuthScaffold(
+      maxWidth: 560,
+      padding: const EdgeInsets.fromLTRB(6, 16, 6, 18),
+      child: AuthGlassCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const AuthBrandMark(title: 'Typ2Typ'),
+            const SizedBox(height: 22),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    _codeRequested ? 'Новый пароль' : 'Восстановление',
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.visible,
+                    style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w300,
+                      height: 0.92,
+                      color: Colors.black,
+                      letterSpacing: -1.0,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                AuthPillButton(
+                  label: 'Войти',
+                  icon: Icons.login_rounded,
+                  minimumSize: const Size(92, 38),
+                  fontSize: 12,
+                  iconSize: 13,
+                  onPressed: () => context.go('/login'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            AuthTextField(
+              controller: _email,
+              hintText: 'почта',
+              icon: Icons.mail_outline_rounded,
+              keyboardType: TextInputType.emailAddress,
+              enabled: !_codeRequested,
+            ),
+            if (_codeRequested) ...[
+              const SizedBox(height: 14),
+              AuthTextField(
+                controller: _code,
+                hintText: 'код из письма',
+                icon: Icons.mark_email_read_outlined,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(6),
+                ],
+                maxLength: 6,
+              ),
+              const SizedBox(height: 14),
+              AuthTextField(
+                controller: _password,
+                hintText: 'новый пароль',
+                icon: Icons.lock_reset_rounded,
+                obscureText: _obscure,
+                suffix: IconButton(
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                  icon: Icon(
+                    _obscure
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    color: const Color(0xFF2F241F),
+                    size: 22,
                   ),
                 ),
               ),
+            ],
+            const SizedBox(height: 18),
+            Align(
+              alignment: Alignment.centerRight,
+              child: AuthOrganicButton(
+                label: _codeRequested ? 'Готово' : null,
+                width: _codeRequested ? 162 : 108,
+                loading: _loading,
+                onTap: _loading ? null : (_codeRequested ? _confirm : _requestCode),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
-}
-
-class _Logo extends StatelessWidget {
-  final ColorScheme cs;
-  const _Logo({required this.cs});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: cs.primary.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.primary.withOpacity(0.3)),
-      ),
-      child: Icon(Icons.lock_reset_rounded, color: cs.primary),
-    );
-  }
-}
-
-class _NightBackground extends StatelessWidget {
-  const _NightBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _NightPainter(),
-      child: const SizedBox.expand(),
-    );
-  }
-}
-
-class _NightPainter extends CustomPainter {
-  final _rng = math.Random(7);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    const gradient = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFF0B1023), Color(0xFF090D1A)],
-    );
-    canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
-
-    final vignette = RadialGradient(
-      colors: [Colors.transparent, Colors.black.withOpacity(0.55)],
-      stops: const [0.55, 1.0],
-    );
-    canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
-
-    final starPaint = Paint()..color = Colors.white.withOpacity(0.55);
-    final starPaintDim = Paint()..color = Colors.white.withOpacity(0.22);
-    final count = (size.width * size.height / 6500).clamp(70, 170).toInt();
-    for (var i = 0; i < count; i++) {
-      final x = _rng.nextDouble() * size.width;
-      final y = _rng.nextDouble() * size.height * 0.6;
-      final r = _rng.nextDouble() * 1.35 + 0.2;
-      canvas.drawCircle(Offset(x, y), r, (i % 3 == 0) ? starPaint : starPaintDim);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

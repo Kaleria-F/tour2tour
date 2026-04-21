@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'core/app_theme.dart';
 import 'router.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 
@@ -14,6 +15,7 @@ class Tour2TourApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
       routerConfig: buildRouter(),
     );
   }
