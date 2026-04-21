@@ -1,5 +1,18 @@
 import '../../api/api_client.dart';
 
+DateTime _parseDateOrEpoch(dynamic raw) {
+  final value = raw?.toString();
+  if (value == null || value.isEmpty) {
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+  return DateTime.tryParse(value) ?? DateTime.fromMillisecondsSinceEpoch(0);
+}
+
+double _parseDoubleOrZero(dynamic raw) {
+  if (raw == null) return 0;
+  return double.tryParse(raw.toString()) ?? 0;
+}
+
 class TripSummary {
   final int id;
   final String title;
@@ -20,8 +33,8 @@ class TripSummary {
       id: json['id'] as int,
       title: (json['title'] ?? '').toString(),
       destinationCity: json['destination_city']?.toString(),
-      startDate: DateTime.parse((json['start_date'] ?? '').toString()),
-      endDate: DateTime.parse((json['end_date'] ?? '').toString()),
+      startDate: _parseDateOrEpoch(json['start_date']),
+      endDate: _parseDateOrEpoch(json['end_date']),
     );
   }
 }
@@ -99,9 +112,9 @@ class TripExpense {
       id: json['id'] as int,
       tripId: json['trip_id'] as int,
       description: (json['description'] ?? '').toString(),
-      amountRub: double.parse((json['amount_rub'] ?? '0').toString()),
+      amountRub: _parseDoubleOrZero(json['amount_rub']),
       category: (json['category'] ?? '').toString(),
-      createdAt: DateTime.parse((json['created_at'] ?? '').toString()),
+      createdAt: _parseDateOrEpoch(json['created_at']),
     );
   }
 }

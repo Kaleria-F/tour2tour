@@ -192,8 +192,17 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         _selectedStageId = nextSelectedId;
       });
       if (nextSelectedId != null) {
-        final selected = ordered.firstWhere((item) => item.id == nextSelectedId);
-        await _loadSuggestionsForStage(selected);
+        final selected = ordered.cast<TripStage?>().firstWhere(
+          (item) => item?.id == nextSelectedId,
+          orElse: () => null,
+        );
+        if (selected != null) {
+          await _loadSuggestionsForStage(selected);
+        } else {
+          setState(() {
+            _stageSuggestions = const [];
+          });
+        }
       } else {
         setState(() {
           _stageSuggestions = const [];

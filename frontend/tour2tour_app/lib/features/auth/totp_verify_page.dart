@@ -73,7 +73,7 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
                           const SizedBox(width: 10),
                           const Expanded(
                             child: Text(
-                              'РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РІС…РѕРґР°',
+                              'Подтверждение входа',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -100,7 +100,7 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Р’РІРµРґРёС‚Рµ 6-Р·РЅР°С‡РЅС‹Р№ РєРѕРґ РёР· Authenticator',
+                              'Введите 6-значный код из Authenticator',
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.9),
                                 fontSize: 14,
@@ -113,7 +113,7 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
                               keyboardType: TextInputType.number,
                               style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
-                                labelText: 'TOTP РєРѕРґ',
+                                labelText: 'TOTP код',
                                 labelStyle:
                                     TextStyle(color: Colors.white.withOpacity(0.85)),
                                 border: const OutlineInputBorder(),
@@ -152,7 +152,7 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
                                     child: CircularProgressIndicator(strokeWidth: 2),
                                   )
                                 : const Text(
-                                    'РџРѕРґС‚РІРµСЂРґРёС‚СЊ',
+                                    'Подтвердить',
                                     style: TextStyle(
                                       fontSize: 16.5,
                                       fontWeight: FontWeight.w800,

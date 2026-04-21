@@ -73,14 +73,14 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
   Future<void> _confirmTotp() async {
     final code = _totpCode.text.trim();
     if (code.length != 6) {
-      showAuthError(context, 'Р’РІРµРґРёС‚Рµ С€РµСЃС‚РёР·РЅР°С‡РЅС‹Р№ TOTP-РєРѕРґ.');
+      showAuthError(context, 'Введите шестизначный TOTP-код.');
       return;
     }
     setState(() => _loading = true);
     try {
       await widget.auth.enableTotp(code);
       if (!mounted) return;
-      showAuthSuccess(context, 'TOTP СѓСЃРїРµС€РЅРѕ РїРѕРґРєР»СЋС‡РµРЅ.');
+      showAuthSuccess(context, 'TOTP успешно подключен.');
       _totpSecret = null;
       _totpUri = null;
       _totpCode.clear();
@@ -117,7 +117,7 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              isConfigured ? 'РќР°СЃС‚СЂРѕР№РєРё Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё' : 'РџРѕРґРєР»СЋС‡РµРЅРёРµ Р·Р°С‰РёС‚С‹',
+                              isConfigured ? 'Настройки безопасности' : 'Подключение защиты',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -140,10 +140,10 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                               ),
                               child: Text(
                                 _statusLoading
-                                    ? 'РџСЂРѕРІРµСЂСЏРµРј С‚РµРєСѓС‰РёРµ РЅР°СЃС‚СЂРѕР№РєРё Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё...'
+                                    ? 'Проверяем текущие настройки безопасности...'
                                     : isConfigured
-                                        ? 'Р—Р°С‰РёС‚Р° Р°РєРєР°СѓРЅС‚Р° СѓР¶Рµ РЅР°СЃС‚СЂРѕРµРЅР°. Р—РґРµСЃСЊ РјРѕР¶РЅРѕ РїРѕСЃРјРѕС‚СЂРµС‚СЊ Р°РєС‚РёРІРЅС‹Рµ СЃРїРѕСЃРѕР±С‹ РІС…РѕРґР° Рё РґРѕР±Р°РІРёС‚СЊ РЅРµРґРѕСЃС‚Р°СЋС‰РёРµ.'
-                                        : 'РџРѕРґРєР»СЋС‡РёС‚Рµ РІС‚РѕСЂРѕР№ С„Р°РєС‚РѕСЂ, С‡С‚РѕР±С‹ СѓСЃРёР»РёС‚СЊ Р·Р°С‰РёС‚Сѓ РІС…РѕРґР° РІ Р°РєРєР°СѓРЅС‚.',
+                                        ? 'Защита аккаунта уже настроена. Здесь можно посмотреть активные способы входа и добавить недостающие.'
+                                        : 'Подключите второй фактор, чтобы усилить защиту входа в аккаунт.',
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.85),
                                   fontSize: 13.5,
@@ -155,15 +155,15 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                             _sectionCard(
                               title: 'TOTP',
                               status: _statusLoading
-                                  ? 'РџСЂРѕРІРµСЂРєР°...'
-                                  : (_totpEnabled ? 'РџРѕРґРєР»СЋС‡РµРЅ' : 'РќРµ РїРѕРґРєР»СЋС‡РµРЅ'),
+                                  ? 'Проверка...'
+                                  : (_totpEnabled ? 'Подключен' : 'Не подключен'),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     _totpEnabled
-                                        ? 'Р’С…РѕРґ РїРѕ РїР°СЂРѕР»СЋ Р±СѓРґРµС‚ РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ РїРѕРґС‚РІРµСЂР¶РґР°С‚СЊСЃСЏ РєРѕРґРѕРј РёР· РїСЂРёР»РѕР¶РµРЅРёСЏ-Р°СѓС‚РµРЅС‚РёС„РёРєР°С‚РѕСЂР°.'
-                                        : 'Google Authenticator, Microsoft Authenticator РёР»Рё 1Password.',
+                                        ? 'Вход по паролю будет дополнительно подтверждаться кодом из приложения-аутентификатора.'
+                                        : 'Google Authenticator, Microsoft Authenticator или 1Password.',
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.82),
                                       fontSize: 12.5,
@@ -173,7 +173,7 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                                     const SizedBox(height: 10),
                                     OutlinedButton(
                                       onPressed: _loading ? null : _startTotp,
-                                      child: const Text('РЎРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ TOTP-СЃРµРєСЂРµС‚'),
+                                      child: const Text('Сгенерировать TOTP-секрет'),
                                     ),
                                   ],
                                   if (_totpSecret != null) ...[
@@ -196,7 +196,7 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                                       keyboardType: TextInputType.number,
                                       style: const TextStyle(color: Colors.white),
                                       decoration: InputDecoration(
-                                        labelText: 'РљРѕРґ РёР· РїСЂРёР»РѕР¶РµРЅРёСЏ',
+                                        labelText: 'Код из приложения',
                                         labelStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
                                         border: const OutlineInputBorder(),
                                       ),
@@ -204,7 +204,7 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                                     const SizedBox(height: 10),
                                     ElevatedButton(
                                       onPressed: _loading ? null : _confirmTotp,
-                                      child: const Text('РџРѕРґС‚РІРµСЂРґРёС‚СЊ TOTP'),
+                                      child: const Text('Подтвердить TOTP'),
                                     ),
                                   ],
                                 ],
@@ -237,7 +237,7 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                             ),
                             onPressed: () => context.go('/preferences'),
                             child: const Text(
-                              'РџСЂРѕРґРѕР»Р¶РёС‚СЊ',
+                              'Продолжить',
                               style: TextStyle(
                                 fontSize: 16.5,
                                 fontWeight: FontWeight.w800,
@@ -249,7 +249,7 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
                       TextButton(
                         onPressed: () => context.go('/profile'),
                         child: Text(
-                          'Р’РµСЂРЅСѓС‚СЊСЃСЏ РІ РїСЂРѕС„РёР»СЊ',
+                          'Вернуться в профиль',
                           style: TextStyle(color: Colors.white.withOpacity(0.85)),
                         ),
                       ),
