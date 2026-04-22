@@ -1,8 +1,7 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../shared/travel_app_shell.dart';
 import 'trips_repo.dart';
 
 class CreateTripPage extends StatefulWidget {
@@ -37,7 +36,8 @@ class _CreateTripPageState extends State<CreateTripPage> {
     final initialDate = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: isStart ? (_startDate ?? initialDate) : (_endDate ?? initialDate),
+      initialDate:
+          isStart ? (_startDate ?? initialDate) : (_endDate ?? initialDate),
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
     );
@@ -77,27 +77,19 @@ class _CreateTripPageState extends State<CreateTripPage> {
     final destinationCity = _destinationCityController.text.trim();
 
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите название поездки')),
-      );
+      _showHint('Введите название путешествия');
       return;
     }
     if (destinationCity.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Укажите город поездки')),
-      );
+      _showHint('Укажите город поездки');
       return;
     }
     if (_startDate == null || _endDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Выберите даты начала и окончания')),
-      );
+      _showHint('Выберите даты поездки');
       return;
     }
     if (_startDate!.isAfter(_endDate!)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Дата начала не может быть позже даты окончания')),
-      );
+      _showHint('Дата начала не может быть позже даты окончания');
       return;
     }
 
@@ -113,9 +105,7 @@ class _CreateTripPageState extends State<CreateTripPage> {
 
       if (!mounted) return;
       if (trip == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось создать поездку')),
-        );
+        _showHint('Не удалось создать путешествие');
         return;
       }
 
@@ -136,214 +126,355 @@ class _CreateTripPageState extends State<CreateTripPage> {
     }
   }
 
+  void _showHint(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Scaffold(
-      body: Stack(
+    return TravelAppShell(
+      title: 'Plan your trip',
+      subtitle: 'Соберите маршрут и подберите город для рекомендаций',
+      currentTab: TravelNavTab.planner,
+      headerAction: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => context.go('/profile'),
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFF2B2B2B),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withOpacity(0.06)),
+          ),
+          child: const Icon(Icons.person_outline_rounded, color: Colors.white),
+        ),
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _NightBackground(),
-          SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 14),
-                      _Logo(cs: cs),
-                      const SizedBox(height: 18),
-                      const Text(
-                        'Создать путешествие',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          height: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Укажите город поездки, чтобы рекомендации сразу подбирались под маршрут.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.75),
-                          fontSize: 13.5,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            children: [
-                              TextField(
-                                controller: _titleController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Название',
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Autocomplete<CitySuggestion>(
-                                displayStringForOption: (option) => option.city,
-                                optionsBuilder: (textEditingValue) {
-                                  final query = textEditingValue.text.trim().toLowerCase();
-                                  if (query.length < 2) {
-                                    return const Iterable<CitySuggestion>.empty();
-                                  }
-                                  return _citySuggestions.where((item) {
-                                    return item.city.toLowerCase().contains(query) ||
-                                        item.displayName.toLowerCase().contains(query);
-                                  });
-                                },
-                                onSelected: (option) {
-                                  _destinationCityController.value = TextEditingValue(
-                                    text: option.city,
-                                    selection: TextSelection.collapsed(offset: option.city.length),
-                                  );
-                                },
-                                fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-                                  if (controller.text != _destinationCityController.text) {
-                                    controller.value = _destinationCityController.value;
-                                  }
-                                  return TextField(
-                                    controller: controller,
-                                    focusNode: focusNode,
-                                    onChanged: (value) {
-                                      _destinationCityController.value = controller.value;
-                                      _loadCitySuggestions(value);
-                                    },
-                                    decoration: const InputDecoration(
-                                      labelText: 'Город поездки',
-                                      hintText: 'Начните вводить город',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                  );
-                                },
-                                optionsViewBuilder: (context, onSelected, options) {
-                                  final items = options.toList();
-                                  return Align(
-                                    alignment: Alignment.topLeft,
-                                    child: Material(
-                                      elevation: 8,
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: ConstrainedBox(
-                                        constraints: const BoxConstraints(maxWidth: 360, maxHeight: 240),
-                                        child: ListView.separated(
-                                          padding: const EdgeInsets.symmetric(vertical: 8),
-                                          shrinkWrap: true,
-                                          itemCount: items.length,
-                                          separatorBuilder: (_, __) => const Divider(height: 1),
-                                          itemBuilder: (context, index) {
-                                            final option = items[index];
-                                            return ListTile(
-                                              dense: true,
-                                              title: Text(option.city),
-                                              subtitle: Text(option.displayName),
-                                              onTap: () => onSelected(option),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                              const SizedBox(height: 12),
-                              TextField(
-                                controller: _descriptionController,
-                                minLines: 2,
-                                maxLines: 3,
-                                decoration: const InputDecoration(
-                                  labelText: 'Описание',
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: () => _pickDate(isStart: true),
-                                      child: Text(
-                                        _startDate == null
-                                            ? 'Дата начала'
-                                            : _startDate!.toLocal().toString().split(' ')[0],
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: () => _pickDate(isStart: false),
-                                      child: Text(
-                                        _endDate == null
-                                            ? 'Дата окончания'
-                                            : _endDate!.toLocal().toString().split(' ')[0],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [cs.primary, cs.primary.withOpacity(0.75)],
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: [
-                              BoxShadow(
-                                color: cs.primary.withOpacity(0.35),
-                                blurRadius: 18,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              shadowColor: Colors.transparent,
-                              foregroundColor: Colors.white,
-                              disabledForegroundColor: Colors.white70,
-                              disabledBackgroundColor: Colors.transparent,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                            ),
-                            onPressed: _saving ? null : _saveTrip,
-                            child: _saving
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Text(
-                                    'Сохранить',
-                                    style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
-                                  ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                    ],
-                  ),
+          TravelSearchBar(
+            label: _destinationCityController.text.trim().isEmpty
+                ? 'Куда отправимся?'
+                : _destinationCityController.text.trim(),
+            onTap: () {},
+            trailing: Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: const Color(0xFF2B2B2B),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(Icons.search_rounded, color: Colors.white),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: TravelCapsuleButton(
+                  label: 'Weekend',
+                  active: true,
+                  onTap: () {},
                 ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TravelCapsuleButton(
+                  label: 'Culture',
+                  onTap: () {},
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TravelCapsuleButton(
+                  label: 'Route',
+                  onTap: () {},
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: TravelCard(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Создать путешествие',
+                    style: TextStyle(
+                      fontSize: 25,
+                      height: 1,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Сначала выберите город. Затем маршрут и рекомендации будут подстраиваться под поездку.',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.68),
+                      fontSize: 14,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          _TripField(
+                            controller: _titleController,
+                            label: 'Название',
+                            icon: Icons.luggage_rounded,
+                          ),
+                          const SizedBox(height: 12),
+                          Autocomplete<CitySuggestion>(
+                            displayStringForOption: (option) => option.city,
+                            optionsBuilder: (textEditingValue) {
+                              final query =
+                                  textEditingValue.text.trim().toLowerCase();
+                              if (query.length < 2) {
+                                return const Iterable<CitySuggestion>.empty();
+                              }
+                              return _citySuggestions.where((item) {
+                                return item.city.toLowerCase().contains(query) ||
+                                    item.displayName
+                                        .toLowerCase()
+                                        .contains(query);
+                              });
+                            },
+                            onSelected: (option) {
+                              _destinationCityController.value =
+                                  TextEditingValue(
+                                text: option.city,
+                                selection: TextSelection.collapsed(
+                                  offset: option.city.length,
+                                ),
+                              );
+                              setState(() {});
+                            },
+                            fieldViewBuilder: (context, controller, focusNode,
+                                onFieldSubmitted) {
+                              if (controller.text !=
+                                  _destinationCityController.text) {
+                                controller.value =
+                                    _destinationCityController.value;
+                              }
+                              return _TripField(
+                                controller: controller,
+                                focusNode: focusNode,
+                                label: 'Город поездки',
+                                hintText: 'Начните вводить город',
+                                icon: Icons.location_on_outlined,
+                                onChanged: (value) {
+                                  _destinationCityController.value =
+                                      controller.value;
+                                  _loadCitySuggestions(value);
+                                  setState(() {});
+                                },
+                              );
+                            },
+                            optionsViewBuilder:
+                                (context, onSelected, options) {
+                              final items = options.toList();
+                              return Align(
+                                alignment: Alignment.topLeft,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: Container(
+                                    margin: const EdgeInsets.only(top: 8),
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 360,
+                                      maxHeight: 240,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF212121),
+                                      borderRadius: BorderRadius.circular(24),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.06),
+                                      ),
+                                    ),
+                                    child: ListView.separated(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 6,
+                                      ),
+                                      shrinkWrap: true,
+                                      itemCount: items.length,
+                                      separatorBuilder: (_, __) => Divider(
+                                        height: 1,
+                                        color: Colors.white.withOpacity(0.05),
+                                      ),
+                                      itemBuilder: (context, index) {
+                                        final option = items[index];
+                                        return ListTile(
+                                          dense: true,
+                                          title: Text(
+                                            option.city,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          subtitle: Text(
+                                            option.displayName,
+                                            style: TextStyle(
+                                              color:
+                                                  Colors.white.withOpacity(0.62),
+                                            ),
+                                          ),
+                                          onTap: () => onSelected(option),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          _TripField(
+                            controller: _descriptionController,
+                            label: 'Описание',
+                            icon: Icons.notes_rounded,
+                            minLines: 3,
+                            maxLines: 4,
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _DateChip(
+                                  label: _startDate == null
+                                      ? 'Дата начала'
+                                      : _fmtDate(_startDate!),
+                                  onTap: () => _pickDate(isStart: true),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _DateChip(
+                                  label: _endDate == null
+                                      ? 'Дата окончания'
+                                      : _fmtDate(_endDate!),
+                                  onTap: () => _pickDate(isStart: false),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 60,
+                    child: ElevatedButton(
+                      onPressed: _saving ? null : _saveTrip,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD7E37A),
+                        foregroundColor: const Color(0xFF151515),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(22),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: _saving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text(
+                              'Сохранить',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtDate(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '$day.$month.${value.year}';
+  }
+}
+
+class _TripField extends StatelessWidget {
+  const _TripField({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.focusNode,
+    this.hintText,
+    this.onChanged,
+    this.minLines = 1,
+    this.maxLines = 1,
+  });
+
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String label;
+  final String? hintText;
+  final IconData icon;
+  final ValueChanged<String>? onChanged;
+  final int minLines;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF272727),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        crossAxisAlignment:
+            maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            margin: EdgeInsets.only(top: maxLines > 1 ? 10 : 0),
+            decoration: const BoxDecoration(
+              color: Color(0xFF1F1F1F),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: const Color(0xFFD7E37A), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              onChanged: onChanged,
+              minLines: minLines,
+              maxLines: maxLines,
+              style: const TextStyle(color: Colors.white, fontSize: 15),
+              decoration: InputDecoration(
+                labelText: label,
+                hintText: hintText,
+                labelStyle: TextStyle(
+                  color: Colors.white.withOpacity(0.72),
+                ),
+                hintStyle: TextStyle(
+                  color: Colors.white.withOpacity(0.38),
+                ),
+                border: InputBorder.none,
               ),
             ),
           ),
@@ -353,66 +484,41 @@ class _CreateTripPageState extends State<CreateTripPage> {
   }
 }
 
-class _Logo extends StatelessWidget {
-  final ColorScheme cs;
+class _DateChip extends StatelessWidget {
+  const _DateChip({required this.label, required this.onTap});
 
-  const _Logo({required this.cs});
+  final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 54,
-      height: 54,
-      decoration: BoxDecoration(
-        color: cs.primary.withOpacity(0.18),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.primary.withOpacity(0.28)),
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF272727),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calendar_month_rounded,
+                color: Color(0xFFD7E37A), size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.82),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-      child: Icon(Icons.luggage_rounded, color: cs.primary, size: 28),
     );
   }
-}
-
-class _NightBackground extends StatelessWidget {
-  const _NightBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _NightPainter(),
-      child: const SizedBox.expand(),
-    );
-  }
-}
-
-class _NightPainter extends CustomPainter {
-  final _rng = math.Random(7);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    const gradient = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFF0B1023), Color(0xFF090D1A)],
-    );
-    canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
-    final vignette = RadialGradient(
-      colors: [Colors.transparent, Colors.black.withOpacity(0.55)],
-      stops: const [0.55, 1.0],
-    );
-    canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
-    final starPaint = Paint()..color = Colors.white.withOpacity(0.55);
-    final starPaintDim = Paint()..color = Colors.white.withOpacity(0.22);
-    final count = (size.width * size.height / 6500).clamp(70, 170).toInt();
-    for (var i = 0; i < count; i++) {
-      final x = _rng.nextDouble() * size.width;
-      final y = _rng.nextDouble() * size.height * 0.6;
-      final r = _rng.nextDouble() * 1.35 + 0.2;
-      canvas.drawCircle(Offset(x, y), r, (i % 3 == 0) ? starPaint : starPaintDim);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

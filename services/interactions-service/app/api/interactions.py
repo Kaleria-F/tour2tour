@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from app.db.deps import get_db
 from app.models.interaction import RecommendationImpression, UserPlaceInteraction
 from app.schemas.interaction import (
+    FavoriteCityGroup,
+    FavoritePlace,
     ImpressionCreate,
     InteractionCreate,
     InteractionOut,
@@ -136,3 +138,66 @@ def get_place_summary(place_id: str, db: Session = Depends(get_db)):
     actions = {action: count for action, count in rows}
     total = sum(actions.values())
     return PlaceInteractionSummary(place_id=place_id, total_events=total, actions=actions)
+
+
+@router.get("/users/{user_id}/favorites", response_model=list[FavoriteCityGroup])
+def get_user_favorites(
+    user_id: str,
+    trip_id: int | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: Session = Depends(get_db),
+):
+    items = db.execute(
+        select(UserPlaceInteraction)
+        .where(UserPlaceInteraction.user_id == user_id)
+        .order_by(UserPlaceInteraction.created_at.desc())
+        .limit(limit)
+    ).scalars().all()
+
+    place_rows: dict[str, list[UserPlaceInteraction]] = defaultdict(list)
+    for item in items:
+        place_rows[item.place_id].append(item)
+
+    grouped: dict[str, list[FavoritePlace]] = defaultdict(list)
+    for place_id, rows in place_rows.items():
+        saved_rows = [row for row in rows if row.action == "saved"]
+        if not saved_rows:
+            continue
+
+        last_action = rows[0].action if rows else None
+        if last_action in {"disliked", "dismissed"}:
+            continue
+
+        latest_saved = saved_rows[0]
+        metadata = latest_saved.metadata_json or {}
+        favorite_trip_id = metadata.get("trip_id")
+        if trip_id is not None and str(favorite_trip_id) != str(trip_id):
+            continue
+
+        city = str(metadata.get("city") or "Без города")
+        grouped[city].append(
+            FavoritePlace(
+                place_id=place_id,
+                title=str(metadata.get("title") or ""),
+                city=city,
+                address=metadata.get("address"),
+                image_url=metadata.get("image_url"),
+                category=metadata.get("category"),
+                subcategory=metadata.get("subcategory"),
+                rating=float(metadata["rating"]) if metadata.get("rating") is not None else None,
+                description=metadata.get("description"),
+                trip_id=int(favorite_trip_id) if favorite_trip_id is not None else None,
+                trip_title=metadata.get("trip_title"),
+                saved_at=latest_saved.created_at,
+                last_action=last_action,
+            )
+        )
+
+    ordered = []
+    for city, favorites in sorted(grouped.items(), key=lambda pair: pair[0].lower()):
+        favorites.sort(
+            key=lambda item: item.saved_at or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        ordered.append(FavoriteCityGroup(city=city, items=favorites))
+    return ordered

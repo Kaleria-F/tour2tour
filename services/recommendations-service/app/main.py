@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter
 from typing import Any
@@ -55,6 +56,8 @@ class RecommendationsRequest(BaseModel):
     profile: SurveyProfile
     city: str | None = None
     near_route: bool = False
+    route_latitude: float | None = None
+    route_longitude: float | None = None
     user_id: str | None = None
     limit: int | None = Field(default=None, ge=1, le=50)
 
@@ -124,7 +127,45 @@ def _budget_bonus(user_budget: str | None, place_budget: str | None) -> float:
     return -5.0
 
 
-def _distance_bonus(near_route: bool, request_city: str | None, place_city: str | None) -> float:
+def _distance_km(
+    first_lat: float | None,
+    first_lon: float | None,
+    second_lat: float | None,
+    second_lon: float | None,
+) -> float | None:
+    if None in {first_lat, first_lon, second_lat, second_lon}:
+        return None
+
+    radius = 6371.0
+    lat1 = math.radians(first_lat)
+    lat2 = math.radians(second_lat)
+    delta_lat = math.radians(second_lat - first_lat)
+    delta_lon = math.radians(second_lon - first_lon)
+    a = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2) ** 2
+    )
+    return radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def _distance_bonus(
+    near_route: bool,
+    request_city: str | None,
+    place_city: str | None,
+    route_latitude: float | None,
+    route_longitude: float | None,
+    place_latitude: float | None,
+    place_longitude: float | None,
+) -> float:
+    distance = _distance_km(route_latitude, route_longitude, place_latitude, place_longitude)
+    if distance is not None:
+        if distance <= 3:
+            return 12.0 if near_route else 8.0
+        if distance <= 10:
+            return 8.0 if near_route else 5.0
+        if distance <= 25:
+            return 4.0 if near_route else 2.0
+
     if _city_matches(request_city, place_city):
         return 10.0 if near_route else 6.0
     if near_route:
@@ -348,7 +389,15 @@ def personalized_recommendations(payload: RecommendationsRequest):
         normalized_tags = _normalize_tags(place.tags)
         interest_score = _interest_score(weights, normalized_tags)
         budget_bonus = _budget_bonus(payload.profile.budget, place.price_level)
-        distance_bonus = _distance_bonus(payload.near_route, payload.city, place.city)
+        distance_bonus = _distance_bonus(
+            payload.near_route,
+            payload.city,
+            place.city,
+            payload.route_latitude,
+            payload.route_longitude,
+            place.lat,
+            place.lon,
+        )
         trip_type_bonus = (
             _trip_type_bonus(payload.profile.travel_mode, normalized_tags)
             + _trip_format_bonus(payload.profile.trip_formats, normalized_tags)
@@ -456,8 +505,6 @@ DEFAULT_SUGGESTIONS: list[dict[str, Any]] = [
         "estimated_cost_rub": "1200.00",
     },
 ]
-
-
 @app.get("/recommendations/suggestions")
 def stage_suggestions(
     stage_type: str = Query(..., min_length=1),

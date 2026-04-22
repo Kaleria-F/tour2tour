@@ -74,6 +74,8 @@ class RecommendationsRepo {
     required SurveyProfile profile,
     String? city,
     bool nearRoute = false,
+    double? routeLatitude,
+    double? routeLongitude,
     String? userId,
   }) async {
     final res = await api.dio.post(
@@ -82,6 +84,8 @@ class RecommendationsRepo {
         'profile': profile.toJson(),
         'city': city,
         'near_route': nearRoute,
+        'route_latitude': routeLatitude,
+        'route_longitude': routeLongitude,
         'user_id': userId,
       },
     );

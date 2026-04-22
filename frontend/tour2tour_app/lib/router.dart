@@ -17,6 +17,7 @@ import 'features/recommendations/recommendations_repo.dart';
 import 'features/interactions/interactions_repo.dart';
 
 import 'features/documents/documents_repo.dart';
+import 'features/favorites/favorites_page.dart';
 import 'features/profile/profile_repo.dart';
 import 'features/profile/profile_page.dart';
 import 'features/trips/create_trip_page.dart';
@@ -81,7 +82,19 @@ GoRouter buildRouter() {
       ),
       GoRoute(
         path: '/profile',
-        builder: (_, __) => ProfilePage(repo: profile, tripsRepo: trips),
+        builder: (_, __) => ProfilePage(
+          repo: profile,
+          tripsRepo: trips,
+          preferencesRepo: prefs,
+          recommendationsRepo: recommendations,
+        ),
+      ),
+      GoRoute(
+        path: '/favorites',
+        builder: (_, __) => FavoritesPage(
+          interactionsRepo: interactions,
+          profileRepo: profile,
+        ),
       ),
       GoRoute(
         path: '/change-password',

@@ -50,3 +50,24 @@ class PlaceInteractionSummary(BaseModel):
     place_id: str
     total_events: int
     actions: dict[str, int]
+
+
+class FavoritePlace(BaseModel):
+    place_id: str
+    title: str
+    city: str
+    address: str | None = None
+    image_url: str | None = None
+    category: str | None = None
+    subcategory: str | None = None
+    rating: float | None = None
+    description: str | None = None
+    trip_id: int | None = None
+    trip_title: str | None = None
+    saved_at: datetime | None = None
+    last_action: str | None = None
+
+
+class FavoriteCityGroup(BaseModel):
+    city: str
+    items: list[FavoritePlace]

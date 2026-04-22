@@ -1,8 +1,8 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/auth_repo.dart';
+import '../shared/travel_app_shell.dart';
 import 'preferences_repo.dart';
 
 enum QuestionType { multiSelect, singleSelect, ratingList }
@@ -61,8 +61,8 @@ class _PreferencesPageState extends State<PreferencesPage> {
   final List<SurveyQuestion> _questions = const [
     SurveyQuestion(
       id: 'interests',
-      title: 'Что вам интересно в путешествии?',
-      subtitle: 'Выберите минимум 3 направления.',
+      title: 'Что вам интересно в путешествиях?',
+      subtitle: 'Выберите минимум 3 направления, чтобы рекомендации стали точнее.',
       type: QuestionType.multiSelect,
       minSelections: 3,
       options: [
@@ -71,10 +71,10 @@ class _PreferencesPageState extends State<PreferencesPage> {
         SurveyOption(id: 'museums', label: 'Музеи', icon: Icons.museum, color: Colors.deepPurpleAccent),
         SurveyOption(id: 'architecture', label: 'Архитектура', icon: Icons.location_city, color: Colors.lightBlueAccent),
         SurveyOption(id: 'nature', label: 'Природа', icon: Icons.park, color: Colors.greenAccent),
-        SurveyOption(id: 'gastronomy', label: 'Гастрономия', icon: Icons.restaurant, color: Colors.orangeAccent),
+        SurveyOption(id: 'food', label: 'Еда', icon: Icons.restaurant, color: Colors.orangeAccent),
         SurveyOption(id: 'active', label: 'Активный отдых', icon: Icons.hiking, color: Colors.tealAccent),
         SurveyOption(id: 'shopping', label: 'Шопинг', icon: Icons.shopping_bag, color: Colors.cyanAccent),
-        SurveyOption(id: 'photo', label: 'Фото-локации', icon: Icons.photo_camera, color: Colors.yellowAccent),
+        SurveyOption(id: 'photo', label: 'Фотолокации', icon: Icons.photo_camera, color: Colors.yellowAccent),
         SurveyOption(id: 'nightlife', label: 'Ночная жизнь', icon: Icons.nightlife, color: Colors.redAccent),
         SurveyOption(id: 'hidden', label: 'Необычные места', icon: Icons.explore, color: Colors.limeAccent),
         SurveyOption(id: 'family', label: 'Семейный отдых', icon: Icons.family_restroom, color: Colors.blueAccent),
@@ -83,7 +83,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
     SurveyQuestion(
       id: 'trip_format',
       title: 'Какой формат отдыха вам ближе?',
-      subtitle: 'Можно выбрать несколько вариантов.',
+      subtitle: 'Можно выбрать несколько сценариев поездки.',
       type: QuestionType.multiSelect,
       options: [
         SurveyOption(id: 'calm', label: 'Спокойный', icon: Icons.spa, color: Colors.greenAccent),
@@ -96,11 +96,11 @@ class _PreferencesPageState extends State<PreferencesPage> {
     ),
     SurveyQuestion(
       id: 'travel_mode',
-      title: 'С кем вы чаще путешествуете?',
-      subtitle: 'Это влияет на фильтрацию рекомендаций.',
+      title: 'С кем вы обычно путешествуете?',
+      subtitle: 'Это влияет на подбор мест и темп маршрута.',
       type: QuestionType.singleSelect,
       options: [
-        SurveyOption(id: 'solo', label: 'Один/одна', icon: Icons.person, color: Colors.blueAccent),
+        SurveyOption(id: 'solo', label: 'Один / одна', icon: Icons.person, color: Colors.blueAccent),
         SurveyOption(id: 'couple', label: 'С партнером', icon: Icons.favorite, color: Colors.pinkAccent),
         SurveyOption(id: 'friends', label: 'С друзьями', icon: Icons.groups, color: Colors.tealAccent),
         SurveyOption(id: 'family', label: 'С семьей', icon: Icons.family_restroom, color: Colors.greenAccent),
@@ -109,7 +109,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
     SurveyQuestion(
       id: 'budget',
       title: 'Какой бюджет поездки вам ближе?',
-      subtitle: 'Это поможет ранжировать места по стоимости.',
+      subtitle: 'Используем это, чтобы ранжировать рекомендации по стоимости.',
       type: QuestionType.singleSelect,
       options: [
         SurveyOption(id: 'economy', label: 'Эконом', icon: Icons.savings, color: Colors.greenAccent),
@@ -121,7 +121,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
     SurveyQuestion(
       id: 'pace',
       title: 'Какой темп поездки вам комфортен?',
-      subtitle: 'Темп влияет на количество и тип рекомендаций в день.',
+      subtitle: 'Темп влияет на количество мест и плотность маршрута.',
       type: QuestionType.singleSelect,
       options: [
         SurveyOption(id: 'slow', label: '1-2 места в день', icon: Icons.self_improvement, color: Colors.greenAccent),
@@ -146,15 +146,13 @@ class _PreferencesPageState extends State<PreferencesPage> {
     'museums': 3,
     'architecture': 3,
     'nature': 3,
-    'gastronomy': 3,
+    'food': 3,
     'active': 3,
     'shopping': 3,
     'photo': 3,
     'nightlife': 3,
     'hidden': 3,
     'family': 3,
-    'local': 3,
-    'calm': 3,
   };
 
   SurveyQuestion get _current => _questions[_step];
@@ -193,9 +191,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
       // keep defaults
     } finally {
       if (mounted) {
-        setState(() {
-          _loading = false;
-        });
+        setState(() => _loading = false);
       }
     }
   }
@@ -311,133 +307,217 @@ class _PreferencesPageState extends State<PreferencesPage> {
     final canContinue = _isStepValid(_current);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF170B2C),
-      body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        if (_step > 0)
-                          GestureDetector(
-                            onTap: _prev,
-                            child: Container(
-                              height: 42,
-                              width: 42,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+      body: Stack(
+        children: [
+          const _PreferencesBackground(),
+          SafeArea(
+            child: _loading
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xFFD7E37A),
+                    ),
+                  )
+                : Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 430),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Предпочтения',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.w700,
+                                          height: 1,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Настройте подборки под свой стиль поездок.',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.66),
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                _CircleIconButton(
+                                  icon: Icons.close_rounded,
+                                  onTap: () => context.go('/profile'),
+                                ),
+                              ],
                             ),
-                          )
-                        else
-                          const SizedBox(width: 42),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(999),
-                            child: LinearProgressIndicator(
-                              value: _progress,
-                              minHeight: 8,
-                              backgroundColor: Colors.white.withOpacity(0.12),
-                              valueColor: const AlwaysStoppedAnimation(Color(0xFFFFD86B)),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                if (_step > 0) ...[
+                                  _CircleIconButton(
+                                    icon: Icons.arrow_back_ios_new_rounded,
+                                    onTap: _prev,
+                                  ),
+                                  const SizedBox(width: 10),
+                                ],
+                                Expanded(
+                                  child: Container(
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: FractionallySizedBox(
+                                      alignment: Alignment.centerLeft,
+                                      widthFactor: _progress,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFD7E37A),
+                                          borderRadius: BorderRadius.circular(999),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                TravelCapsuleButton(
+                                  label: 'Пропустить',
+                                  onTap: _saving ? () {} : _skipSurvey,
+                                ),
+                              ],
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        TextButton(
-                          onPressed: _saving ? null : _skipSurvey,
-                          child: const Text('Пропустить'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      _current.title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        height: 1.08,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _current.subtitle,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 15,
-                        height: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Expanded(
-                      child: PageView.builder(
-                        controller: _controller,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _questions.length,
-                        itemBuilder: (context, index) {
-                          final q = _questions[index];
-                          return SingleChildScrollView(
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
+                            const SizedBox(height: 18),
+                            TravelCard(
+                              padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildQuestion(q),
-                                  if (index == _questions.length - 1) ...[
-                                    const SizedBox(height: 10),
-                                    _buildRatingsCard(forceShow: true),
-                                  ],
+                                  Text(
+                                    _current.title,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 26,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.02,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _current.subtitle,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.68),
+                                      fontSize: 14,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  SizedBox(
+                                    height: 52,
+                                    child: ListView(
+                                      scrollDirection: Axis.horizontal,
+                                      children: List.generate(_questions.length, (index) {
+                                        final selected = index == _step;
+                                        return Padding(
+                                          padding: EdgeInsets.only(
+                                            right: index == _questions.length - 1 ? 0 : 8,
+                                          ),
+                                          child: TravelCapsuleButton(
+                                            label: 'Шаг ${index + 1}',
+                                            active: selected,
+                                            onTap: () {},
+                                          ),
+                                        );
+                                      }),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  SizedBox(
+                                    height: 340,
+                                    child: PageView.builder(
+                                      controller: _controller,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      itemCount: _questions.length,
+                                      itemBuilder: (context, index) {
+                                        final q = _questions[index];
+                                        return SingleChildScrollView(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              _buildQuestion(q),
+                                              if (index == _questions.length - 1) ...[
+                                                const SizedBox(height: 14),
+                                                _buildRatingsCard(forceShow: true),
+                                              ],
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: (canContinue && !_saving) ? _next : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: canContinue ? Colors.white : Colors.white24,
-                          foregroundColor: Colors.black,
-                          disabledForegroundColor: Colors.white54,
-                          disabledBackgroundColor: Colors.white24,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 18),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                        ),
-                        child: _saving
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Text(
-                                _step == _questions.length - 1 ? 'Завершить' : 'Продолжить',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: canContinue ? Colors.black : Colors.white70,
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 60,
+                              child: ElevatedButton(
+                                onPressed: (canContinue && !_saving) ? _next : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: canContinue
+                                      ? const Color(0xFFD7E37A)
+                                      : Colors.white.withOpacity(0.14),
+                                  foregroundColor: const Color(0xFF151515),
+                                  disabledForegroundColor: Colors.white54,
+                                  disabledBackgroundColor:
+                                      Colors.white.withOpacity(0.14),
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(22),
+                                  ),
                                 ),
+                                child: _saving
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : Text(
+                                        _step == _questions.length - 1
+                                            ? 'Сохранить'
+                                            : 'Продолжить',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          color: canContinue
+                                              ? const Color(0xFF151515)
+                                              : Colors.white70,
+                                        ),
+                                      ),
                               ),
+                            ),
+                            const SizedBox(height: 12),
+                            const TravelBottomNavBar(
+                              currentTab: TravelNavTab.taste,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -456,7 +536,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
               icon: option.icon,
               iconColor: option.color,
               selected: isSelected,
-              trailingIcon: isSelected ? Icons.check : Icons.add,
+              trailingIcon: isSelected ? Icons.check_rounded : Icons.add_rounded,
               onTap: () => _toggleMulti(q.id, option.id),
             );
           }).toList(),
@@ -497,22 +577,36 @@ class _PreferencesPageState extends State<PreferencesPage> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF24133F),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        color: const Color(0xFF262626),
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Сила интересов (1-5)',
-            style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
+            'Сила интересов',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
+          Text(
+            'Оцените выбранные интересы по шкале от 1 до 5.',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.64),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 10),
           if (ratingItems.isEmpty)
             Text(
               'Сначала выберите интересы на первом шаге.',
-              style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12),
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.72),
+                fontSize: 13,
+              ),
             ),
           ...ratingItems.map((item) {
             final key = item.key;
@@ -524,9 +618,9 @@ class _PreferencesPageState extends State<PreferencesPage> {
                 children: [
                   Text(
                     '${item.value}: $value/5',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.78),
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -539,27 +633,24 @@ class _PreferencesPageState extends State<PreferencesPage> {
                         child: Padding(
                           padding: EdgeInsets.only(right: index < 4 ? 6 : 0),
                           child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                             onTap: () => setState(() => _ratings[key] = score),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 160),
-                              height: 30,
+                              height: 34,
                               decoration: BoxDecoration(
                                 color: selected
-                                    ? const Color(0xFFFFD86B)
-                                    : Colors.white.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: selected
-                                      ? const Color(0xFFFFD86B)
-                                      : Colors.white.withOpacity(0.16),
-                                ),
+                                    ? const Color(0xFFD7E37A)
+                                    : const Color(0xFF1D1D1D),
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: Center(
                                 child: Text(
                                   '$score',
                                   style: TextStyle(
-                                    color: selected ? Colors.black : Colors.white70,
+                                    color: selected
+                                        ? const Color(0xFF151515)
+                                        : Colors.white70,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -582,13 +673,6 @@ class _PreferencesPageState extends State<PreferencesPage> {
 }
 
 class _SelectableChip extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Color iconColor;
-  final bool selected;
-  final IconData trailingIcon;
-  final VoidCallback onTap;
-
   const _SelectableChip({
     required this.label,
     required this.icon,
@@ -597,6 +681,13 @@ class _SelectableChip extends StatelessWidget {
     required this.trailingIcon,
     required this.onTap,
   });
+
+  final String label;
+  final IconData icon;
+  final Color iconColor;
+  final bool selected;
+  final IconData trailingIcon;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -609,21 +700,22 @@ class _SelectableChip extends StatelessWidget {
           duration: const Duration(milliseconds: 220),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: selected ? Colors.white : const Color(0xFF24133F),
+            color: selected ? const Color(0xFFD7E37A) : const Color(0xFF262626),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: selected ? const Color(0xFFFFD86B) : Colors.white.withOpacity(0.06),
-            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: iconColor, size: 20),
+              Icon(
+                icon,
+                color: selected ? const Color(0xFF151515) : iconColor,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: TextStyle(
-                  color: selected ? Colors.black : Colors.white,
+                  color: selected ? const Color(0xFF151515) : Colors.white,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -632,7 +724,7 @@ class _SelectableChip extends StatelessWidget {
               Icon(
                 trailingIcon,
                 size: 18,
-                color: selected ? Colors.black : Colors.white70,
+                color: selected ? const Color(0xFF151515) : Colors.white70,
               ),
             ],
           ),
@@ -643,12 +735,6 @@ class _SelectableChip extends StatelessWidget {
 }
 
 class _SingleChoiceCard extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Color iconColor;
-  final bool selected;
-  final VoidCallback onTap;
-
   const _SingleChoiceCard({
     required this.label,
     required this.icon,
@@ -656,6 +742,12 @@ class _SingleChoiceCard extends StatelessWidget {
     required this.selected,
     required this.onTap,
   });
+
+  final String label;
+  final IconData icon;
+  final Color iconColor;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -668,29 +760,32 @@ class _SingleChoiceCard extends StatelessWidget {
           duration: const Duration(milliseconds: 220),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: selected ? Colors.white : const Color(0xFF24133F),
+            color: selected ? const Color(0xFFD7E37A) : const Color(0xFF262626),
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: selected ? const Color(0xFFFFD86B) : Colors.white.withOpacity(0.06),
-            ),
           ),
           child: Row(
             children: [
-              Icon(icon, color: iconColor, size: 21),
+              Icon(
+                icon,
+                color: selected ? const Color(0xFF151515) : iconColor,
+                size: 21,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   label,
                   style: TextStyle(
-                    color: selected ? Colors.black : Colors.white,
+                    color: selected ? const Color(0xFF151515) : Colors.white,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
               Icon(
-                selected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: selected ? Colors.black : Colors.white54,
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_off_rounded,
+                color: selected ? const Color(0xFF151515) : Colors.white54,
               ),
             ],
           ),
@@ -700,48 +795,76 @@ class _SingleChoiceCard extends StatelessWidget {
   }
 }
 
-class _NightBackground extends StatelessWidget {
-  const _NightBackground();
+class _CircleIconButton extends StatelessWidget {
+  const _CircleIconButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _NightPainter(),
-      child: const SizedBox.expand(),
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: const Color(0xFF262626),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
+        ),
+        child: Icon(icon, color: Colors.white, size: 18),
+      ),
     );
   }
 }
 
-class _NightPainter extends CustomPainter {
-  final _rng = math.Random(7);
+class _PreferencesBackground extends StatelessWidget {
+  const _PreferencesBackground();
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    const gradient = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFF0B1023), Color(0xFF090D1A)],
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF151515), Color(0xFF0E0E0E)],
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            top: -120,
+            right: -80,
+            child: Container(
+              width: 240,
+              height: 240,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFD7E37A).withOpacity(0.08),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -140,
+            left: -60,
+            child: Container(
+              width: 260,
+              height: 260,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF60712D).withOpacity(0.12),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
-    canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
-
-    final vignette = RadialGradient(
-      colors: [Colors.transparent, Colors.black.withOpacity(0.55)],
-      stops: const [0.55, 1.0],
-    );
-    canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
-
-    final starPaint = Paint()..color = Colors.white.withOpacity(0.55);
-    final starPaintDim = Paint()..color = Colors.white.withOpacity(0.22);
-    final count = (size.width * size.height / 6500).clamp(70, 170).toInt();
-    for (var i = 0; i < count; i++) {
-      final x = _rng.nextDouble() * size.width;
-      final y = _rng.nextDouble() * size.height * 0.6;
-      final r = _rng.nextDouble() * 1.35 + 0.2;
-      canvas.drawCircle(Offset(x, y), r, (i % 3 == 0) ? starPaint : starPaintDim);
-    }
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
