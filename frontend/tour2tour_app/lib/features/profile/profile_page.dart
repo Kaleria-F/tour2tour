@@ -61,7 +61,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final title = _me?.email ?? _me?.phone ?? 'РџСЂРѕС„РёР»СЊ';
+    final title = _me?.email ?? _me?.phone ?? 'Профиль';
 
     return Scaffold(
       body: Stack(
@@ -80,7 +80,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       _Logo(cs: cs),
                       const SizedBox(height: 18),
                       const Text(
-                        'РџСЂРѕС„РёР»СЊ',
+                        'Профиль',
                         style: TextStyle(
                           fontSize: 30,
                           fontWeight: FontWeight.w800,
@@ -117,7 +117,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                     OutlinedButton.icon(
                                       onPressed: () => context.go('/change-password'),
                                       icon: const Icon(Icons.lock_reset),
-                                      label: const Text('РЎРјРµРЅРёС‚СЊ РїР°СЂРѕР»СЊ'),
+                                      label: const Text('Сменить пароль'),
                                     ),
                                     OutlinedButton.icon(
                                       onPressed: () => context.go('/security-setup'),
@@ -128,7 +128,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                                 const SizedBox(height: 12),
                                 const Text(
-                                  'РњРѕРё РїСѓС‚РµС€РµСЃС‚РІРёСЏ',
+                                  'Мои путешествия',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w700,
@@ -144,12 +144,12 @@ class _ProfilePageState extends State<ProfilePage> {
                                   )
                                 else if (_error != null)
                                   Text(
-                                    'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»СЏ: $_error',
+                                    'Ошибка загрузки профиля: $_error',
                                     style: const TextStyle(color: Colors.redAccent),
                                   )
                                 else if (_trips.isEmpty)
                                   Text(
-                                    'РџРѕРєР° РЅРµС‚ РїСѓС‚РµС€РµСЃС‚РІРёР№. РЎРѕР·РґР°Р№ РїРµСЂРІРѕРµ.',
+                                    'Пока нет путешествий. Создай первое.',
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.85),
                                       fontSize: 14,
@@ -244,7 +244,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                             onPressed: () => context.go('/create-trip'),
                             child: const Text(
-                              'РЎРѕР·РґР°С‚СЊ РїСѓС‚РµС€РµСЃС‚РІРёРµ',
+                              'Создать путешествие',
                               style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.w800),
                             ),
                           ),

@@ -42,3 +42,9 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation("com.google.android.gms:play-services-location:21.1.0")
+    // Зависимость Work Manager. Добавлена для использования офлайн-карт.
+    implementation("androidx.work:work-runtime:2.9.0")
+}

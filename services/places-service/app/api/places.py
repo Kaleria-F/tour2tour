@@ -32,7 +32,7 @@ router = APIRouter(prefix="/places", tags=["places"])
 def _normalize_city_query(value: str | None) -> str:
     if not value:
         return ""
-    return " ".join(value.casefold().replace("С‘", "Рµ").split())
+    return " ".join(value.casefold().replace("ё", "е").split())
 
 
 def _search_city_records(
@@ -79,7 +79,7 @@ def _search_city_records(
                 city=city,
                 region=region or None,
                 district=str(record.get("district") or "").strip() or None,
-                country=str(record.get("country") or "Р РѕСЃСЃРёСЏ"),
+                country=str(record.get("country") or "Россия"),
                 display_name=display_name,
                 lat=record.get("lat"),
                 lon=record.get("lon"),
@@ -634,4 +634,5 @@ def delete_place(
         raise HTTPException(status_code=404, detail="Place not found")
     db.delete(place)
     db.commit()
+
 

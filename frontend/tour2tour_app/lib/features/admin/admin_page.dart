@@ -261,14 +261,14 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
       builder: (context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF171126),
-          title: const Text('РЎРѕР·РґР°С‚СЊ import job', style: TextStyle(color: Colors.white)),
+          title: const Text('Создать import job', style: TextStyle(color: Colors.white)),
           content: SizedBox(
             width: 420,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _adminField(sourceCtrl, 'РСЃС‚РѕС‡РЅРёРє'),
-                _adminField(kindCtrl, 'РўРёРї'),
+                _adminField(sourceCtrl, 'Источник'),
+                _adminField(kindCtrl, 'Тип'),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: OutlinedButton.icon(
@@ -283,11 +283,11 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                       fileName = file!.name;
                       fileBytes = file.bytes!;
                       if (context.mounted) {
-                        showAuthSuccess(context, 'Р¤Р°Р№Р» РІС‹Р±СЂР°РЅ: $fileName');
+                        showAuthSuccess(context, 'Файл выбран: $fileName');
                       }
                     },
                     icon: const Icon(Icons.attach_file_rounded),
-                    label: Text(fileName == null ? 'Р’С‹Р±СЂР°С‚СЊ CSV' : fileName!),
+                    label: Text(fileName == null ? 'Выбрать CSV' : fileName!),
                   ),
                 ),
               ],
@@ -296,13 +296,13 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('РћС‚РјРµРЅР°'),
+              child: const Text('Отмена'),
             ),
             ElevatedButton(
               onPressed: () async {
                 try {
                   if (fileBytes == null || fileName == null) {
-                    showAuthError(context, 'РЎРЅР°С‡Р°Р»Р° РІС‹Р±РµСЂРёС‚Рµ CSV С„Р°Р№Р»');
+                    showAuthError(context, 'Сначала выберите CSV файл');
                     return;
                   }
                   await widget.repo.uploadCsvImport(
@@ -315,10 +315,10 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                   if (!context.mounted) return;
                   Navigator.of(context).pop(true);
                 } catch (e) {
-                  showAuthError(context, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ import job: $e');
+                  showAuthError(context, 'Не удалось создать import job: $e');
                 }
               },
-              child: const Text('РЎРѕР·РґР°С‚СЊ'),
+              child: const Text('Создать'),
             ),
           ],
         );
@@ -353,7 +353,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                             Row(
                               children: [
                                 Text(
-                                  'РђРґРјРёРЅРєР° СЂРµРєРѕРјРµРЅРґР°С†РёР№',
+                                  'Админка рекомендаций',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 30,
@@ -364,7 +364,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                                 TextButton.icon(
                                   onPressed: () => context.go('/profile'),
                                   icon: const Icon(Icons.arrow_back_rounded),
-                                  label: const Text('Р’ РїСЂРѕС„РёР»СЊ'),
+                                  label: const Text('В профиль'),
                                 ),
                               ],
                             ),
@@ -373,7 +373,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                               Expanded(
                                 child: Center(
                                   child: Text(
-                                    'Р”РѕСЃС‚СѓРї Р·Р°РїСЂРµС‰РµРЅ. РўСЂРµР±СѓРµС‚СЃСЏ СЂРѕР»СЊ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°.',
+                                    'Доступ запрещен. Требуется роль администратора.',
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.9),
                                       fontSize: 16,
@@ -394,9 +394,9 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                                   labelColor: Colors.white,
                                   unselectedLabelColor: Colors.white60,
                                   tabs: const [
-                                    Tab(text: 'РњРµСЃС‚Р°'),
-                                    Tab(text: 'РљР°РЅРґРёРґР°С‚С‹'),
-                                    Tab(text: 'РРјРїРѕСЂС‚С‹'),
+                                    Tab(text: 'Места'),
+                                    Tab(text: 'Кандидаты'),
+                                    Tab(text: 'Импорты'),
                                   ],
                                 ),
                               ),
@@ -429,12 +429,12 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
         children: [
           Row(
             children: [
-              const Text('РљР°С‚Р°Р»РѕРі РјРµСЃС‚', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+              const Text('Каталог мест', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
               const Spacer(),
               ElevatedButton.icon(
                 onPressed: () => _openPlaceDialog(),
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('Р”РѕР±Р°РІРёС‚СЊ РјРµСЃС‚Рѕ'),
+                label: const Text('Добавить место'),
               ),
             ],
           ),
@@ -470,7 +470,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        place.address ?? 'Р‘РµР· Р°РґСЂРµСЃР°',
+                        place.address ?? 'Без адреса',
                         style: TextStyle(color: Colors.white.withOpacity(0.78)),
                       ),
                       const SizedBox(height: 8),
@@ -478,7 +478,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _pill('в… ${(place.rating ?? 0).toStringAsFixed(1)}'),
+                          _pill('★ ${(place.rating ?? 0).toStringAsFixed(1)}'),
                           _pill(place.priceLevel ?? 'price?'),
                           _pill(place.status),
                         ],
@@ -489,11 +489,11 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         children: [
                           OutlinedButton(
                             onPressed: () => _openPlaceDialog(place),
-                            child: const Text('Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ'),
+                            child: const Text('Редактировать'),
                           ),
                           OutlinedButton(
                             onPressed: () => _deletePlace(place),
-                            child: const Text('РЈРґР°Р»РёС‚СЊ'),
+                            child: const Text('Удалить'),
                           ),
                         ],
                       ),
@@ -514,7 +514,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
         children: [
           const Align(
             alignment: Alignment.centerLeft,
-            child: Text('РљР°РЅРґРёРґР°С‚С‹ РЅР° РјРѕРґРµСЂР°С†РёСЋ', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+            child: Text('Кандидаты на модерацию', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(height: 14),
           Expanded(
@@ -537,7 +537,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         children: [
                           Expanded(
                             child: Text(
-                              candidate.payload['name']?.toString() ?? 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ',
+                              candidate.payload['name']?.toString() ?? 'Без названия',
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16),
                             ),
                           ),
@@ -557,11 +557,11 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         children: [
                           ElevatedButton(
                             onPressed: () => _decideCandidate(candidate, 'approved'),
-                            child: const Text('РћРґРѕР±СЂРёС‚СЊ'),
+                            child: const Text('Одобрить'),
                           ),
                           OutlinedButton(
                             onPressed: () => _decideCandidate(candidate, 'rejected'),
-                            child: const Text('РћС‚РєР»РѕРЅРёС‚СЊ'),
+                            child: const Text('Отклонить'),
                           ),
                         ],
                       ),
@@ -582,12 +582,12 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
         children: [
           Row(
             children: [
-              const Text('РРјРїРѕСЂС‚С‹', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+              const Text('Импорты', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
               const Spacer(),
               ElevatedButton.icon(
                 onPressed: _openImportDialog,
                 icon: const Icon(Icons.upload_file_rounded),
-                label: const Text('РќРѕРІС‹Р№ import job'),
+                label: const Text('Новый import job'),
               ),
             ],
           ),
@@ -611,7 +611,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(job.fileName ?? 'Р‘РµР· С„Р°Р№Р»Р°', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                            Text(job.fileName ?? 'Без файла', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
                             const SizedBox(height: 4),
                             Text(
                               '${job.source} В· ${job.kind}',
@@ -620,7 +620,7 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                             if (job.stats.isNotEmpty) ...[
                               const SizedBox(height: 6),
                               Text(
-                                'Р’СЃРµРіРѕ: ${job.stats['rows_total'] ?? 0} В· РЎРѕР·РґР°РЅРѕ: ${job.stats['candidates_created'] ?? 0} В· РћС€РёР±РѕРє: ${job.stats['rows_failed'] ?? 0}',
+                                'Всего: ${job.stats['rows_total'] ?? 0} В· Создано: ${job.stats['candidates_created'] ?? 0} В· Ошибок: ${job.stats['rows_failed'] ?? 0}',
                                 style: TextStyle(color: Colors.white.withOpacity(0.72), fontSize: 12),
                               ),
                             ],
@@ -707,4 +707,5 @@ class _NightBackground extends StatelessWidget {
     );
   }
 }
+
 

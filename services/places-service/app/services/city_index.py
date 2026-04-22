@@ -183,3 +183,4 @@ def load_city_records(path_str: str) -> list[dict[str, object]]:
         )
     )
     return records
+
