@@ -9,11 +9,19 @@ import '../shared/travel_app_shell.dart';
 class FavoritesPage extends StatefulWidget {
   final InteractionsRepo interactionsRepo;
   final ProfileRepo profileRepo;
+  final int? tripId;
+  final String? city;
+  final String? titleOverride;
+  final String? subtitleOverride;
 
   const FavoritesPage({
     super.key,
     required this.interactionsRepo,
     required this.profileRepo,
+    this.tripId,
+    this.city,
+    this.titleOverride,
+    this.subtitleOverride,
   });
 
   @override
@@ -41,6 +49,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
       final me = await widget.profileRepo.getMe();
       final groups = await widget.interactionsRepo.getFavorites(
         userId: me.id.toString(),
+        tripId: widget.tripId,
+        city: widget.city,
       );
       if (!mounted) return;
       setState(() {
@@ -59,9 +69,13 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final hasCityFilter = widget.city != null && widget.city!.trim().isNotEmpty;
     return TravelAppShell(
-      title: 'Избранное',
-      subtitle: 'Сохраненные места сгруппированы по городам',
+      title: widget.titleOverride ?? '\u0418\u0437\u0431\u0440\u0430\u043d\u043d\u043e\u0435',
+      subtitle: widget.subtitleOverride ??
+          (hasCityFilter
+              ? '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0434\u043b\u044f ${widget.city}'
+              : '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0441\u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u044b \u043f\u043e \u0433\u043e\u0440\u043e\u0434\u0430\u043c'),
       currentTab: TravelNavTab.taste,
       headerAction: InkWell(
         borderRadius: BorderRadius.circular(999),

@@ -117,11 +117,13 @@ class InteractionsRepo {
   Future<List<FavoriteCityGroup>> getFavorites({
     required String userId,
     int? tripId,
+    String? city,
   }) async {
     final res = await api.dio.get(
       '/interactions/users/$userId/favorites',
       queryParameters: {
         if (tripId != null) 'trip_id': tripId,
+        if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
       },
     );
     final data = res.data;

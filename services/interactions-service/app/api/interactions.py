@@ -144,6 +144,7 @@ def get_place_summary(place_id: str, db: Session = Depends(get_db)):
 def get_user_favorites(
     user_id: str,
     trip_id: int | None = Query(default=None),
+    city_filter: str | None = Query(default=None, alias="city"),
     limit: int = Query(default=500, ge=1, le=2000),
     db: Session = Depends(get_db),
 ):
@@ -175,6 +176,9 @@ def get_user_favorites(
             continue
 
         city = str(metadata.get("city") or "Без города")
+        if city_filter is not None and city.strip().casefold() != city_filter.strip().casefold():
+            continue
+
         grouped[city].append(
             FavoritePlace(
                 place_id=place_id,

@@ -12,6 +12,26 @@ function Assert-LastExitCode {
     }
 }
 
+function Wait-ForPostgres {
+    param(
+        [string]$Service,
+        [string]$User,
+        [string]$Database,
+        [int]$Attempts = 30
+    )
+
+    for ($i = 1; $i -le $Attempts; $i++) {
+        docker compose @composeArgs exec -T $Service pg_isready -U $User -d $Database *> $null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "$Service is ready."
+            return
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    throw "$Service did not become ready in time"
+}
+
 function Get-GatewayHealth {
     $healthUrls = @(
         "http://127.0.0.1:8888/health",
@@ -68,12 +88,16 @@ $coreServices = @(
 docker compose @composeArgs up --build -d --remove-orphans $coreServices
 Assert-LastExitCode "Starting local stack"
 
+Write-Host "Waiting for databases..."
+Wait-ForPostgres -Service "auth-db" -User "auth" -Database "auth"
+Wait-ForPostgres -Service "trips-db" -User "trips" -Database "trips"
+
 Write-Host "Running auth migrations..."
-docker compose @composeArgs exec auth-service alembic upgrade head
+docker compose @composeArgs exec -T auth-service alembic upgrade head
 Assert-LastExitCode "Running auth migrations"
 
 Write-Host "Running trips migrations..."
-docker compose @composeArgs exec trips-service alembic upgrade heads
+docker compose @composeArgs exec -T trips-service alembic upgrade heads
 Assert-LastExitCode "Running trips migrations"
 
 Write-Host "Checking gateway health..."

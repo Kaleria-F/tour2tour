@@ -349,6 +349,19 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
     await _load();
   }
 
+  Future<void> _openTripFavorites() async {
+    final city = _guessCity();
+    final params = <String, String>{
+      if (widget.tripId != null) 'tripId': widget.tripId.toString(),
+      if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+      if (city != null && city.trim().isNotEmpty)
+        'title': 'Избранное · ${city.trim()}',
+      'subtitle': 'Сохраненные рекомендации текущего маршрута',
+    };
+    final query = Uri(queryParameters: params).query;
+    await context.push('/favorites${query.isEmpty ? '' : '?$query'}');
+  }
+
   Widget _tag(String text) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -377,7 +390,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
           children: [
             const Expanded(
               child: Text(
-                'Рекомендации',
+                'Р РµРєРѕРјРµРЅРґР°С†РёРё',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 22,
@@ -385,6 +398,19 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
                 ),
               ),
             ),
+            TextButton.icon(
+              onPressed: _openTripFavorites,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFE7B0A4),
+                textStyle: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              icon: const Icon(Icons.bookmark_rounded, size: 14),
+              label: const Text('\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0435'),
+            ),
+            const SizedBox(width: 4),
             TextButton.icon(
               onPressed: _openSurvey,
               style: TextButton.styleFrom(

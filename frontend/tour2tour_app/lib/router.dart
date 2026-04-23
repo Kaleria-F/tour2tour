@@ -91,9 +91,13 @@ GoRouter buildRouter() {
       ),
       GoRoute(
         path: '/favorites',
-        builder: (_, __) => FavoritesPage(
+        builder: (_, state) => FavoritesPage(
           interactionsRepo: interactions,
           profileRepo: profile,
+          tripId: int.tryParse(state.uri.queryParameters['tripId'] ?? ''),
+          city: state.uri.queryParameters['city'],
+          titleOverride: state.uri.queryParameters['title'],
+          subtitleOverride: state.uri.queryParameters['subtitle'],
         ),
       ),
       GoRoute(
