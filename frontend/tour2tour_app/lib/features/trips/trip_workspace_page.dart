@@ -9,6 +9,7 @@ import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
 import '../profile/profile_repo.dart';
 import '../recommendations/recommendations_repo.dart';
+import 'widgets/yandex_city_map.dart';
 import 'trip_recommendations_tab.dart';
 import 'trips_repo.dart';
 
@@ -1128,6 +1129,10 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
               label: const Text('Добавить этап'),
             ),
           ),
+          if ((widget.destinationCity ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            YandexCityMap(city: widget.destinationCity),
+          ],
           const SizedBox(height: 10),
           Expanded(
             child: _stagesLoading

@@ -20,6 +20,138 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
   <script src="https://api-maps.yandex.ru/v3/?apikey=acf6e354-8f9c-4163-9d37-54bf33ee956b&lang=ru_RU"></script>
+  <script>
+    (function () {
+      const API_KEY = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
+      const fallbackCenter = [37.617635, 55.755814];
+      const mapState = new WeakMap();
+
+      async function ensureYmaps() {
+        if (!window.ymaps3) {
+          throw new Error('ymaps3 is not loaded');
+        }
+        await window.ymaps3.ready;
+        return window.ymaps3;
+      }
+
+      async function geocodeCity(city) {
+        const url =
+          'https://geocode-maps.yandex.ru/v1/?apikey=' +
+          encodeURIComponent(API_KEY) +
+          '&format=json&results=1&lang=ru_RU&geocode=' +
+          encodeURIComponent(city);
+
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const pos =
+          data &&
+          data.response &&
+          data.response.GeoObjectCollection &&
+          data.response.GeoObjectCollection.featureMember &&
+          data.response.GeoObjectCollection.featureMember[0] &&
+          data.response.GeoObjectCollection.featureMember[0].GeoObject &&
+          data.response.GeoObjectCollection.featureMember[0].GeoObject.Point &&
+          data.response.GeoObjectCollection.featureMember[0].GeoObject.Point.pos;
+
+        if (!pos) return null;
+        const parts = pos.split(' ');
+        if (parts.length !== 2) return null;
+        const lon = Number(parts[0]);
+        const lat = Number(parts[1]);
+        if (Number.isNaN(lon) || Number.isNaN(lat)) return null;
+        return [lon, lat];
+      }
+
+      async function renderCityMap(container, city) {
+        if (!container || !city) return;
+        const ymaps3 = await ensureYmaps();
+        const center = (await geocodeCity(city)) || fallbackCenter;
+        const mapkit = await ymaps3.import('@yandex/ymaps3-default-ui-theme');
+        const YMap = ymaps3.YMap || mapkit.YMap;
+        const YMapDefaultSchemeLayer =
+          mapkit.YMapDefaultSchemeLayer || ymaps3.YMapDefaultSchemeLayer;
+        const YMapDefaultFeaturesLayer =
+          mapkit.YMapDefaultFeaturesLayer || ymaps3.YMapDefaultFeaturesLayer;
+
+        if (!YMap || !YMapDefaultSchemeLayer || !YMapDefaultFeaturesLayer) {
+          throw new Error('Yandex Maps classes are unavailable');
+        }
+        let state = mapState.get(container);
+
+        if (!state) {
+          container.innerHTML = '';
+          const map = new YMap(container, {
+            location: { center: center, zoom: 11 },
+          });
+          map.addChild(new YMapDefaultSchemeLayer());
+          map.addChild(new YMapDefaultFeaturesLayer());
+          state = { map: map };
+          mapState.set(container, state);
+        } else {
+          state.map.update({
+            location: { center: center, zoom: 11, duration: 300 },
+          });
+        }
+      }
+
+      async function syncContainer(container) {
+        if (!container || !container.classList || !container.classList.contains('t2t-yandex-city-map')) {
+          return;
+        }
+        const city = (container.getAttribute('data-city') || '').trim();
+        if (!city) return;
+        try {
+          await renderCityMap(container, city);
+        } catch (error) {
+          console.error('Yandex map render failed:', error);
+          container.innerHTML =
+            '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:#cfd7ef;font-size:14px;">Карта временно недоступна</div>';
+        }
+      }
+
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === 'attributes') {
+            syncContainer(mutation.target);
+            continue;
+          }
+          if (mutation.type === 'childList') {
+            mutation.addedNodes.forEach((node) => {
+              if (!(node instanceof HTMLElement)) return;
+              if (node.classList && node.classList.contains('t2t-yandex-city-map')) {
+                syncContainer(node);
+              }
+              if (node.querySelectorAll) {
+                node
+                  .querySelectorAll('.t2t-yandex-city-map')
+                  .forEach((el) => syncContainer(el));
+              }
+            });
+          }
+        }
+      });
+
+      document.addEventListener('DOMContentLoaded', () => {
+        document
+          .querySelectorAll('.t2t-yandex-city-map')
+          .forEach((el) => syncContainer(el));
+      });
+
+      document.addEventListener('t2t-city-change', (event) => {
+        syncContainer(event.target);
+      });
+
+      observer.observe(document.documentElement, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-city'],
+      });
+
+      window.t2tMap = { renderCityMap };
+    })();
+  </script>
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
