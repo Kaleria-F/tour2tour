@@ -20,6 +20,7 @@ import 'features/documents/documents_repo.dart';
 import 'features/favorites/favorites_page.dart';
 import 'features/profile/profile_repo.dart';
 import 'features/profile/profile_page.dart';
+import 'features/shared/travel_app_shell.dart';
 import 'features/trips/create_trip_page.dart';
 import 'features/trips/trip_workspace_page.dart';
 import 'features/trips/trips_repo.dart';
@@ -94,10 +95,26 @@ GoRouter buildRouter() {
         builder: (_, state) => FavoritesPage(
           interactionsRepo: interactions,
           profileRepo: profile,
+          tripsRepo: trips,
           tripId: int.tryParse(state.uri.queryParameters['tripId'] ?? ''),
           city: state.uri.queryParameters['city'],
           titleOverride: state.uri.queryParameters['title'],
           subtitleOverride: state.uri.queryParameters['subtitle'],
+        ),
+      ),
+      GoRoute(
+        path: '/trip-favorites',
+        builder: (_, state) => FavoritesPage(
+          interactionsRepo: interactions,
+          profileRepo: profile,
+          tripsRepo: trips,
+          tripId: int.tryParse(state.uri.queryParameters['tripId'] ?? ''),
+          city: state.uri.queryParameters['city'],
+          titleOverride: state.uri.queryParameters['title'] ??
+              '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0435 \u043c\u0430\u0440\u0448\u0440\u0443\u0442\u0430',
+          subtitleOverride: state.uri.queryParameters['subtitle'] ??
+              '\u041c\u0435\u0441\u0442\u0430, \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u0438\u043c\u0435\u043d\u043d\u043e \u0434\u043b\u044f \u044d\u0442\u043e\u0439 \u043f\u043e\u0435\u0437\u0434\u043a\u0438',
+          currentTab: TravelNavTab.planner,
         ),
       ),
       GoRoute(

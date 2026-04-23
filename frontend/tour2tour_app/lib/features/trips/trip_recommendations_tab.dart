@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../interactions/interactions_repo.dart';
@@ -64,23 +64,30 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
         profile = SurveyProfile.empty();
       }
       final center = _routeCenter();
+      final tripCity = _tripCity();
       final favoriteGroups = await widget.interactionsRepo.getFavorites(
         userId: me.id.toString(),
         tripId: widget.tripId,
+        city: tripCity,
       );
       final items = await widget.recommendationsRepo.getPersonalized(
         profile: profile,
-        city: _guessCity(),
+        city: tripCity,
         nearRoute: widget.stages.isNotEmpty,
         routeLatitude: center?.latitude,
         routeLongitude: center?.longitude,
         userId: me.id.toString(),
       );
+      final filteredItems = tripCity == null || tripCity.isEmpty
+          ? items
+          : items
+              .where((item) => item.city.trim().toLowerCase() == tripCity.toLowerCase())
+              .toList();
       if (!mounted) return;
       setState(() {
         _surveyProfile = profile;
         _currentUserId = me.id.toString();
-        _recommendations = items;
+        _recommendations = filteredItems;
         _sentImpressions.clear();
         _savedIds
           ..clear()
@@ -88,7 +95,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
             favoriteGroups.expand((g) => g.items).map((i) => i.placeId),
           );
       });
-      _trackImpressions(items);
+      _trackImpressions(filteredItems);
     } catch (_) {
       if (!mounted) return;
       setState(() => _recommendations = const []);
@@ -128,6 +135,13 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
           ..sort((a, b) => b.value.compareTo(a.value)))
         .first
         .key;
+  }
+
+  String? _tripCity() {
+    final direct = (widget.destinationCity ?? '').trim();
+    if (direct.isNotEmpty) return direct;
+    final guessed = _guessCity()?.trim() ?? '';
+    return guessed.isEmpty ? null : guessed;
   }
 
   ({double latitude, double longitude})? _routeCenter() {
@@ -230,8 +244,8 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Сохранено в избранное'
-          '${widget.destinationCity == null ? '' : ' · ${widget.destinationCity}'}',
+          '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e \u0432 \u0438\u0437\u0431\u0440\u0430\u043d\u043d\u043e\u0435'
+          '${widget.destinationCity == null ? '' : ' \u00b7 ${widget.destinationCity}'}',
         ),
       ),
     );
@@ -254,7 +268,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Не удалось добавить рекомендацию в маршрут')),
+            content: Text('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u044e \u0432 \u043c\u0430\u0440\u0448\u0440\u0443\u0442')),
       );
       return;
     }
@@ -263,7 +277,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
     widget.onStagesChanged();
     _consume(item.id);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Добавлено в маршрут: ${item.title}')),
+      SnackBar(content: Text('\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u043e \u0432 \u043c\u0430\u0440\u0448\u0440\u0443\u0442: ${item.title}')),
     );
   }
 
@@ -330,7 +344,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
                 children: [
                   _tag(item.city),
                   if (item.address.isNotEmpty) _tag(item.address),
-                  _tag('★ ${item.rating.toStringAsFixed(1)}'),
+                  _tag('\u2605 ${item.rating.toStringAsFixed(1)}'),
                   _tag(item.subcategory.isEmpty
                       ? item.category
                       : item.subcategory),
@@ -350,16 +364,16 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
   }
 
   Future<void> _openTripFavorites() async {
-    final city = _guessCity();
+    final city = _tripCity();
     final params = <String, String>{
       if (widget.tripId != null) 'tripId': widget.tripId.toString(),
       if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
       if (city != null && city.trim().isNotEmpty)
-        'title': 'Избранное · ${city.trim()}',
-      'subtitle': 'Сохраненные рекомендации текущего маршрута',
+        'title': '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0435 \u00b7 ${city.trim()}',
+      'subtitle': '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0434\u043b\u044f \u0433\u043e\u0440\u043e\u0434\u0430 \u044d\u0442\u043e\u0433\u043e \u043c\u0430\u0440\u0448\u0440\u0443\u0442\u0430',
     };
     final query = Uri(queryParameters: params).query;
-    await context.push('/favorites${query.isEmpty ? '' : '?$query'}');
+    await context.push('/trip-favorites${query.isEmpty ? '' : '?$query'}');
   }
 
   Widget _tag(String text) {
@@ -390,7 +404,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
           children: [
             const Expanded(
               child: Text(
-                'Р РµРєРѕРјРµРЅРґР°С†РёРё',
+                '\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 22,
@@ -421,15 +435,15 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
                 ),
               ),
               icon: const Icon(Icons.tune_rounded, size: 14),
-              label: const Text('Опрос'),
+              label: const Text('\u041e\u043f\u0440\u043e\u0441'),
             ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
           _surveyProfile?.skipped == true
-              ? 'Показываем базовые рекомендации. Пройдите опрос, чтобы подбор стал точнее.'
-              : 'Свайпайте вправо — нравится, влево — не подходит.',
+              ? '\u041f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0435\u043c \u0431\u0430\u0437\u043e\u0432\u044b\u0435 \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438. \u041f\u0440\u043e\u0439\u0434\u0438\u0442\u0435 \u043e\u043f\u0440\u043e\u0441, \u0447\u0442\u043e\u0431\u044b \u043f\u043e\u0434\u0431\u043e\u0440 \u0441\u0442\u0430\u043b \u0442\u043e\u0447\u043d\u0435\u0435.'
+              : '\u0421\u0432\u0430\u0439\u043f\u0430\u0439\u0442\u0435 \u0432\u043f\u0440\u0430\u0432\u043e \u2014 \u043d\u0440\u0430\u0432\u0438\u0442\u0441\u044f, \u0432\u043b\u0435\u0432\u043e \u2014 \u043d\u0435 \u043f\u043e\u0434\u0445\u043e\u0434\u0438\u0442.',
           style: TextStyle(
             color: Colors.white.withOpacity(0.55),
             fontSize: 13,
@@ -467,7 +481,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
   }
 }
 
-// ─── Deck ────────────────────────────────────────────────────────────────────
+// в”Ђв”Ђв”Ђ Deck в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 class _Deck extends StatelessWidget {
   const _Deck({
@@ -547,13 +561,13 @@ class _Deck extends StatelessWidget {
           alignment: Alignment.centerLeft,
           color: const Color(0xFFD7E37A),
           icon: Icons.favorite_rounded,
-          label: 'Подходит',
+          label: '\u041f\u043e\u0434\u0445\u043e\u0434\u0438\u0442',
         ),
         secondaryBackground: _SwipeHint(
           alignment: Alignment.centerRight,
           color: const Color(0xFFE7B0A4),
           icon: Icons.close_rounded,
-          label: 'Пропустить',
+          label: '\u041f\u0440\u043e\u043f\u0443\u0441\u0442\u0438\u0442\u044c',
         ),
         onDismissed: (dir) => onSwipe(item, dir),
         child: card,
@@ -562,7 +576,7 @@ class _Deck extends StatelessWidget {
   }
 }
 
-// ─── Swipe card ───────────────────────────────────────────────────────────────
+// в”Ђв”Ђв”Ђ Swipe card в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 class _SwipeCard extends StatelessWidget {
   const _SwipeCard({
@@ -702,7 +716,7 @@ class _SwipeCard extends StatelessWidget {
                         icon: isSaved
                             ? Icons.bookmark_rounded
                             : Icons.bookmark_border_rounded,
-                        label: 'Сохранить',
+                        label: '\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c',
                         active: isSaved,
                         onTap: () => onSave(),
                       ),
@@ -711,7 +725,7 @@ class _SwipeCard extends StatelessWidget {
                     Expanded(
                       child: _ActionButton(
                         icon: Icons.route_rounded,
-                        label: 'В маршрут',
+                        label: '\u0412 \u043c\u0430\u0440\u0448\u0440\u0443\u0442',
                         active: false,
                         onTap: () => onAddToTrip(),
                       ),
@@ -741,7 +755,7 @@ class _SwipeCard extends StatelessWidget {
   }
 }
 
-// ─── Small widgets ────────────────────────────────────────────────────────────
+// в”Ђв”Ђв”Ђ Small widgets в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 
 class _CardPlaceholder extends StatelessWidget {
   const _CardPlaceholder({required this.city});
@@ -956,7 +970,7 @@ class _EmptyState extends StatelessWidget {
               color: Color(0xFFD7E37A), size: 32),
           const SizedBox(height: 12),
           const Text(
-            'Пока нет рекомендаций',
+            '\u0421\u043a\u043e\u0440\u043e \u0437\u0434\u0435\u0441\u044c \u043f\u043e\u044f\u0432\u044f\u0442\u0441\u044f \u043d\u043e\u0432\u044b\u0435 \u043c\u0435\u0441\u0442\u0430',
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -965,7 +979,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Пока не нашли подходящие места. Попробуйте изменить город\nили пройти опрос для более точного подбора.',
+            '\u041c\u044b \u043f\u043e\u0434\u0431\u0438\u0440\u0430\u0435\u043c \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0435 \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438 \u0434\u043b\u044f \u044d\u0442\u043e\u0433\u043e \u043c\u0430\u0440\u0448\u0440\u0443\u0442\u0430.\n\u0417\u0430\u0439\u0434\u0438\u0442\u0435 \u0447\u0443\u0442\u044c \u043f\u043e\u0437\u0436\u0435 \u0438\u043b\u0438 \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u0435 \u044d\u043a\u0440\u0430\u043d.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white.withOpacity(0.64),
@@ -988,10 +1002,12 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
             icon: const Icon(Icons.tune_rounded, size: 16),
-            label: const Text('Пройти опрос'),
+            label: const Text('\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u043f\u043e\u0434\u0431\u043e\u0440'),
           ),
         ],
       ),
     );
   }
 }
+
+

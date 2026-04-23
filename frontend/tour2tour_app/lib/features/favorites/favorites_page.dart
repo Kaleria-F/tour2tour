@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../interactions/interactions_repo.dart';
 import '../profile/profile_repo.dart';
 import '../shared/travel_app_shell.dart';
+import '../trips/trips_repo.dart';
 
 class FavoritesPage extends StatefulWidget {
   final InteractionsRepo interactionsRepo;
@@ -13,6 +14,8 @@ class FavoritesPage extends StatefulWidget {
   final String? city;
   final String? titleOverride;
   final String? subtitleOverride;
+  final TravelNavTab currentTab;
+  final TripsRepo? tripsRepo;
 
   const FavoritesPage({
     super.key,
@@ -22,6 +25,8 @@ class FavoritesPage extends StatefulWidget {
     this.city,
     this.titleOverride,
     this.subtitleOverride,
+    this.currentTab = TravelNavTab.taste,
+    this.tripsRepo,
   });
 
   @override
@@ -32,6 +37,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
   bool _loading = true;
   String? _error;
   List<FavoriteCityGroup> _groups = const [];
+  String? _currentUserId;
 
   @override
   void initState() {
@@ -54,6 +60,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
       );
       if (!mounted) return;
       setState(() {
+        _currentUserId = me.id.toString();
         _groups = groups;
       });
     } catch (e) {
@@ -67,16 +74,112 @@ class _FavoritesPageState extends State<FavoritesPage> {
     }
   }
 
+  Map<String, dynamic> _metadata(FavoritePlace item) => {
+        'title': item.title,
+        'city': item.city,
+        'address': item.address,
+        'image_url': item.imageUrl,
+        'category': item.category,
+        'subcategory': item.subcategory,
+        'rating': item.rating,
+        'description': item.description,
+        'trip_id': item.tripId ?? widget.tripId,
+        'trip_title': item.tripTitle,
+      };
+
+  void _removeLocal(String placeId) {
+    setState(() {
+      _groups = _groups
+          .map(
+            (group) => FavoriteCityGroup(
+              city: group.city,
+              items: group.items.where((item) => item.placeId != placeId).toList(),
+            ),
+          )
+          .where((group) => group.items.isNotEmpty)
+          .toList();
+    });
+  }
+
+  Future<void> _removeFavorite(FavoritePlace item) async {
+    final userId = _currentUserId;
+    if (userId == null) return;
+    await widget.interactionsRepo.trackEvent(
+      userId: userId,
+      placeId: item.placeId,
+      action: 'dismissed',
+      weight: -2,
+      metadata: _metadata(item),
+    );
+    if (!mounted) return;
+    _removeLocal(item.placeId);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          '\u0423\u0431\u0440\u0430\u043d\u043e \u0438\u0437 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0433\u043e',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addToTrip(FavoritePlace item) async {
+    final userId = _currentUserId;
+    final tripsRepo = widget.tripsRepo;
+    final tripId = widget.tripId ?? item.tripId;
+    if (userId == null || tripsRepo == null || tripId == null) return;
+
+    final created = await tripsRepo.createStage(
+      tripId: tripId,
+      stageType: 'place',
+      subtype: (item.subcategory ?? '').isEmpty ? 'attraction' : item.subcategory!,
+      title: item.title,
+      address: (item.address ?? '').isEmpty ? null : item.address,
+      notes: (item.description ?? '').isEmpty ? null : item.description,
+      rating: item.rating,
+    );
+
+    if (created == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043c\u0435\u0441\u0442\u043e \u0432 \u043c\u0430\u0440\u0448\u0440\u0443\u0442',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await widget.interactionsRepo.trackEvent(
+      userId: userId,
+      placeId: item.placeId,
+      action: 'added_to_trip',
+      weight: 5,
+      metadata: _metadata(item),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u043e \u0432 \u043c\u0430\u0440\u0448\u0440\u0443\u0442: ${item.title}',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasCityFilter = widget.city != null && widget.city!.trim().isNotEmpty;
+    final filteredItems = hasCityFilter
+        ? _groups.expand((group) => group.items).toList()
+        : const <FavoritePlace>[];
     return TravelAppShell(
       title: widget.titleOverride ?? '\u0418\u0437\u0431\u0440\u0430\u043d\u043d\u043e\u0435',
       subtitle: widget.subtitleOverride ??
           (hasCityFilter
               ? '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0434\u043b\u044f ${widget.city}'
               : '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0441\u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u044b \u043f\u043e \u0433\u043e\u0440\u043e\u0434\u0430\u043c'),
-      currentTab: TravelNavTab.taste,
+      currentTab: widget.currentTab,
       headerAction: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: _load,
@@ -156,23 +259,37 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         ),
                       ),
                     )
-                  : GridView.builder(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 18,
-                        mainAxisSpacing: 22,
-                        childAspectRatio: 0.84,
-                      ),
-                      itemCount: _groups.length,
-                      itemBuilder: (context, index) {
-                        final group = _groups[index];
-                        return _CityFolderCard(
-                          group: group,
-                          onTap: () => _openFolder(group),
-                        );
-                      },
-                    ),
+                  : hasCityFilter
+                      ? ListView.separated(
+                          itemCount: filteredItems.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 10),
+                          itemBuilder: (_, index) =>
+                              _FavoritePlaceTile(
+                                key: ValueKey(filteredItems[index].placeId),
+                                item: filteredItems[index],
+                                canAddToTrip: widget.tripsRepo != null &&
+                                    (widget.tripId ?? filteredItems[index].tripId) != null,
+                                onAddToTrip: () => _addToTrip(filteredItems[index]),
+                                onRemove: () => _removeFavorite(filteredItems[index]),
+                              ),
+                        )
+                      : GridView.builder(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 18,
+                            mainAxisSpacing: 22,
+                            childAspectRatio: 0.84,
+                          ),
+                          itemCount: _groups.length,
+                          itemBuilder: (context, index) {
+                            final group = _groups[index];
+                            return _CityFolderCard(
+                              group: group,
+                              onTap: () => _openFolder(group),
+                            );
+                          },
+                        ),
     );
   }
 
@@ -235,7 +352,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
                               const SizedBox(height: 10),
                           itemBuilder: (_, index) {
                             final item = group.items[index];
-                            return _FavoritePlaceTile(item: item);
+                            return _FavoritePlaceTile(
+                              key: ValueKey(item.placeId),
+                              item: item,
+                              canAddToTrip: widget.tripsRepo != null &&
+                                  (widget.tripId ?? item.tripId) != null,
+                              onAddToTrip: () => _addToTrip(item),
+                              onRemove: () => _removeFavorite(item),
+                            );
                           },
                         ),
                       ),
@@ -504,103 +628,173 @@ class _GlassFolderFront extends StatelessWidget {
 }
 
 class _FavoritePlaceTile extends StatelessWidget {
-  const _FavoritePlaceTile({required this.item});
+  const _FavoritePlaceTile({
+    super.key,
+    required this.item,
+    required this.onRemove,
+    required this.onAddToTrip,
+    required this.canAddToTrip,
+  });
 
   final FavoritePlace item;
+  final VoidCallback onRemove;
+  final VoidCallback onAddToTrip;
+  final bool canAddToTrip;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+    return Dismissible(
+      key: ValueKey('favorite-${item.placeId}'),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE7B0A4).withOpacity(0.18),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: const Color(0xFFE7B0A4).withOpacity(0.38)),
+        ),
+        child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE7B0A4)),
       ),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: SizedBox(
-              width: 64,
-              height: 64,
-              child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-                  ? Image.network(
-                      item.imageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          _FavoriteThumbFallback(city: item.city),
-                    )
-                  : _FavoriteThumbFallback(city: item.city),
+      onDismissed: (_) => onRemove(),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.white.withOpacity(0.06)),
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: SizedBox(
+                width: 64,
+                height: 64,
+                child: item.imageUrl != null && item.imageUrl!.isNotEmpty
+                    ? Image.network(
+                        item.imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) =>
+                            _FavoriteThumbFallback(city: item.city),
+                      )
+                    : _FavoriteThumbFallback(city: item.city),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if ((item.address ?? '').isNotEmpty)
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    item.address!,
+                    item.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.68),
-                      fontSize: 12.5,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                if ((item.tripTitle ?? '').isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD7E37A).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      item.tripTitle!,
+                  const SizedBox(height: 4),
+                  if ((item.address ?? '').isNotEmpty)
+                    Text(
+                      item.address!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFFD7E37A),
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.68),
+                        fontSize: 12.5,
                       ),
+                    ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      if (canAddToTrip)
+                        Expanded(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: onAddToTrip,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD7E37A).withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFD7E37A).withOpacity(0.35),
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.route_rounded,
+                                    size: 14,
+                                    color: Color(0xFFD7E37A),
+                                  ),
+                                  SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      '\u0412 \u043c\u0430\u0440\u0448\u0440\u0443\u0442',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: Color(0xFFD7E37A),
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      if ((item.tripTitle ?? '').isNotEmpty) ...[
+                        if (canAddToTrip) const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD7E37A).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            item.tripTitle!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFFD7E37A),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (item.rating != null)
+              Column(
+                children: [
+                  const Icon(Icons.star_rounded,
+                      color: Color(0xFFD7E37A), size: 18),
+                  const SizedBox(height: 4),
+                  Text(
+                    item.rating!.toStringAsFixed(1),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
-              ],
-            ),
-          ),
-          if (item.rating != null)
-            Column(
-              children: [
-                const Icon(Icons.star_rounded,
-                    color: Color(0xFFD7E37A), size: 18),
-                const SizedBox(height: 4),
-                Text(
-                  item.rating!.toStringAsFixed(1),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-        ],
+              ),
+          ],
+        ),
       ),
     );
   }
