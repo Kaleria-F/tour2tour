@@ -22,6 +22,12 @@ docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T auth-service al
 echo "[deploy] Applying trips migrations"
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T trips-service alembic upgrade head
 
+echo "[deploy] Applying places migrations"
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T places-service alembic upgrade head
+
+echo "[deploy] Applying interactions migrations"
+docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T interactions-service alembic upgrade head
+
 echo "[deploy] Validating nginx config"
 nginx -t
 systemctl reload nginx
