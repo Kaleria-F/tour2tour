@@ -21,6 +21,19 @@ class SurveyProfile {
     required this.hasCompleted,
   });
 
+  factory SurveyProfile.empty() {
+    return SurveyProfile(
+      interests: const [],
+      tripFormats: const [],
+      budget: null,
+      travelMode: null,
+      pace: null,
+      interestWeights: const {},
+      skipped: true,
+      hasCompleted: false,
+    );
+  }
+
   factory SurveyProfile.fromJson(Map<String, dynamic> json) {
     final rawWeights = json['interest_weights'];
     final weights = <String, int>{};
@@ -85,16 +98,7 @@ class PreferencesRepo {
     final res = await api.dio.get('/users/me/survey-profile');
     final data = res.data;
     if (data is! Map<String, dynamic>) {
-      return SurveyProfile(
-        interests: const [],
-        tripFormats: const [],
-        budget: null,
-        travelMode: null,
-        pace: null,
-        interestWeights: const {},
-        skipped: false,
-        hasCompleted: false,
-      );
+      return SurveyProfile.empty();
     }
     return SurveyProfile.fromJson(data);
   }

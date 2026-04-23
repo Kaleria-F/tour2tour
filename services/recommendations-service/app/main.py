@@ -247,6 +247,34 @@ def _interest_score(interest_weights: dict[str, int], place_tags: dict[str, int]
     return score
 
 
+def _default_interest_weights(city: str | None, near_route: bool) -> dict[str, int]:
+    weights = {
+        "culture": 3,
+        "history": 3,
+        "nature": 3,
+        "food": 2,
+        "architecture": 2,
+        "museums": 2,
+        "family": 1,
+    }
+    if city:
+        weights.update({"landmark": 3, "walk": 2, "city": 2})
+    if near_route:
+        weights.update({"walk": 3, "attraction": 2, "cafe": 2})
+    return weights
+
+
+def _has_profile_signals(profile: SurveyProfile) -> bool:
+    return bool(
+        profile.interests
+        or profile.trip_formats
+        or profile.interest_weights
+        or profile.budget
+        or profile.travel_mode
+        or profile.pace
+    )
+
+
 def _place_signal(place_id: str, user_summary: dict[str, Any] | None) -> dict[str, Any]:
     if not user_summary:
         return {}
@@ -379,6 +407,9 @@ def personalized_recommendations(payload: RecommendationsRequest):
             if normalized_tag:
                 weights[normalized_tag] = 3
 
+    if not weights:
+        weights = _default_interest_weights(payload.city, payload.near_route)
+
     places = _fetch_places(payload.city)
     user_summary = _fetch_user_summary(payload.user_id)
 
@@ -389,6 +420,8 @@ def personalized_recommendations(payload: RecommendationsRequest):
         normalized_tags = _normalize_tags(place.tags)
         interest_score = _interest_score(weights, normalized_tags)
         budget_bonus = _budget_bonus(payload.profile.budget, place.price_level)
+        if not _has_profile_signals(payload.profile) and place.price_level in {"economy", "middle", None}:
+            budget_bonus += 1.0
         distance_bonus = _distance_bonus(
             payload.near_route,
             payload.city,
@@ -532,3 +565,4 @@ def stage_suggestions(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+

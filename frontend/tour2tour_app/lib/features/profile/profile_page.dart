@@ -58,13 +58,18 @@ class _ProfilePageState extends State<ProfilePage> {
       final results = await Future.wait([
         widget.repo.getMe(),
         widget.tripsRepo.listTrips(),
-        widget.preferencesRepo.getSurveyProfile(),
       ]);
+      SurveyProfile profile;
+      try {
+        profile = await widget.preferencesRepo.getSurveyProfile();
+      } catch (_) {
+        profile = SurveyProfile.empty();
+      }
       if (!mounted) return;
       setState(() {
         _me = results[0] as UserMe;
         _trips = results[1] as List<TripSummary>;
-        _surveyProfile = results[2] as SurveyProfile;
+        _surveyProfile = profile;
       });
       await _loadRecommendations();
     } catch (e) {

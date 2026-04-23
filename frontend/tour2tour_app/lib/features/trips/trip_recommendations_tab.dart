@@ -56,12 +56,13 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final results = await Future.wait([
-        widget.preferencesRepo.getSurveyProfile(),
-        widget.profileRepo.getMe(),
-      ]);
-      final profile = results[0] as SurveyProfile;
-      final me = results[1] as UserMe;
+      final me = await widget.profileRepo.getMe();
+      var profile = SurveyProfile.empty();
+      try {
+        profile = await widget.preferencesRepo.getSurveyProfile();
+      } catch (_) {
+        profile = SurveyProfile.empty();
+      }
       final center = _routeCenter();
       final favoriteGroups = await widget.interactionsRepo.getFavorites(
         userId: me.id.toString(),
@@ -401,7 +402,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
         const SizedBox(height: 4),
         Text(
           _surveyProfile?.skipped == true
-              ? 'Подберите интересы заново, чтобы выдача стала точнее.'
+              ? 'Показываем базовые рекомендации. Пройдите опрос, чтобы подбор стал точнее.'
               : 'Свайпайте вправо — нравится, влево — не подходит.',
           style: TextStyle(
             color: Colors.white.withOpacity(0.55),
@@ -938,7 +939,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Пройдите опрос предпочтений, чтобы мы\nподобрали места именно для вас.',
+            'Пока не нашли подходящие места. Попробуйте изменить город\nили пройти опрос для более точного подбора.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white.withOpacity(0.64),
