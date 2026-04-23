@@ -9,6 +9,7 @@ import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
 import '../profile/profile_repo.dart';
 import '../recommendations/recommendations_repo.dart';
+import 'trip_recommendations_tab.dart';
 import 'trips_repo.dart';
 
 class TripWorkspacePage extends StatefulWidget {
@@ -66,14 +67,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   bool _documentsLoading = false;
   bool _uploadingDocument = false;
   bool _bucketReady = false;
-  bool _recommendationsLoading = false;
-  List<RecommendationItem> _recommendations = const [];
-  SurveyProfile? _surveyProfile;
-  String? _currentUserId;
-  final Set<String> _sentRecommendationImpressions = <String>{};
-  final Set<String> _likedRecommendationIds = <String>{};
-  final Set<String> _dislikedRecommendationIds = <String>{};
-  final Set<String> _savedRecommendationIds = <String>{};
 
   static const _sectionTitles = [
     'Рекомендации',
@@ -140,7 +133,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       _loadExpenses();
       _loadStages();
     }
-    _loadRecommendations();
   }
 
   Future<void> _loadExpenses() async {
@@ -208,7 +200,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           _stageSuggestions = const [];
         });
       }
-      await _loadRecommendations();
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -994,375 +985,14 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
   }
 
-  String? _guessRecommendationCity() {
-    if ((widget.destinationCity ?? '').trim().isNotEmpty) {
-      return widget.destinationCity!.trim();
-    }
-
-    final scores = <String, int>{};
-
-    void addCandidate(String? raw, {int weight = 1}) {
-      if (raw == null) return;
-      final normalizedRaw = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
-      if (normalizedRaw.isEmpty) return;
-
-      final parts = normalizedRaw
-          .split(RegExp(r'[,;/|]'))
-          .map((part) => part.trim())
-          .where((part) => part.isNotEmpty)
-          .toList();
-
-      for (var i = 0; i < parts.length; i++) {
-        final part = parts[i];
-        if (part.length < 3 || part.length > 40) continue;
-        if (!RegExp(r'[A-Za-zА-Яа-яЁё]').hasMatch(part)) continue;
-        if (RegExp(r'^\d').hasMatch(part)) continue;
-        if (RegExp(
-          r'^(улица|ул\.?|проспект|пр\.?|дом|д\.?|street|st\.?)$',
-          caseSensitive: false,
-        ).hasMatch(part)) {
-          continue;
-        }
-        final current = scores[part] ?? 0;
-        scores[part] = current + (i == 0 ? weight + 2 : weight);
-      }
-    }
-
-    for (final stage in _stages) {
-      addCandidate(stage.address, weight: 3);
-      addCandidate(stage.startLocation, weight: 2);
-      addCandidate(stage.endLocation, weight: 2);
-    }
-
-    final title = widget.tripTitle.trim();
-    if (title.isNotEmpty && title.split(RegExp(r'\s+')).length <= 4) {
-      addCandidate(title, weight: 1);
-    }
-
-    if (scores.isEmpty) return null;
-    final sorted = scores.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return sorted.first.key;
-  }
-
-  bool _isNearRouteContext() {
-    return _stages.isNotEmpty;
-  }
-
-  ({double latitude, double longitude})? _routeCenter() {
-    var count = 0;
-    var latitudeSum = 0.0;
-    var longitudeSum = 0.0;
-
-    for (final stage in _stages) {
-      if (stage.latitude == null || stage.longitude == null) continue;
-      latitudeSum += stage.latitude!;
-      longitudeSum += stage.longitude!;
-      count += 1;
-    }
-
-    if (count == 0) return null;
-    return (
-      latitude: latitudeSum / count,
-      longitude: longitudeSum / count,
-    );
-  }
-
-  Future<void> _loadRecommendations() async {
-    setState(() {
-      _recommendationsLoading = true;
-    });
-    try {
-      final results = await Future.wait([
-        widget.preferencesRepo.getSurveyProfile(),
-        widget.profileRepo.getMe(),
-      ]);
-      final profile = results[0] as SurveyProfile;
-      final me = results[1] as UserMe;
-      final recommendationCity = _guessRecommendationCity();
-      final routeCenter = _routeCenter();
-      final favoriteGroups = await widget.interactionsRepo.getFavorites(
-        userId: me.id.toString(),
-        tripId: widget.tripId,
-      );
-      final items = await widget.recommendationsRepo.getPersonalized(
-        profile: profile,
-        city: recommendationCity,
-        nearRoute: _isNearRouteContext(),
-        routeLatitude: routeCenter?.latitude,
-        routeLongitude: routeCenter?.longitude,
-        userId: me.id.toString(),
-      );
-      if (!mounted) return;
-      setState(() {
-        _surveyProfile = profile;
-        _currentUserId = me.id.toString();
-        _recommendations = items;
-        _sentRecommendationImpressions.clear();
-        _savedRecommendationIds
-          ..clear()
-          ..addAll(
-            favoriteGroups
-                .expand((group) => group.items)
-                .map((item) => item.placeId),
-          );
-      });
-      _trackRecommendationImpressions(items);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _recommendations = const [];
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось загрузить рекомендации')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _recommendationsLoading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _trackRecommendationImpressions(List<RecommendationItem> items) async {
-    final userId = _currentUserId;
-    if (userId == null || userId.isEmpty) return;
-
-    for (var i = 0; i < items.length; i++) {
-      final item = items[i];
-      if (_sentRecommendationImpressions.contains(item.id)) continue;
-      _sentRecommendationImpressions.add(item.id);
-      try {
-        await widget.interactionsRepo.trackImpression(
-          userId: userId,
-          placeId: item.id,
-          recommendationId: item.id,
-          position: i,
-        );
-        await widget.interactionsRepo.trackEvent(
-          userId: userId,
-          placeId: item.id,
-          action: 'shown',
-          recommendationId: item.id,
-        );
-      } catch (_) {
-        // Do not block UI on analytics failures.
-      }
-    }
-  }
-
-  Future<void> _trackRecommendationAction(
-    RecommendationItem item,
-    String action, {
-    double weight = 1.0,
-    Map<String, dynamic>? metadata,
-  }) async {
-    final userId = _currentUserId;
-    if (userId == null || userId.isEmpty) return;
-    try {
-      await widget.interactionsRepo.trackEvent(
-        userId: userId,
-        placeId: item.id,
-        action: action,
-        recommendationId: item.id,
-        weight: weight,
-        metadata: metadata,
-      );
-    } catch (_) {
-      // Ignore analytics transport failures in the main UX flow.
-    }
-  }
-
-  Map<String, dynamic> _recommendationMetadata(RecommendationItem item) {
-    return {
-      'title': item.title,
-      'city': item.city,
-      'address': item.address,
-      'image_url': item.imageUrl,
-      'category': item.category,
-      'subcategory': item.subcategory,
-      'rating': item.rating,
-      'description': item.description,
-      'trip_id': widget.tripId,
-      'trip_title': widget.tripTitle,
-    };
-  }
-
-  void _consumeRecommendation(String id) {
-    setState(() {
-      _recommendations = _recommendations.where((item) => item.id != id).toList();
-    });
-  }
-
-  Future<void> _openRecommendationDetails(RecommendationItem item) async {
-    await _trackRecommendationAction(
-      item,
-      'opened',
-      weight: 2,
-      metadata: {'city': item.city, 'category': item.category},
-    );
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xFF18122B),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                if (item.description.isNotEmpty)
-                  Text(
-                    item.description,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.84),
-                      height: 1.45,
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _scoreTag(item.city),
-                    if (item.address.isNotEmpty) _scoreTag(item.address),
-                    _scoreTag('★ ${item.rating.toStringAsFixed(1)}'),
-                    _scoreTag(item.subcategory.isEmpty ? item.category : item.subcategory),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _likeRecommendation(RecommendationItem item) async {
-    setState(() {
-      _likedRecommendationIds.add(item.id);
-      _dislikedRecommendationIds.remove(item.id);
-    });
-    await _trackRecommendationAction(
-      item,
-      'liked',
-      weight: 4,
-      metadata: _recommendationMetadata(item),
-    );
-  }
-
-  Future<void> _dislikeRecommendation(RecommendationItem item) async {
-    setState(() {
-      _dislikedRecommendationIds.add(item.id);
-      _likedRecommendationIds.remove(item.id);
-    });
-    await _trackRecommendationAction(
-      item,
-      'disliked',
-      weight: -4,
-      metadata: _recommendationMetadata(item),
-    );
-  }
-
-  Future<void> _saveRecommendation(RecommendationItem item) async {
-    setState(() {
-      _savedRecommendationIds.add(item.id);
-    });
-    await _trackRecommendationAction(
-      item,
-      'saved',
-      weight: 3,
-      metadata: _recommendationMetadata(item),
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Сохранено в избранное${widget.destinationCity == null ? '' : ' · ${widget.destinationCity}'}',
-        ),
-      ),
-    );
-  }
-
-  Future<void> _addRecommendationToTrip(RecommendationItem item) async {
-    if (widget.tripId == null) return;
-    final created = await widget.tripsRepo.createStage(
-      tripId: widget.tripId!,
-      stageType: 'place',
-      subtype: item.subcategory.isEmpty ? 'attraction' : item.subcategory,
-      title: item.title,
-      address: item.address.isEmpty ? null : item.address,
-      latitude: item.latitude == 0 ? null : item.latitude,
-      longitude: item.longitude == 0 ? null : item.longitude,
-      notes: item.description.isEmpty ? null : item.description,
-      rating: item.rating == 0 ? null : item.rating,
-    );
-    if (created == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось добавить рекомендацию в маршрут')),
-      );
-      return;
-    }
-    await _trackRecommendationAction(
-      item,
-      'added_to_trip',
-      weight: 5,
-      metadata: _recommendationMetadata(item),
-    );
-    if (!mounted) return;
-    await _loadStages();
-    _consumeRecommendation(item.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Добавлено в маршрут: ${item.title}')),
-    );
-  }
-
-  Future<void> _handleRecommendationSwipe(
-    RecommendationItem item,
-    DismissDirection direction,
-  ) async {
-    if (direction == DismissDirection.startToEnd) {
-      await _likeRecommendation(item);
-    } else {
-      await _dislikeRecommendation(item);
-    }
-    _consumeRecommendation(item.id);
-  }
-
-  Future<void> _openSurveyFromRecommendations() async {
-    await context.push('/preferences?from=recommendations');
-    if (!mounted) return;
-    await _loadRecommendations();
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isRecommendationsTab = _currentIndex == 0;
 
     return Scaffold(
       body: Stack(
         children: [
-          if (isRecommendationsTab)
-            const _RecommendationsBackground()
-          else
-            const _NightBackground(),
+          const _NightBackground(),
           SafeArea(
             child: Center(
               child: ConstrainedBox(
@@ -1379,26 +1009,18 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                           TextButton.icon(
                             onPressed: () => context.go('/profile'),
                             style: TextButton.styleFrom(
-                              foregroundColor: isRecommendationsTab
-                                  ? const Color(0xFF403734)
-                                  : Colors.white,
-                              backgroundColor: isRecommendationsTab
-                                  ? Colors.white.withOpacity(0.74)
-                                  : Colors.white.withOpacity(0.08),
+                              foregroundColor: Colors.white,
+                              backgroundColor: Colors.white.withOpacity(0.08),
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
-                              ),
+                                  horizontal: 14, vertical: 10),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(999),
                                 side: BorderSide(
-                                  color: isRecommendationsTab
-                                      ? const Color(0xFFDCC9BC)
-                                      : Colors.white.withOpacity(0.14),
-                                ),
+                                    color: Colors.white.withOpacity(0.14)),
                               ),
                             ),
-                            icon: const Icon(Icons.exit_to_app_rounded, size: 18),
+                            icon: const Icon(Icons.exit_to_app_rounded,
+                                size: 18),
                             label: const Text('К поездкам'),
                           ),
                         ],
@@ -1406,12 +1028,10 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                       const SizedBox(height: 8),
                       Text(
                         widget.tripTitle,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 30,
                           fontWeight: FontWeight.w800,
-                          color: isRecommendationsTab
-                              ? const Color(0xFF201714)
-                              : Colors.white,
+                          color: Colors.white,
                           height: 1.1,
                         ),
                       ),
@@ -1420,36 +1040,44 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         Text(
                           '${_fmtDate(widget.startDate!)} - ${_fmtDate(widget.endDate!)}',
                           style: TextStyle(
-                            color: isRecommendationsTab
-                                ? const Color(0xFF5E4B43)
-                                : Colors.white.withOpacity(0.8),
-                            fontSize: 13,
-                          ),
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 13),
                         ),
                       const SizedBox(height: 12),
                       Expanded(
                         child: _currentIndex == 1
                             ? _buildRouteCard(cs)
                             : _currentIndex == 2
-                            ? _buildBudgetCard(cs)
-                            : _currentIndex == 3
-                            ? _buildDocumentsCard()
-                            : _buildRecommendationsCard(cs),
+                                ? _buildBudgetCard(cs)
+                                : _currentIndex == 3
+                                    ? _buildDocumentsCard()
+                                    : TripRecommendationsTab(
+                                        recommendationsRepo:
+                                            widget.recommendationsRepo,
+                                        interactionsRepo:
+                                            widget.interactionsRepo,
+                                        preferencesRepo:
+                                            widget.preferencesRepo,
+                                        profileRepo: widget.profileRepo,
+                                        tripsRepo: widget.tripsRepo,
+                                        tripId: widget.tripId,
+                                        destinationCity:
+                                            widget.destinationCity,
+                                        tripTitle: widget.tripTitle,
+                                        stages: _stages,
+                                        onStagesChanged: _loadStages,
+                                      ),
                       ),
                       const SizedBox(height: 14),
                       _BottomMenu(
                         currentIndex: _currentIndex,
-                        lightStyle: isRecommendationsTab,
+                        lightStyle: false,
                         onTap: (index) {
                           setState(() {
                             _currentIndex = index;
-                            if (index != 2) {
-                              _showBudgetAnalytics = false;
-                            }
+                            if (index != 2) _showBudgetAnalytics = false;
                           });
-                          if (index == 0) {
-                            _loadRecommendations();
-                          } else if (index == 2) {
+                          if (index == 2) {
                             _loadExpenses();
                           } else if (index == 1) {
                             _loadStages();
@@ -1466,262 +1094,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildRecommendationsCard(ColorScheme cs) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.78),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF6C4B33).withOpacity(0.12),
-            blurRadius: 30,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Рекомендации',
-                      style: TextStyle(
-                        color: Color(0xFF1F1714),
-                        fontWeight: FontWeight.w500,
-                        fontSize: 27,
-                        height: 0.95,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _surveyProfile?.skipped == true
-                          ? 'Подберите интересы заново, чтобы выдача стала точнее.'
-                          : 'Свайпайте вправо, если место нравится, и влево, если не подходит.',
-                      style: TextStyle(
-                        color: const Color(0xFF5F4E47).withOpacity(0.88),
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              TextButton.icon(
-                onPressed: _openSurveyFromRecommendations,
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF403734),
-                  backgroundColor: const Color(0xFFF3E7DE),
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
-                    side: const BorderSide(color: Color(0xFFD6C2B6)),
-                  ),
-                ),
-                icon: const Icon(Icons.tune_rounded, size: 16),
-                label: const Text('Опрос'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _recommendationsLoading
-                ? const Center(
-                    child: CircularProgressIndicator(color: Color(0xFFB98E74)),
-                  )
-                : _recommendations.isEmpty
-                    ? Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 20,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8EFE8),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: const Text(
-                            'Пока нет рекомендаций',
-                            style: TextStyle(
-                              color: Color(0xFF5F4E47),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      )
-                    : Column(
-                        children: [
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              '${_recommendations.length} карточек в подборке',
-                              style: TextStyle(
-                                color: const Color(0xFF6B5951).withOpacity(0.9),
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Expanded(
-                            child: _buildRecommendationDeck(),
-                          ),
-                        ],
-                      ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecommendationDeck() {
-    final visible = _recommendations.take(3).toList();
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        for (var i = visible.length - 1; i >= 0; i--)
-          _buildDeckLayer(visible[i], depth: i),
-      ],
-    );
-  }
-
-  Widget _buildDeckLayer(RecommendationItem item, {required int depth}) {
-    final isTop = depth == 0;
-    final isLiked = _likedRecommendationIds.contains(item.id);
-    final isSaved = _savedRecommendationIds.contains(item.id);
-    final card = _RecommendationSwipeCard(
-      item: item,
-      isLiked: isLiked,
-      isSaved: isSaved,
-      onOpen: () => _openRecommendationDetails(item),
-      onApprove: () async {
-        await _likeRecommendation(item);
-        _consumeRecommendation(item.id);
-      },
-      onSave: () => _saveRecommendation(item),
-      onAddToTrip: () => _addRecommendationToTrip(item),
-      onReject: () async {
-        await _dislikeRecommendation(item);
-        _consumeRecommendation(item.id);
-      },
-    );
-
-    final verticalOffset = depth * 12.0;
-    final horizontalInset = depth * 10.0;
-    final scale = 1 - (depth * 0.04);
-
-    if (!isTop) {
-      return Positioned.fill(
-        top: verticalOffset,
-        left: horizontalInset,
-        right: horizontalInset,
-        bottom: depth * 6.0,
-        child: Transform.scale(
-          scale: scale,
-          alignment: Alignment.topCenter,
-          child: card,
-        ),
-      );
-    }
-
-    return Positioned.fill(
-      top: verticalOffset,
-      left: horizontalInset,
-      right: horizontalInset,
-      bottom: depth * 6.0,
-      child: Dismissible(
-        key: ValueKey('recommendation-${item.id}'),
-        direction: DismissDirection.horizontal,
-        background: _SwipeDecisionBackground(
-          alignment: Alignment.centerLeft,
-          color: const Color(0xFFBFD86E),
-          icon: Icons.favorite_rounded,
-          label: 'Подходит',
-        ),
-        secondaryBackground: _SwipeDecisionBackground(
-          alignment: Alignment.centerRight,
-          color: const Color(0xFFE7B0A4),
-          icon: Icons.close_rounded,
-          label: 'Пропустить',
-        ),
-        onDismissed: (direction) {
-          _handleRecommendationSwipe(item, direction);
-        },
-        child: card,
-      ),
-    );
-  }
-
-  Widget _recommendationAction({
-    required IconData icon,
-    required String label,
-    required bool active,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFFD8AF96) : Colors.white,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: active ? const Color(0xFFD8AF96) : const Color(0xFFDCCBC0),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: active ? Colors.white : const Color(0xFF4B3C36),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: active ? Colors.white : const Color(0xFF4B3C36),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _scoreTag(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2D2C8)),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Color(0xFF5E4B43),
-          fontSize: 11.5,
-          fontWeight: FontWeight.w500,
-        ),
       ),
     );
   }
@@ -3636,410 +3008,6 @@ class _StageVisualConfig {
   });
 }
 
-class _RecommendationSwipeCard extends StatelessWidget {
-  const _RecommendationSwipeCard({
-    required this.item,
-    required this.isLiked,
-    required this.isSaved,
-    required this.onOpen,
-    required this.onApprove,
-    required this.onSave,
-    required this.onAddToTrip,
-    required this.onReject,
-  });
-
-  final RecommendationItem item;
-  final bool isLiked;
-  final bool isSaved;
-  final VoidCallback onOpen;
-  final Future<void> Function() onApprove;
-  final Future<void> Function() onSave;
-  final Future<void> Function() onAddToTrip;
-  final Future<void> Function() onReject;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(28),
-        onTap: onOpen,
-        child: Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFFF7EEE7),
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: const Color(0xFFE3D2C7)),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (item.imageUrl.isNotEmpty)
-                      Image.network(
-                        item.imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            _RecommendationCardPlaceholder(item: item),
-                      )
-                    else
-                      _RecommendationCardPlaceholder(item: item),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(16, 38, 16, 14),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.82),
-                            ],
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                height: 1,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              item.city,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.84),
-                                fontSize: 15,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _DeckMetaChip(
-                                  icon: Icons.star_rounded,
-                                  label: item.rating.toStringAsFixed(1),
-                                ),
-                                _DeckMetaChip(
-                                  icon: Icons.auto_awesome_rounded,
-                                  label: item.subcategory.isEmpty
-                                      ? item.category
-                                      : item.subcategory,
-                                ),
-                                _DeckMetaChip(
-                                  icon: Icons.pin_drop_outlined,
-                                  label: item.city,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (item.description.isNotEmpty)
-                      Text(
-                        item.description,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF5B4A43),
-                          fontSize: 13,
-                          height: 1.35,
-                        ),
-                      ),
-                    if (item.description.isNotEmpty) const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _InlineActionButton(
-                            icon: isSaved
-                                ? Icons.bookmark_rounded
-                                : Icons.bookmark_border_rounded,
-                            label: 'Сохранить',
-                            active: isSaved,
-                            onTap: () {
-                              onSave();
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _InlineActionButton(
-                            icon: Icons.route_rounded,
-                            label: 'В маршрут',
-                            active: false,
-                            onTap: () {
-                              onAddToTrip();
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _RoundDecisionButton(
-                            icon: Icons.close_rounded,
-                            color: const Color(0xFFE7B0A4),
-                            onTap: () {
-                              onReject();
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _RoundDecisionButton(
-                            icon: isLiked
-                                ? Icons.favorite_rounded
-                                : Icons.favorite_border_rounded,
-                            color: const Color(0xFFBFD86E),
-                            onTap: () {
-                              onApprove();
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RecommendationCardPlaceholder extends StatelessWidget {
-  const _RecommendationCardPlaceholder({required this.item});
-
-  final RecommendationItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF76856F),
-            Color(0xFF2F3D2A),
-          ],
-        ),
-      ),
-      child: Center(
-        child: Text(
-          item.city,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.18),
-            fontSize: 34,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DeckMetaChip extends StatelessWidget {
-  const _DeckMetaChip({
-    required this.icon,
-    required this.label,
-  });
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.28),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: const Color(0xFFD7E37A), size: 14),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InlineActionButton extends StatelessWidget {
-  const _InlineActionButton({
-    required this.icon,
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFFD8AF96) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: active ? const Color(0xFFD8AF96) : const Color(0xFFDCCBC0),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: active ? Colors.white : const Color(0xFF4B3C36),
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: active ? Colors.white : const Color(0xFF4B3C36),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RoundDecisionButton extends StatelessWidget {
-  const _RoundDecisionButton({
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Container(
-        height: 52,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Icon(icon, color: Colors.white, size: 24),
-      ),
-    );
-  }
-}
-
-class _SwipeDecisionBackground extends StatelessWidget {
-  const _SwipeDecisionBackground({
-    required this.alignment,
-    required this.color,
-    required this.icon,
-    required this.label,
-  });
-
-  final Alignment alignment;
-  final Color color;
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.22),
-        borderRadius: BorderRadius.circular(28),
-      ),
-      alignment: alignment,
-      padding: const EdgeInsets.symmetric(horizontal: 22),
-      child: Row(
-        mainAxisAlignment: alignment == Alignment.centerLeft
-            ? MainAxisAlignment.start
-            : MainAxisAlignment.end,
-        children: [
-          if (alignment == Alignment.centerRight)
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          if (alignment == Alignment.centerRight) const SizedBox(width: 10),
-          Icon(icon, color: color, size: 28),
-          if (alignment == Alignment.centerLeft) const SizedBox(width: 10),
-          if (alignment == Alignment.centerLeft)
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 class _StageDetailsPage extends StatelessWidget {
   final TripStage stage;
   final String typeLabel;
@@ -4220,66 +3188,6 @@ class _NightBackground extends StatelessWidget {
   }
 }
 
-class _RecommendationsBackground extends StatelessWidget {
-  const _RecommendationsBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFFFFCFA),
-            Color(0xFFF8EFE8),
-          ],
-        ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned(
-            top: -120,
-            left: -70,
-            child: Container(
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFF4DCCB).withOpacity(0.55),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 160,
-            right: -90,
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFE6D8CF).withOpacity(0.58),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: -110,
-            left: 30,
-            right: 30,
-            child: Container(
-              height: 240,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                color: const Color(0xFFE8D5C7).withOpacity(0.34),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _NightPainter extends CustomPainter {
   final _rng = math.Random(7);
