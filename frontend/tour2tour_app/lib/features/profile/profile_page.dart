@@ -143,8 +143,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       const SizedBox(height: 18),
                       _SectionHeader(
                         title: 'Мои поездки',
-                        actionLabel: 'Все',
-                        onTap: () => context.go('/create-trip'),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
@@ -229,13 +227,13 @@ class _ProfilePageState extends State<ProfilePage> {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
-    required this.actionLabel,
-    required this.onTap,
+    this.actionLabel,
+    this.onTap,
   });
 
   final String title;
-  final String actionLabel;
-  final VoidCallback onTap;
+  final String? actionLabel;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -251,17 +249,18 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
         ),
-        TextButton(
-          onPressed: onTap,
-          style: TextButton.styleFrom(
-            foregroundColor: const Color(0xFFD7E37A),
-            textStyle: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
+        if (actionLabel != null && onTap != null)
+          TextButton(
+            onPressed: onTap,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFFD7E37A),
+              textStyle: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
+            child: Text(actionLabel!),
           ),
-          child: Text(actionLabel),
-        ),
       ],
     );
   }

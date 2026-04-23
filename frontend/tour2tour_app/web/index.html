@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
   <!--
@@ -27,8 +27,14 @@
       const mapState = new WeakMap();
 
       async function ensureYmaps() {
+        const maxAttempts = 60;
+        let attempt = 0;
+        while (!window.ymaps3 && attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          attempt += 1;
+        }
         if (!window.ymaps3) {
-          throw new Error('ymaps3 is not loaded');
+          throw new Error('ymaps3 is not loaded after waiting');
         }
         await window.ymaps3.ready;
         return window.ymaps3;
@@ -67,15 +73,10 @@
         if (!container || !city) return;
         const ymaps3 = await ensureYmaps();
         const center = (await geocodeCity(city)) || fallbackCenter;
-        const mapkit = await ymaps3.import('@yandex/ymaps3-default-ui-theme');
-        const YMap = ymaps3.YMap || mapkit.YMap;
-        const YMapDefaultSchemeLayer =
-          mapkit.YMapDefaultSchemeLayer || ymaps3.YMapDefaultSchemeLayer;
-        const YMapDefaultFeaturesLayer =
-          mapkit.YMapDefaultFeaturesLayer || ymaps3.YMapDefaultFeaturesLayer;
+        const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer } = ymaps3;
 
         if (!YMap || !YMapDefaultSchemeLayer || !YMapDefaultFeaturesLayer) {
-          throw new Error('Yandex Maps classes are unavailable');
+          throw new Error('Core Yandex Maps classes are unavailable');
         }
         let state = mapState.get(container);
 

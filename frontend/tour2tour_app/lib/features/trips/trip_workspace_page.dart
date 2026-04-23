@@ -46,6 +46,8 @@ class TripWorkspacePage extends StatefulWidget {
 }
 
 class _TripWorkspacePageState extends State<TripWorkspacePage> {
+  static const _accent = Color(0xFFD7E37A);
+
   int _currentIndex = 1;
 
   bool _budgetLoading = false;
@@ -986,6 +988,25 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
   }
 
+  Future<void> _openRouteMap() async {
+    final city = (widget.destinationCity ?? '').trim();
+    if (city.isEmpty) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _TripRouteMapPage(
+          tripTitle: widget.tripTitle,
+          destinationCity: city,
+          startDate: widget.startDate,
+          endDate: widget.endDate,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      _currentIndex = 1;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -1027,14 +1048,55 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        widget.tripTitle,
-                        style: const TextStyle(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          height: 1.1,
-                        ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.tripTitle,
+                              style: const TextStyle(
+                                fontSize: 30,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                height: 1.1,
+                              ),
+                            ),
+                          ),
+                          if ((widget.destinationCity ?? '').trim().isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 10, top: 2),
+                              child: OutlinedButton.icon(
+                                onPressed: () => _openRouteMap(),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _accent,
+                                  side: BorderSide(
+                                    color: Colors.white.withOpacity(0.22),
+                                  ),
+                                  backgroundColor: Colors.white.withOpacity(
+                                    0.08,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 9,
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.map_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text(
+                                  'Маршрут на карте',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 6),
                       if (widget.startDate != null && widget.endDate != null)
@@ -1129,10 +1191,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
               label: const Text('Добавить этап'),
             ),
           ),
-          if ((widget.destinationCity ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            YandexCityMap(city: widget.destinationCity),
-          ],
           const SizedBox(height: 10),
           Expanded(
             child: _stagesLoading
@@ -1289,14 +1347,16 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                                               decoration: BoxDecoration(
-                                                color: const Color(0xFF2B194A),
+                                                color: const Color(0xFF222715),
                                                 borderRadius: BorderRadius.circular(999),
-                                                border: Border.all(color: Colors.white.withOpacity(0.08)),
+                                                border: Border.all(
+                                                  color: _accent.withOpacity(0.34),
+                                                ),
                                               ),
                                               child: Text(
                                                 timeRange,
                                                 style: const TextStyle(
-                                                  color: Color(0xFFE9D9FF),
+                                                  color: _accent,
                                                   fontSize: 12,
                                                   fontWeight: FontWeight.w700,
                                                 ),
@@ -2590,9 +2650,9 @@ class _StageFormPageState extends State<_StageFormPage> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.16),
+        color: Colors.white.withOpacity(0.06),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: Colors.white.withOpacity(0.14)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2711,7 +2771,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                 DropdownButtonFormField<String>(
                                   value: _stageType,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                  dropdownColor: const Color(0xFF1E1734),
+                                  dropdownColor: const Color(0xFF2B2B2B),
                                   iconEnabledColor: Colors.white70,
                                   decoration: const InputDecoration(labelText: 'Тип'),
                                   items: stageTypeItems.entries
@@ -2729,7 +2789,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                 DropdownButtonFormField<String>(
                                   value: (_subtype.isNotEmpty && subtypes.contains(_subtype)) ? _subtype : null,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                  dropdownColor: const Color(0xFF1E1734),
+                                  dropdownColor: const Color(0xFF2B2B2B),
                                   iconEnabledColor: Colors.white70,
                                   decoration: const InputDecoration(labelText: 'Подтип'),
                                   items: subtypes
@@ -2919,7 +2979,6 @@ class _BottomMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     const labels = ['Рекомендации', 'Маршрут', 'Бюджет', 'Документы'];
     const icons = [
       Icons.auto_awesome,
@@ -2929,23 +2988,17 @@ class _BottomMenu extends StatelessWidget {
     ];
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: lightStyle ? Colors.white.withOpacity(0.86) : Colors.white.withOpacity(0.08),
+        color: const Color(0xFF1B1B1B),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: lightStyle
-              ? const Color(0xFFE1D1C6)
-              : Colors.white.withOpacity(0.12),
-        ),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
       ),
       child: Row(
         children: List.generate(labels.length, (index) {
           final selected = index == currentIndex;
-          final inactiveColor = lightStyle
-              ? const Color(0xFF66544B)
-              : Colors.white.withOpacity(0.75);
-          final activeColor = lightStyle ? const Color(0xFF8C5F46) : cs.primary;
+          final inactiveColor = Colors.white.withOpacity(0.72);
+          final activeColor = const Color(0xFFD7E37A);
           return Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -2953,41 +3006,44 @@ class _BottomMenu extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
                 onTap: () => onTap(index),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  constraints: const BoxConstraints(minHeight: 56),
+                  padding: const EdgeInsets.symmetric(vertical: 6),
                   decoration: BoxDecoration(
                     color: selected
-                        ? (lightStyle
-                            ? const Color(0xFFF1DFD3)
-                            : cs.primary.withOpacity(0.2))
+                        ? const Color(0xFF242424)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: selected
-                          ? (lightStyle
-                              ? const Color(0xFFD7B29C)
-                              : cs.primary.withOpacity(0.45))
-                          : Colors.transparent,
-                    ),
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
                         icons[index],
-                        size: 20,
+                        size: 19,
                         color: selected ? activeColor : inactiveColor,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        labels[index],
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: selected ? activeColor : inactiveColor,
+                      const SizedBox(height: 2),
+                      SizedBox(
+                        height: 12,
+                        child: Center(
+                          child: Text(
+                            labels[index],
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                            textScaler: TextScaler.noScaling,
+                            style: TextStyle(
+                              fontSize: 10,
+                              height: 1,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: selected ? activeColor : inactiveColor,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
-                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),
@@ -2996,6 +3052,104 @@ class _BottomMenu extends StatelessWidget {
             ),
           );
         }),
+      ),
+    );
+  }
+}
+
+class _TripRouteMapPage extends StatelessWidget {
+  final String tripTitle;
+  final String destinationCity;
+  final DateTime? startDate;
+  final DateTime? endDate;
+
+  const _TripRouteMapPage({
+    required this.tripTitle,
+    required this.destinationCity,
+    this.startDate,
+    this.endDate,
+  });
+
+  String _fmtDate(DateTime date) {
+    final d = date.day.toString().padLeft(2, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final y = date.year.toString();
+    return '$d.$m.$y';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateLabel = (startDate != null && endDate != null)
+        ? '${_fmtDate(startDate!)} - ${_fmtDate(endDate!)}'
+        : null;
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          const _NightBackground(),
+          SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 14),
+                      TextButton.icon(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor: Colors.white.withOpacity(0.08),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                            side: BorderSide(
+                              color: Colors.white.withOpacity(0.14),
+                            ),
+                          ),
+                        ),
+                        icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                        label: const Text('К этапам'),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        tripTitle,
+                        style: const TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      if (dateLabel != null)
+                        Text(
+                          dateLabel,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 13,
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: YandexCityMap(city: destinationCity),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3172,11 +3326,11 @@ class _Logo extends StatelessWidget {
       width: 54,
       height: 54,
       decoration: BoxDecoration(
-        color: cs.primary.withOpacity(0.18),
+        color: const Color(0xFF222715),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cs.primary.withOpacity(0.28)),
+        border: Border.all(color: const Color(0xFFD7E37A).withOpacity(0.45)),
       ),
-      child: Icon(Icons.explore_rounded, color: cs.primary, size: 28),
+      child: const Icon(Icons.explore_rounded, color: Color(0xFFD7E37A), size: 28),
     );
   }
 }
@@ -3195,15 +3349,13 @@ class _NightBackground extends StatelessWidget {
 
 
 class _NightPainter extends CustomPainter {
-  final _rng = math.Random(7);
-
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
     const gradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [Color(0xFF0B1023), Color(0xFF090D1A)],
+      colors: [Color(0xFF151515), Color(0xFF0F0F0F)],
     );
     canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
     final vignette = RadialGradient(
@@ -3211,19 +3363,6 @@ class _NightPainter extends CustomPainter {
       stops: const [0.55, 1.0],
     );
     canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
-    final starPaint = Paint()..color = Colors.white.withOpacity(0.55);
-    final starPaintDim = Paint()..color = Colors.white.withOpacity(0.22);
-    final count = (size.width * size.height / 6500).clamp(70, 170).toInt();
-    for (var i = 0; i < count; i++) {
-      final x = _rng.nextDouble() * size.width;
-      final y = _rng.nextDouble() * size.height * 0.6;
-      final r = _rng.nextDouble() * 1.35 + 0.2;
-      canvas.drawCircle(
-        Offset(x, y),
-        r,
-        (i % 3 == 0) ? starPaint : starPaintDim,
-      );
-    }
   }
 
   @override

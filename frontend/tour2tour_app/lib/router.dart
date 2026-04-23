@@ -20,6 +20,7 @@ import 'features/documents/documents_repo.dart';
 import 'features/favorites/favorites_page.dart';
 import 'features/profile/profile_repo.dart';
 import 'features/profile/profile_page.dart';
+import 'features/profile/account_page.dart';
 import 'features/shared/travel_app_shell.dart';
 import 'features/trips/create_trip_page.dart';
 import 'features/trips/trip_workspace_page.dart';
@@ -88,6 +89,14 @@ GoRouter buildRouter() {
           tripsRepo: trips,
           preferencesRepo: prefs,
           recommendationsRepo: recommendations,
+        ),
+      ),
+      GoRoute(
+        path: '/account',
+        builder: (_, __) => AccountPage(
+          profileRepo: profile,
+          tripsRepo: trips,
+          authRepo: auth,
         ),
       ),
       GoRoute(

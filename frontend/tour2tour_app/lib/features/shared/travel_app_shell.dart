@@ -14,6 +14,7 @@ class TravelAppShell extends StatelessWidget {
     required this.currentTab,
     this.headerAction,
     this.maxWidth = 430,
+    this.hideHeader = false,
   });
 
   final String title;
@@ -22,6 +23,7 @@ class TravelAppShell extends StatelessWidget {
   final TravelNavTab currentTab;
   final Widget? headerAction;
   final double maxWidth;
+  final bool hideHeader;
 
   @override
   Widget build(BuildContext context) {
@@ -38,12 +40,14 @@ class TravelAppShell extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _TravelShellHeader(
-                        title: title,
-                        subtitle: subtitle,
-                        action: headerAction,
-                      ),
-                      const SizedBox(height: 18),
+                      if (!hideHeader) ...[
+                        _TravelShellHeader(
+                          title: title,
+                          subtitle: subtitle,
+                          action: headerAction,
+                        ),
+                        const SizedBox(height: 18),
+                      ],
                       Expanded(child: body),
                       const SizedBox(height: 18),
                       TravelBottomNavBar(currentTab: currentTab),
@@ -283,7 +287,7 @@ class TravelBottomNavBar extends StatelessWidget {
 
     return Container(
       height: 74,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFF1B1B1B),
         borderRadius: BorderRadius.circular(26),
@@ -300,7 +304,7 @@ class TravelBottomNavBar extends StatelessWidget {
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOut,
                 margin: const EdgeInsets.symmetric(horizontal: 3),
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(vertical: 6),
                 decoration: BoxDecoration(
                   color: selected ? const Color(0xFF242424) : Colors.transparent,
                   borderRadius: BorderRadius.circular(18),
@@ -310,20 +314,32 @@ class TravelBottomNavBar extends StatelessWidget {
                   children: [
                     Icon(
                       item.$2,
-                      size: 22,
+                      size: 20,
                       color: selected
                           ? const Color(0xFFD7E37A)
                           : Colors.white.withOpacity(0.72),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item.$3,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                        color: selected
-                            ? const Color(0xFFD7E37A)
-                            : Colors.white.withOpacity(0.72),
+                    const SizedBox(height: 2),
+                    SizedBox(
+                      height: 12,
+                      child: Center(
+                        child: Text(
+                          item.$3,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.ellipsis,
+                          textScaler: TextScaler.noScaling,
+                          style: TextStyle(
+                            fontSize: 10,
+                            height: 1,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                            color: selected
+                                ? const Color(0xFFD7E37A)
+                                : Colors.white.withOpacity(0.72),
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -348,7 +364,7 @@ class TravelBottomNavBar extends StatelessWidget {
         context.go('/favorites');
         break;
       case TravelNavTab.profile:
-        context.go('/profile');
+        context.go('/account');
         break;
     }
   }

@@ -51,6 +51,54 @@ function Get-GatewayHealth {
     return $null
 }
 
+function Seed-LocalAuthUser {
+    param(
+        [string]$Email,
+        [string]$Password
+    )
+
+    $pythonScript = @'
+from sqlalchemy import select
+import os
+from app.db.session import SessionLocal
+from app.models.user import User
+from app.core.security import hash_password
+
+db = SessionLocal()
+email = os.environ['SEED_EMAIL']
+password_hash = hash_password(os.environ['SEED_PASSWORD'])
+
+user = db.execute(select(User).where(User.email == email)).scalars().first()
+if user:
+    user.password_hash = password_hash
+    user.totp_enabled = False
+    user.is_2fa_enabled = False
+    user.passkey_enabled = False
+    user.totp_secret = None
+else:
+    db.add(
+        User(
+            email=email,
+            phone=None,
+            password_hash=password_hash,
+            role='traveler',
+            is_2fa_enabled=False,
+            totp_enabled=False,
+            passkey_enabled=False,
+            totp_secret=None,
+        )
+    )
+
+db.commit()
+db.close()
+print('OK: local test user is ready')
+'@
+
+    Write-Host "Seeding local auth user ($Email)..."
+    docker compose @composeArgs exec -T -e "SEED_EMAIL=$Email" -e "SEED_PASSWORD=$Password" auth-service python -c $pythonScript
+    Assert-LastExitCode "Seeding local auth user"
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
@@ -99,6 +147,8 @@ Assert-LastExitCode "Running auth migrations"
 Write-Host "Running trips migrations..."
 docker compose @composeArgs exec -T trips-service alembic upgrade heads
 Assert-LastExitCode "Running trips migrations"
+
+Seed-LocalAuthUser -Email "local.test@tour2tour.dev" -Password "Test123!"
 
 Write-Host "Checking gateway health..."
 $healthResult = Get-GatewayHealth

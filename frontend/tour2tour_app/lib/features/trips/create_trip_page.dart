@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../shared/travel_app_shell.dart';
@@ -32,23 +32,39 @@ class _CreateTripPageState extends State<CreateTripPage> {
     super.dispose();
   }
 
-  Future<void> _pickDate({required bool isStart}) async {
-    final initialDate = DateTime.now();
-    final picked = await showDatePicker(
+  Future<void> _pickTripPeriod() async {
+    final now = DateTime.now();
+    final start = _startDate ?? now;
+    final end = _endDate != null && !_endDate!.isBefore(start)
+        ? _endDate!
+        : start;
+
+    final picked = await showDateRangePicker(
       context: context,
-      initialDate:
-          isStart ? (_startDate ?? initialDate) : (_endDate ?? initialDate),
       firstDate: DateTime(2020),
       lastDate: DateTime(2030),
+      initialDateRange: DateTimeRange(start: start, end: end),
+      helpText: 'Выберите период поездки',
+      saveText: 'ОК',
+      builder: (context, child) {
+        final theme = Theme.of(context);
+        return Theme(
+          data: theme.copyWith(
+            colorScheme: theme.colorScheme.copyWith(
+              primary: const Color(0xFFD7E37A),
+              onPrimary: const Color(0xFF151515),
+              secondary: const Color(0xFFD7E37A),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (picked == null) return;
     setState(() {
-      if (isStart) {
-        _startDate = picked;
-      } else {
-        _endDate = picked;
-      }
+      _startDate = picked.start;
+      _endDate = picked.end;
     });
   }
 
@@ -135,103 +151,43 @@ class _CreateTripPageState extends State<CreateTripPage> {
   @override
   Widget build(BuildContext context) {
     return TravelAppShell(
-      title: 'Plan your trip',
-      subtitle: 'Соберите маршрут и подберите город для рекомендаций',
+      title: '',
+      subtitle: '',
+      hideHeader: true,
       currentTab: TravelNavTab.planner,
-      headerAction: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: () => context.go('/profile'),
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: const Color(0xFF2B2B2B),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
-          ),
-          child: const Icon(Icons.person_outline_rounded, color: Colors.white),
-        ),
-      ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TravelSearchBar(
-            label: _destinationCityController.text.trim().isEmpty
-                ? 'Куда отправимся?'
-                : _destinationCityController.text.trim(),
-            onTap: () {},
-            trailing: Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2B2B2B),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: const Icon(Icons.search_rounded, color: Colors.white),
+          const Text(
+            'Куда отправимся?',
+            style: TextStyle(
+              fontSize: 26,
+              height: 1,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Выберите город, и маршрут с рекомендациями автоматически подстроятся под выбранное направление.',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.68),
+              fontSize: 14,
+              height: 1.35,
             ),
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: TravelCapsuleButton(
-                  label: 'Weekend',
-                  active: true,
-                  onTap: () {},
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TravelCapsuleButton(
-                  label: 'Culture',
-                  onTap: () {},
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TravelCapsuleButton(
-                  label: 'Route',
-                  onTap: () {},
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
           Expanded(
             child: TravelCard(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Создать путешествие',
-                    style: TextStyle(
-                      fontSize: 25,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Сначала выберите город. Затем маршрут и рекомендации будут подстраиваться под поездку.',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.68),
-                      fontSize: 14,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
                   Expanded(
                     child: SingleChildScrollView(
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _TripField(
-                            controller: _titleController,
-                            label: 'Название',
-                            icon: Icons.luggage_rounded,
-                          ),
-                          const SizedBox(height: 12),
                           Autocomplete<CitySuggestion>(
                             displayStringForOption: (option) => option.city,
                             optionsBuilder: (textEditingValue) {
@@ -248,8 +204,7 @@ class _CreateTripPageState extends State<CreateTripPage> {
                               });
                             },
                             onSelected: (option) {
-                              _destinationCityController.value =
-                                  TextEditingValue(
+                              _destinationCityController.value = TextEditingValue(
                                 text: option.city,
                                 selection: TextSelection.collapsed(
                                   offset: option.city.length,
@@ -257,19 +212,18 @@ class _CreateTripPageState extends State<CreateTripPage> {
                               );
                               setState(() {});
                             },
-                            fieldViewBuilder: (context, controller, focusNode,
-                                onFieldSubmitted) {
+                            fieldViewBuilder:
+                                (context, controller, focusNode, onFieldSubmitted) {
                               if (controller.text !=
                                   _destinationCityController.text) {
                                 controller.value =
                                     _destinationCityController.value;
                               }
-                              return _TripField(
+                              return _CityTripField(
                                 controller: controller,
                                 focusNode: focusNode,
                                 label: 'Город поездки',
                                 hintText: 'Начните вводить город',
-                                icon: Icons.location_on_outlined,
                                 onChanged: (value) {
                                   _destinationCityController.value =
                                       controller.value;
@@ -278,8 +232,7 @@ class _CreateTripPageState extends State<CreateTripPage> {
                                 },
                               );
                             },
-                            optionsViewBuilder:
-                                (context, onSelected, options) {
+                            optionsViewBuilder: (context, onSelected, options) {
                               final items = options.toList();
                               return Align(
                                 alignment: Alignment.topLeft,
@@ -321,8 +274,8 @@ class _CreateTripPageState extends State<CreateTripPage> {
                                           subtitle: Text(
                                             option.displayName,
                                             style: TextStyle(
-                                              color:
-                                                  Colors.white.withOpacity(0.62),
+                                              color: Colors.white
+                                                  .withOpacity(0.62),
                                             ),
                                           ),
                                           onTap: () => onSelected(option),
@@ -334,6 +287,21 @@ class _CreateTripPageState extends State<CreateTripPage> {
                               );
                             },
                           ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Выбрав город, вы поможете системе точнее подобрать маршрут и персональные рекомендации.',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.68),
+                              fontSize: 14,
+                              height: 1.35,
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _TripField(
+                            controller: _titleController,
+                            label: 'Название',
+                            icon: Icons.luggage_rounded,
+                          ),
                           const SizedBox(height: 12),
                           _TripField(
                             controller: _descriptionController,
@@ -343,26 +311,9 @@ class _CreateTripPageState extends State<CreateTripPage> {
                             maxLines: 4,
                           ),
                           const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _DateChip(
-                                  label: _startDate == null
-                                      ? 'Дата начала'
-                                      : _fmtDate(_startDate!),
-                                  onTap: () => _pickDate(isStart: true),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: _DateChip(
-                                  label: _endDate == null
-                                      ? 'Дата окончания'
-                                      : _fmtDate(_endDate!),
-                                  onTap: () => _pickDate(isStart: false),
-                                ),
-                              ),
-                            ],
+                          _DateChip(
+                            label: _tripPeriodLabel(),
+                            onTap: _pickTripPeriod,
                           ),
                         ],
                       ),
@@ -411,6 +362,90 @@ class _CreateTripPageState extends State<CreateTripPage> {
     final day = value.day.toString().padLeft(2, '0');
     return '$day.$month.${value.year}';
   }
+
+  String _tripPeriodLabel() {
+    if (_startDate == null || _endDate == null) {
+      return 'Период поездки';
+    }
+    final start = _startDate!;
+    final end = _endDate!;
+    if (start.year == end.year &&
+        start.month == end.month &&
+        start.day == end.day) {
+      return _fmtDate(start);
+    }
+    return '${_fmtDate(start)} — ${_fmtDate(end)}';
+  }
+}
+
+class _CityTripField extends StatelessWidget {
+  const _CityTripField({
+    required this.controller,
+    required this.label,
+    this.icon = Icons.location_on_outlined,
+    this.focusNode,
+    this.hintText,
+    this.onChanged,
+    this.minLines = 1,
+    this.maxLines = 1,
+  });
+
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final String label;
+  final IconData icon;
+  final String? hintText;
+  final ValueChanged<String>? onChanged;
+  final int minLines;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        minHeight: 52,
+        maxHeight: maxLines > 1 ? 132 : 52,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2B2B2B),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            color: const Color(0xFFD7E37A),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              focusNode: focusNode,
+              onChanged: onChanged,
+              minLines: minLines,
+              maxLines: maxLines,
+              style: const TextStyle(color: Colors.white, fontSize: 15),
+              decoration: InputDecoration(
+                labelText: label,
+                hintText: hintText,
+                labelStyle: TextStyle(
+                  color: Colors.white.withOpacity(0.72),
+                  fontWeight: FontWeight.w500,
+                ),
+                hintStyle: TextStyle(
+                  color: Colors.white.withOpacity(0.38),
+                ),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TripField extends StatelessWidget {
@@ -436,50 +471,15 @@ class _TripField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF272727),
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Row(
-        crossAxisAlignment:
-            maxLines > 1 ? CrossAxisAlignment.start : CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            margin: EdgeInsets.only(top: maxLines > 1 ? 10 : 0),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1F1F1F),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: const Color(0xFFD7E37A), size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              focusNode: focusNode,
-              onChanged: onChanged,
-              minLines: minLines,
-              maxLines: maxLines,
-              style: const TextStyle(color: Colors.white, fontSize: 15),
-              decoration: InputDecoration(
-                labelText: label,
-                hintText: hintText,
-                labelStyle: TextStyle(
-                  color: Colors.white.withOpacity(0.72),
-                ),
-                hintStyle: TextStyle(
-                  color: Colors.white.withOpacity(0.38),
-                ),
-                border: InputBorder.none,
-              ),
-            ),
-          ),
-        ],
-      ),
+    return _CityTripField(
+      controller: controller,
+      focusNode: focusNode,
+      label: label,
+      hintText: hintText,
+      icon: icon,
+      onChanged: onChanged,
+      minLines: minLines,
+      maxLines: maxLines,
     );
   }
 }
@@ -496,22 +496,26 @@ class _DateChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        height: 52,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          color: const Color(0xFF272727),
+          color: const Color(0xFF2B2B2B),
           borderRadius: BorderRadius.circular(18),
         ),
         child: Row(
           children: [
-            const Icon(Icons.calendar_month_rounded,
-                color: Color(0xFFD7E37A), size: 18),
+            const Icon(
+              Icons.calendar_month_rounded,
+              color: Color(0xFFD7E37A),
+              size: 18,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 label,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.82),
-                  fontSize: 13,
+                  color: Colors.white.withOpacity(0.78),
+                  fontSize: 15,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -522,3 +526,4 @@ class _DateChip extends StatelessWidget {
     );
   }
 }
+

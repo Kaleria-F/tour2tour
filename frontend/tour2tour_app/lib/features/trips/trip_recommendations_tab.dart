@@ -415,7 +415,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
             TextButton.icon(
               onPressed: _openTripFavorites,
               style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFFE7B0A4),
+                foregroundColor: Colors.white70,
                 textStyle: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -565,7 +565,7 @@ class _Deck extends StatelessWidget {
         ),
         secondaryBackground: _SwipeHint(
           alignment: Alignment.centerRight,
-          color: const Color(0xFFE7B0A4),
+          color: const Color(0xFFB88D7A),
           icon: Icons.close_rounded,
           label: '\u041f\u0440\u043e\u043f\u0443\u0441\u0442\u0438\u0442\u044c',
         ),
@@ -733,7 +733,7 @@ class _SwipeCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     _DecisionButton(
                       icon: Icons.close_rounded,
-                      color: const Color(0xFFE7B0A4),
+                      color: const Color(0xFFB88D7A),
                       onTap: () => onReject(),
                     ),
                     const SizedBox(width: 8),
