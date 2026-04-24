@@ -2,6 +2,7 @@ import type {
   AdminImportJob,
   AdminPlace,
   AdminPlaceCandidate,
+  AdminTagCatalogItem,
   CitySuggestion,
   TokenResponse,
   UserMe,
@@ -122,6 +123,10 @@ export async function deleteCandidate(token: string, id: string): Promise<void> 
 
 export async function listImportJobs(token: string): Promise<AdminImportJob[]> {
   return request<AdminImportJob[]>('/places/imports/list', { method: 'GET' }, token);
+}
+
+export async function listTagCatalog(token?: string): Promise<AdminTagCatalogItem[]> {
+  return request<AdminTagCatalogItem[]>('/places/tags/catalog', { method: 'GET' }, token);
 }
 
 export async function uploadImportCsv(

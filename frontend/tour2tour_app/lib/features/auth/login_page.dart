@@ -86,18 +86,11 @@ class _LoginPageState extends State<LoginPage> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const Expanded(
-                  child: Text(
-                    'Вход',
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.visible,
-                    style: TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w300,
-                      height: 0.92,
-                      color: Colors.black,
-                      letterSpacing: -1.0,
-                    ),
+                  child: AuthHeadline(
+                    title: 'Вход',
+                    fontSize: 36,
+                    fontWeight: FontWeight.w300,
+                    titleHeight: 0.92,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -133,11 +126,12 @@ class _LoginPageState extends State<LoginPage> {
                   ? TextButton(
                       onPressed: () => context.go('/recovery'),
                       style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF2F2F2F),
-                        backgroundColor: Colors.white.withOpacity(0.86),
+                        foregroundColor: const Color(0xFFD7E37A),
+                        backgroundColor: const Color(0xFF2F372E).withOpacity(0.92),
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(999),
+                          side: const BorderSide(color: Color(0x335F6B58)),
                         ),
                         textStyle: const TextStyle(
                           fontSize: 13,
@@ -154,7 +148,7 @@ class _LoginPageState extends State<LoginPage> {
                           _obscure
                               ? Icons.visibility_off_outlined
                               : Icons.visibility_outlined,
-                          color: const Color(0xFF2F241F),
+                          color: const Color(0xFFD7E37A),
                           size: 22,
                         ),
                       ),

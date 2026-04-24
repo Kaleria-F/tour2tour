@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../documents/documents_repo.dart';
+import '../favorites/favorites_page.dart';
 import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
 import '../profile/profile_repo.dart';
@@ -50,6 +51,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   static const _accent = Color(0xFFD7E37A);
 
   int _currentIndex = 1;
+  bool _showTripFavorites = false;
   DateTime? _selectedRouteDay;
 
   bool _budgetLoading = false;
@@ -1066,6 +1068,20 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     });
   }
 
+  void _openTripFavoritesView() {
+    setState(() {
+      _currentIndex = 0;
+      _showTripFavorites = true;
+    });
+  }
+
+  void _closeTripFavoritesView() {
+    setState(() {
+      _currentIndex = 0;
+      _showTripFavorites = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -1151,22 +1167,39 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                 ? _buildBudgetCard(cs)
                                 : _currentIndex == 3
                                     ? _buildDocumentsCard()
-                                    : TripRecommendationsTab(
-                                        recommendationsRepo:
-                                            widget.recommendationsRepo,
-                                        interactionsRepo:
-                                            widget.interactionsRepo,
-                                        preferencesRepo:
-                                            widget.preferencesRepo,
-                                        profileRepo: widget.profileRepo,
-                                        tripsRepo: widget.tripsRepo,
-                                        tripId: widget.tripId,
-                                        destinationCity:
-                                            widget.destinationCity,
-                                        tripTitle: widget.tripTitle,
-                                        stages: _stages,
-                                        onStagesChanged: _loadStages,
-                                      ),
+                                    : _showTripFavorites
+                                        ? FavoritesPage(
+                                            interactionsRepo:
+                                                widget.interactionsRepo,
+                                            profileRepo: widget.profileRepo,
+                                            tripsRepo: widget.tripsRepo,
+                                            tripId: widget.tripId,
+                                            city: widget.destinationCity,
+                                            titleOverride:
+                                                '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0435 \u043c\u0430\u0440\u0448\u0440\u0443\u0442\u0430',
+                                            subtitleOverride:
+                                                '\u041c\u0435\u0441\u0442\u0430, \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u0438\u043c\u0435\u043d\u043d\u043e \u0434\u043b\u044f \u044d\u0442\u043e\u0439 \u043f\u043e\u0435\u0437\u0434\u043a\u0438',
+                                            embedded: true,
+                                            onBack: _closeTripFavoritesView,
+                                          )
+                                        : TripRecommendationsTab(
+                                            recommendationsRepo:
+                                                widget.recommendationsRepo,
+                                            interactionsRepo:
+                                                widget.interactionsRepo,
+                                            preferencesRepo:
+                                                widget.preferencesRepo,
+                                            profileRepo: widget.profileRepo,
+                                            tripsRepo: widget.tripsRepo,
+                                            tripId: widget.tripId,
+                                            destinationCity:
+                                                widget.destinationCity,
+                                            tripTitle: widget.tripTitle,
+                                            stages: _stages,
+                                            onStagesChanged: _loadStages,
+                                            onOpenTripFavorites:
+                                                _openTripFavoritesView,
+                                          ),
                       ),
                       const SizedBox(height: 14),
                       _BottomMenu(
@@ -1175,6 +1208,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         onTap: (index) {
                           setState(() {
                             _currentIndex = index;
+                            if (index != 0) _showTripFavorites = false;
                             if (index != 2) _showBudgetAnalytics = false;
                           });
                           if (index == 2) {

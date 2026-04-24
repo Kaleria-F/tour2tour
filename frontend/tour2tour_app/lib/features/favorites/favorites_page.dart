@@ -16,6 +16,8 @@ class FavoritesPage extends StatefulWidget {
   final String? subtitleOverride;
   final TravelNavTab currentTab;
   final TripsRepo? tripsRepo;
+  final bool embedded;
+  final VoidCallback? onBack;
 
   const FavoritesPage({
     super.key,
@@ -27,6 +29,8 @@ class FavoritesPage extends StatefulWidget {
     this.subtitleOverride,
     this.currentTab = TravelNavTab.taste,
     this.tripsRepo,
+    this.embedded = false,
+    this.onBack,
   });
 
   @override
@@ -173,12 +177,73 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final filteredItems = hasCityFilter
         ? _groups.expand((group) => group.items).toList()
         : const <FavoritePlace>[];
+    final title = widget.titleOverride ?? '\u0418\u0437\u0431\u0440\u0430\u043d\u043d\u043e\u0435';
+    final subtitle = widget.subtitleOverride ??
+        (hasCityFilter
+            ? '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0434\u043b\u044f ${widget.city}'
+            : '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0441\u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u044b \u043f\u043e \u0433\u043e\u0440\u043e\u0434\u0430\u043c');
+    final content = _buildContent(hasCityFilter, filteredItems);
+
+    if (widget.embedded) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (widget.onBack != null)
+                TextButton.icon(
+                  onPressed: widget.onBack,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFFD7E37A),
+                    padding: EdgeInsets.zero,
+                  ),
+                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                  label: const Text('\u041a \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u044f\u043c'),
+                ),
+              const Spacer(),
+              InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: _load,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2B2B2B),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withOpacity(0.06)),
+                  ),
+                  child: const Icon(Icons.refresh_rounded, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.68),
+              fontSize: 14,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Expanded(child: content),
+        ],
+      );
+    }
+
     return TravelAppShell(
-      title: widget.titleOverride ?? '\u0418\u0437\u0431\u0440\u0430\u043d\u043d\u043e\u0435',
-      subtitle: widget.subtitleOverride ??
-          (hasCityFilter
-              ? '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0434\u043b\u044f ${widget.city}'
-              : '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0441\u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u044b \u043f\u043e \u0433\u043e\u0440\u043e\u0434\u0430\u043c'),
+      title: title,
+      subtitle: subtitle,
       currentTab: widget.currentTab,
       headerAction: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -194,7 +259,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
           child: const Icon(Icons.refresh_rounded, color: Colors.white),
         ),
       ),
-      body: _loading
+      body: content,
+    );
+  }
+
+  Widget _buildContent(bool hasCityFilter, List<FavoritePlace> filteredItems) {
+    return _loading
           ? const Center(
               child: CircularProgressIndicator(color: Color(0xFFD7E37A)),
             )
@@ -289,8 +359,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                               onTap: () => _openFolder(group),
                             );
                           },
-                        ),
-    );
+                        );
   }
 
   Future<void> _openFolder(FavoriteCityGroup group) async {

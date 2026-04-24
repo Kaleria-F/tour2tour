@@ -305,6 +305,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
   @override
   Widget build(BuildContext context) {
     final canContinue = _isStepValid(_current);
+    final isCompact = MediaQuery.of(context).size.width < 390;
 
     return Scaffold(
       body: Stack(
@@ -317,12 +318,18 @@ class _PreferencesPageState extends State<PreferencesPage> {
                       color: Color(0xFFD7E37A),
                     ),
                   )
-                : Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 430),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
-                        child: Column(
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        padding: EdgeInsets.zero,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 430),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+                                child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
@@ -493,16 +500,21 @@ class _PreferencesPageState extends State<PreferencesPage> {
                                           strokeWidth: 2,
                                         ),
                                       )
-                                    : Text(
-                                        _step == _questions.length - 1
-                                            ? 'Сохранить'
-                                            : 'Продолжить',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                          color: canContinue
-                                              ? const Color(0xFF151515)
-                                              : Colors.white70,
+                                    : FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          _step == _questions.length - 1
+                                              ? 'Сохранить'
+                                              : 'Продолжить',
+                                          maxLines: 1,
+                                          softWrap: false,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            color: canContinue
+                                                ? const Color(0xFF151515)
+                                                : Colors.white70,
+                                          ),
                                         ),
                                       ),
                               ),
@@ -511,10 +523,14 @@ class _PreferencesPageState extends State<PreferencesPage> {
                             const TravelBottomNavBar(
                               currentTab: TravelNavTab.taste,
                             ),
-                          ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
           ),
         ],

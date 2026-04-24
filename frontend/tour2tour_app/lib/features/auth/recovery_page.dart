@@ -71,7 +71,7 @@ class _RecoveryPageState extends State<RecoveryPage> {
         newPassword: _password.text,
       );
       if (!mounted) return;
-      showAuthSuccess(context, 'Пароль изменен. Теперь войдите снова.');
+      showAuthSuccess(context, 'Пароль изменён. Теперь войдите снова.');
       context.go('/login');
     } catch (error) {
       if (!mounted) return;
@@ -93,34 +93,19 @@ class _RecoveryPageState extends State<RecoveryPage> {
           children: [
             const AuthBrandMark(title: 'Typ2Typ'),
             const SizedBox(height: 22),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Text(
-                    _codeRequested ? 'Новый пароль' : 'Восстановление',
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.visible,
-                    style: const TextStyle(
-                      fontSize: 30,
-                      fontWeight: FontWeight.w300,
-                      height: 0.92,
-                      color: Colors.black,
-                      letterSpacing: -1.0,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                AuthPillButton(
-                  label: 'Войти',
-                  icon: Icons.login_rounded,
-                  minimumSize: const Size(92, 38),
-                  fontSize: 12,
-                  iconSize: 13,
-                  onPressed: () => context.go('/login'),
-                ),
-              ],
+            AuthHeadline(
+              title: _codeRequested ? 'Новый пароль' : 'Восстановление',
+              fontSize: 30,
+              fontWeight: FontWeight.w300,
+              titleHeight: 0.92,
+              trailing: AuthPillButton(
+                label: 'Войти',
+                icon: Icons.login_rounded,
+                minimumSize: const Size(92, 38),
+                fontSize: 12,
+                iconSize: 13,
+                onPressed: () => context.go('/login'),
+              ),
             ),
             const SizedBox(height: 18),
             AuthTextField(
@@ -155,7 +140,7 @@ class _RecoveryPageState extends State<RecoveryPage> {
                     _obscure
                         ? Icons.visibility_off_outlined
                         : Icons.visibility_outlined,
-                    color: const Color(0xFF2F241F),
+                    color: const Color(0xFFD7E37A),
                     size: 22,
                   ),
                 ),

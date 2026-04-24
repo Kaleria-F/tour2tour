@@ -122,37 +122,22 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
               )
             else
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.visible,
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w300,
-                        height: 0.92,
-                        color: Colors.black,
-                        letterSpacing: -1.0,
-                      ),
-                    ),
+              AuthHeadline(
+                title: title,
+                fontSize: 28,
+                fontWeight: FontWeight.w300,
+                titleHeight: 0.92,
+                trailing: Transform.translate(
+                  offset: const Offset(0, 6),
+                  child: AuthPillButton(
+                    label: 'Войти',
+                    icon: Icons.login_rounded,
+                    minimumSize: const Size(92, 38),
+                    fontSize: 12,
+                    iconSize: 13,
+                    onPressed: () => context.go('/login'),
                   ),
-                  const SizedBox(width: 12),
-                  Transform.translate(
-                    offset: const Offset(0, 6),
-                    child: AuthPillButton(
-                      label: 'Войти',
-                      icon: Icons.login_rounded,
-                      minimumSize: const Size(92, 38),
-                      fontSize: 12,
-                      iconSize: 13,
-                      onPressed: () => context.go('/login'),
-                    ),
-                  ),
-                ],
+                ),
               ),
             const SizedBox(height: 18),
             AuthTextField(
@@ -199,7 +184,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       _obscure
                           ? Icons.visibility_off_outlined
                           : Icons.visibility_outlined,
-                      color: const Color(0xFF2F241F),
+                      color: const Color(0xFFD7E37A),
                       size: 22,
                     ),
                   ),

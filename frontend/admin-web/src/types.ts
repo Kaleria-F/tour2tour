@@ -55,6 +55,14 @@ export type AdminImportJob = {
   stats_json?: Record<string, unknown>;
 };
 
+export type AdminTagCatalogItem = {
+  key: string;
+  label: string;
+  group: string;
+  color: string;
+  description: string;
+};
+
 export type CitySuggestion = {
   city: string;
   region?: string | null;

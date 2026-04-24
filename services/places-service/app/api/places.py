@@ -13,7 +13,6 @@ from app.api.deps import require_admin
 from app.core.config import settings
 from app.db.deps import get_db
 from app.models.place import Place, PlaceCandidate, PlaceImportJob, PlaceTag
-from app.services.city_index import load_city_records
 from app.schemas.place import (
     CitySuggestionOut,
     ImportJobCreate,
@@ -24,7 +23,10 @@ from app.schemas.place import (
     PlaceListResponse,
     PlaceOut,
     PlaceUpdate,
+    TagCatalogItemOut,
 )
+from app.services.city_index import load_city_records
+from app.tag_catalog import TAG_CATALOG, validate_place_tags
 
 router = APIRouter(prefix="/places", tags=["places"])
 
@@ -152,6 +154,7 @@ def _to_place_out(place: Place) -> PlaceOut:
 
 
 def _replace_tags(db: Session, place: Place, tags: dict[str, int]) -> None:
+    tags = validate_place_tags(tags)
     db.query(PlaceTag).filter(PlaceTag.place_id == place.id).delete()
     for tag, weight in tags.items():
         db.add(PlaceTag(id=str(uuid4()), place_id=place.id, tag=tag, weight=weight))
@@ -177,13 +180,16 @@ def _parse_tags(raw: str | None) -> dict[str, int]:
         import json
 
         parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            return {str(key): int(value) for key, value in parsed.items() if str(key).strip()}
     except Exception:
-        pass
+        parsed = None
+    if isinstance(parsed, dict):
+        return validate_place_tags({str(key): int(value) for key, value in parsed.items() if str(key).strip()})
 
     result: dict[str, int] = {}
-    for chunk in raw.split(","):
+    chunks = raw.split(",")
+    if len(chunks) == 1 and ";" in raw:
+        chunks = raw.split(";")
+    for chunk in chunks:
         part = chunk.strip()
         if not part:
             continue
@@ -197,7 +203,26 @@ def _parse_tags(raw: str | None) -> dict[str, int]:
         if not tag:
             continue
         result[tag] = int(weight.strip() or "3")
-    return result
+    return validate_place_tags(result)
+
+
+def _detect_csv_delimiter(sample: str) -> str:
+    first_line = sample.splitlines()[0] if sample.splitlines() else sample
+    counts = {
+        ";": first_line.count(";"),
+        ",": first_line.count(","),
+        "\t": first_line.count("\t"),
+    }
+    if counts[";"] >= counts[","] and counts[";"] >= counts["\t"] and counts[";"] > 0:
+        return ";"
+    if counts["\t"] > counts[","] and counts["\t"] > 0:
+        return "\t"
+    if counts[","] > 0:
+        return ","
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=",;\t").delimiter
+    except csv.Error:
+        return ","
 
 
 def _normalize_candidate_row(row: dict[str, str], default_source: str) -> dict:
@@ -353,6 +378,11 @@ def suggest_cities(
     return _search_city_records(q, limit, db)
 
 
+@router.get("/tags/catalog", response_model=list[TagCatalogItemOut])
+def list_tag_catalog():
+    return [TagCatalogItemOut(**item) for item in TAG_CATALOG]
+
+
 @router.get("/candidates/list", response_model=list[PlaceCandidateOut])
 def list_candidates(
     status_filter: str | None = Query(default="pending_review", alias="status"),
@@ -409,7 +439,10 @@ def decide_candidate(
     candidate.notes = payload.notes
     db.add(candidate)
     if should_create_place:
-        created_place = _create_place_from_candidate(db, candidate)
+        try:
+            created_place = _create_place_from_candidate(db, candidate)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         if created_place is None:
             raise HTTPException(
                 status_code=400,
@@ -544,15 +577,15 @@ async def upload_import_csv(
     created = 0
     failed = 0
     sample = decoded[:4096]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
-    reader = csv.DictReader(io.StringIO(decoded), dialect=dialect)
+    delimiter = _detect_csv_delimiter(sample)
+    reader = csv.DictReader(io.StringIO(decoded), delimiter=delimiter)
 
-    for row in reader:
+    for index, row in enumerate(reader, start=2):
         payload_row = {str(key): str(value or "") for key, value in row.items()}
-        normalized = _normalize_candidate_row(payload_row, source)
+        try:
+            normalized = _normalize_candidate_row(payload_row, source)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid tags format in CSV row {index}: {exc}") from exc
         if not normalized.get("name") or not normalized.get("city"):
             failed += 1
             continue

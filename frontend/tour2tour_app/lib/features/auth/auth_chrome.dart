@@ -4,7 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 const _authBackgroundAsset = 'assets/images/russian_landscape_bg.jpg';
-const _authDesktopBackgroundAsset = 'assets/images/lanscape_bg_pk.png';
+const _authDesktopBackgroundAsset = 'assets/images/lanscape_bg_pk.jpg';
+const _authText = Color(0xFFF3F6EE);
+const _authMuted = Color(0xFFAEB7A4);
+const _authSurface = Color(0xFF2C332B);
+const _authSurfaceSoft = Color(0xFF3A4438);
+const _authStroke = Color(0x335A6555);
+const _authAccent = Color(0xFFD7E37A);
+const _authAccentDeep = Color(0xFF222715);
+const _authAccentSoft = Color(0xFF6D7B33);
 
 class AuthScaffold extends StatelessWidget {
   const AuthScaffold({
@@ -83,21 +91,22 @@ class AuthGlassCard extends StatelessWidget {
           padding: padding,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(34),
-            color: Colors.white.withOpacity(isDesktop ? 0.30 : 0.18),
+            color: const Color(0xFF1D1F1B).withOpacity(isDesktop ? 0.74 : 0.68),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.white.withOpacity(isDesktop ? 0.52 : 0.34),
-                const Color(0xFFF8F1EC).withOpacity(isDesktop ? 0.34 : 0.22),
-                const Color(0xFFE9DDD5).withOpacity(isDesktop ? 0.22 : 0.14),
+                const Color(0xFF364032).withOpacity(isDesktop ? 0.92 : 0.86),
+                const Color(0xFF262C25).withOpacity(isDesktop ? 0.88 : 0.82),
+                const Color(0xFF1A1D19).withOpacity(isDesktop ? 0.92 : 0.86),
               ],
             ),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.10),
-                blurRadius: 28,
-                offset: const Offset(0, 18),
+                color: Colors.black.withOpacity(0.28),
+                blurRadius: 34,
+                offset: const Offset(0, 20),
               ),
             ],
           ),
@@ -123,9 +132,9 @@ class AuthBrandMark extends StatelessWidget {
           title,
           style: const TextStyle(
             fontSize: 16,
-            fontWeight: FontWeight.w400,
-            color: Color(0xFF403734),
-            letterSpacing: -0.2,
+            fontWeight: FontWeight.w500,
+            color: _authAccent,
+            letterSpacing: -0.15,
           ),
         ),
         if (subtitle != null) ...[
@@ -134,7 +143,7 @@ class AuthBrandMark extends StatelessWidget {
             subtitle!,
             style: TextStyle(
               fontSize: 12.5,
-              color: const Color(0xFF403734).withOpacity(0.70),
+              color: _authMuted.withOpacity(0.9),
             ),
           ),
         ],
@@ -152,6 +161,7 @@ class AuthHeadline extends StatelessWidget {
     this.fontSize = 46,
     this.fontWeight = FontWeight.w600,
     this.titleHeight = 0.92,
+    this.maxLines,
   });
 
   final String title;
@@ -160,47 +170,86 @@ class AuthHeadline extends StatelessWidget {
   final double fontSize;
   final FontWeight fontWeight;
   final double titleHeight;
+  final int? maxLines;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+    final compact = MediaQuery.of(context).size.width < 430;
+    final titleStyle = TextStyle(
+      fontSize: fontSize,
+      height: titleHeight,
+      fontWeight: fontWeight,
+      color: _authText,
+      letterSpacing: -1.2,
+    );
+
+    Widget buildScaledTitle(double maxWidth) {
+      return SizedBox(
+        width: maxWidth,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            title,
+            maxLines: 1,
+            softWrap: false,
+            style: titleStyle,
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final titleSection = compact
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  buildScaledTitle(constraints.maxWidth),
+                  if (trailing != null) ...[
+                    const SizedBox(height: 12),
+                    Align(alignment: Alignment.centerRight, child: trailing!),
+                  ],
+                ],
+              )
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Flexible(
+                    fit: FlexFit.loose,
+                    child: Text(
+                      title,
+                      maxLines: maxLines,
+                      overflow: maxLines == null ? null : TextOverflow.ellipsis,
+                      style: titleStyle,
+                    ),
+                  ),
+                  if (trailing != null) ...[
+                    const Spacer(),
+                    trailing!,
+                  ],
+                ],
+              );
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Flexible(
-              fit: FlexFit.loose,
-              child: Text(
-                title,
+            titleSection,
+            if (description != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                description!,
                 style: TextStyle(
-                  fontSize: fontSize,
-                  height: titleHeight,
-                  fontWeight: fontWeight,
-                  color: Colors.black,
-                  letterSpacing: -1.2,
+                  fontSize: 13.5,
+                  height: 1.38,
+                  fontWeight: FontWeight.w400,
+                  color: _authMuted.withOpacity(0.92),
                 ),
               ),
-            ),
-            if (trailing != null) ...[
-              const Spacer(),
-              trailing!,
             ],
           ],
-        ),
-        if (description != null) ...[
-          const SizedBox(height: 10),
-          Text(
-            description!,
-            style: TextStyle(
-              fontSize: 13.5,
-              height: 1.38,
-              fontWeight: FontWeight.w400,
-              color: const Color(0xFF2F241F).withOpacity(0.72),
-            ),
-          ),
-        ],
-      ],
+        );
+      },
     );
   }
 }
@@ -224,9 +273,9 @@ class AuthInputField extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: Colors.white.withOpacity(0.10),
+        color: _authSurface.withOpacity(0.86),
         border: Border.all(
-          color: Colors.white.withOpacity(0.48),
+          color: Colors.white.withOpacity(0.10),
           width: 1.1,
         ),
       ),
@@ -237,9 +286,9 @@ class AuthInputField extends StatelessWidget {
             height: 42,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withOpacity(0.92),
+              color: _authAccent.withOpacity(0.94),
             ),
-            child: Icon(icon, size: 20, color: const Color(0xFF2B2B2B)),
+            child: Icon(icon, size: 20, color: _authAccentDeep),
           ),
           Expanded(
             child: Transform.translate(
@@ -275,14 +324,14 @@ class AuthPillButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconWidget = icon == null
         ? null
-        : Icon(icon, size: iconSize, color: const Color(0xFF232323));
+        : Icon(icon, size: iconSize, color: _authAccent);
 
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF232323),
-        side: BorderSide(color: Colors.black.withOpacity(0.28), width: 1),
-        backgroundColor: Colors.white.withOpacity(0.05),
+        foregroundColor: _authText,
+        side: BorderSide(color: Colors.white.withOpacity(0.10), width: 1),
+        backgroundColor: _authSurface.withOpacity(0.82),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         minimumSize: minimumSize,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -336,20 +385,20 @@ class AuthOrganicButton extends StatelessWidget {
                     height: 62,
                     decoration: const BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Color(0xFFD5B09A),
+                      color: _authAccent,
                     ),
                     child: loading
                         ? const Padding(
                             padding: EdgeInsets.all(18),
                             child: CircularProgressIndicator(
                               strokeWidth: 2.4,
-                              color: Colors.white,
+                              color: _authAccentDeep,
                             ),
                           )
                         : const Icon(
                             Icons.chevron_right_rounded,
                             size: 24,
-                            color: Colors.white,
+                            color: _authAccentDeep,
                           ),
                   ),
                 )
@@ -359,10 +408,10 @@ class AuthOrganicButton extends StatelessWidget {
                     Positioned(
                       left: 0,
                       right: 20,
-                      child: Container(
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFD5B09A).withOpacity(0.95),
+                        child: Container(
+                          height: 34,
+                          decoration: BoxDecoration(
+                          color: _authAccentSoft,
                           borderRadius: BorderRadius.circular(40),
                         ),
                         alignment: Alignment.centerLeft,
@@ -373,8 +422,8 @@ class AuthOrganicButton extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFFF8F4F0),
+                            fontWeight: FontWeight.w600,
+                            color: _authText,
                           ),
                         ),
                       ),
@@ -386,20 +435,20 @@ class AuthOrganicButton extends StatelessWidget {
                         height: 62,
                         decoration: const BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Color(0xFFD5B09A),
+                          color: _authAccent,
                         ),
                         child: loading
                             ? const Padding(
                                 padding: EdgeInsets.all(18),
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.4,
-                                  color: Colors.white,
+                                  color: _authAccentDeep,
                                 ),
                               )
                             : const Icon(
                                 Icons.chevron_right_rounded,
                                 size: 24,
-                                color: Colors.white,
+                                color: _authAccentDeep,
                               ),
                       ),
                     ),
@@ -458,7 +507,7 @@ class AuthTextField extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-                color: Color(0xFF1F1B19),
+                color: _authText,
               ),
               decoration: const InputDecoration(
                 counterText: '',
@@ -468,7 +517,7 @@ class AuthTextField extends StatelessWidget {
                 hintStyle: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w300,
-                  color: Color(0xFF2F2A28),
+                  color: _authMuted,
                 ),
               ),
             ),
@@ -503,7 +552,7 @@ class AuthInlineLink extends StatelessWidget {
         Text(
           text,
           style: TextStyle(
-            color: Colors.white.withOpacity(0.88),
+            color: _authMuted.withOpacity(0.95),
             fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
@@ -515,7 +564,7 @@ class AuthInlineLink extends StatelessWidget {
             child: Text(
               linkLabel,
               style: const TextStyle(
-                color: Color(0xFFF8E8DA),
+                color: _authAccent,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
@@ -538,21 +587,21 @@ class AuthSectionChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.16),
+        color: _authSurfaceSoft.withOpacity(0.92),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withOpacity(0.26)),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 16, color: const Color(0xFF2F241F)),
+            Icon(icon, size: 16, color: _authAccent),
             const SizedBox(width: 8),
           ],
           Text(
             label,
             style: const TextStyle(
-              color: Color(0xFF2F241F),
+              color: _authText,
               fontSize: 13,
               fontWeight: FontWeight.w700,
             ),
@@ -573,7 +622,7 @@ class AuthHelperText extends StatelessWidget {
     return Text(
       text,
       style: TextStyle(
-        color: const Color(0xFF2F241F).withOpacity(0.78),
+        color: _authMuted.withOpacity(0.92),
         fontSize: 13.5,
         height: 1.45,
       ),
@@ -603,9 +652,9 @@ class _LandscapeBackground extends StatelessWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                const Color(0x0D0E1012),
-                const Color(0x402F241F),
-                const Color(0x7F4E3D34),
+                Colors.black.withOpacity(0.06),
+                const Color(0x661B2119),
+                const Color(0xCC111411),
               ],
             ),
           ),
@@ -626,10 +675,10 @@ class _FallbackLandscape extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Color(0xFFEFCDBA),
-            Color(0xFFB3B4A1),
-            Color(0xFF78826C),
-            Color(0xFF413530),
+            Color(0xFF6F826A),
+            Color(0xFF3A4438),
+            Color(0xFF1D231C),
+            Color(0xFF111411),
           ],
         ),
       ),
@@ -659,7 +708,7 @@ class _LandscapePainter extends CustomPainter {
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
-    canvas.drawPath(hill, Paint()..color = const Color(0xFF6D7862).withOpacity(0.68));
+    canvas.drawPath(hill, Paint()..color = const Color(0xFF5E6A56).withOpacity(0.72));
 
     final foreground = Path()
       ..moveTo(0, size.height * 0.82)
@@ -668,10 +717,10 @@ class _LandscapePainter extends CustomPainter {
       ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
-    canvas.drawPath(foreground, Paint()..color = const Color(0xFF35402F));
+    canvas.drawPath(foreground, Paint()..color = const Color(0xFF24301F));
 
     final birchPaint = Paint()
-      ..color = const Color(0xFFF0E7DE).withOpacity(0.78)
+      ..color = const Color(0xFFDDE6D6).withOpacity(0.52)
       ..strokeWidth = 3.2
       ..strokeCap = StrokeCap.round;
     for (final x in [size.width * 0.12, size.width * 0.17, size.width * 0.83]) {

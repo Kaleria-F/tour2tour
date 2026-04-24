@@ -8,10 +8,14 @@ from app.api.deps import get_current_user
 from app.models.user import User
 from app.models.user_preferences import UserPreference
 from app.schemas.preferences import (
+    INTEREST_TAGS,
+    PACE_VALUES,
     PreferencesOut,
     PreferencesUpsert,
     SurveyProfileIn,
     SurveyProfileOut,
+    TRAVEL_MODE_TAGS,
+    TRIP_FORMAT_TAGS,
 )
 from app.schemas.user import UserMeOut
 
@@ -21,6 +25,15 @@ SURVEY_PROFILE_META_KEY = "survey_profile_meta"
 INTEREST_KEY = "interest"
 TRIP_FORMAT_KEY = "trip_format"
 INTEREST_WEIGHT_PREFIX = "interest_weight:"
+INTEREST_ALIASES = {
+    "museum": "museums",
+}
+TRIP_FORMAT_ALIASES = {
+    "weekend": "calm",
+}
+TRAVEL_MODE_ALIASES = {
+    "walk": "walk",
+}
 
 
 @router.get("/me", response_model=UserMeOut)
@@ -93,6 +106,24 @@ def _survey_has_completed(
     )
 
 
+def _filter_known_values(values: list[str], allowed: set[str]) -> list[str]:
+    seen: set[str] = set()
+    filtered: list[str] = []
+    for value in values:
+        if value not in allowed or value in seen:
+            continue
+        seen.add(value)
+        filtered.append(value)
+    return filtered
+
+
+def _normalize_value(value: str | None, aliases: dict[str, str]) -> str | None:
+    if value is None:
+        return None
+    normalized = aliases.get(value, value)
+    return normalized.strip() or None
+
+
 @router.get("/me/survey-profile", response_model=SurveyProfileOut)
 def get_survey_profile(
     db: Session = Depends(get_db),
@@ -112,11 +143,17 @@ def get_survey_profile(
 
     for row in rows:
         if row.key == INTEREST_KEY:
-            interests.append(row.value)
+            normalized = _normalize_value(row.value, INTEREST_ALIASES)
+            if normalized is not None:
+                interests.append(normalized)
         elif row.key == TRIP_FORMAT_KEY:
-            trip_formats.append(row.value)
+            normalized = _normalize_value(row.value, TRIP_FORMAT_ALIASES)
+            if normalized is not None:
+                trip_formats.append(normalized)
         elif row.key.startswith(INTEREST_WEIGHT_PREFIX):
-            tag = row.key[len(INTEREST_WEIGHT_PREFIX) :]
+            tag = _normalize_value(row.key[len(INTEREST_WEIGHT_PREFIX) :], INTEREST_ALIASES)
+            if tag is None:
+                continue
             try:
                 weight = int(row.value)
             except ValueError:
@@ -129,21 +166,30 @@ def get_survey_profile(
             except json.JSONDecodeError:
                 continue
             budget = meta.get("budget") if isinstance(meta.get("budget"), str) else budget
-            travel_mode = (
-                meta.get("travel_mode") if isinstance(meta.get("travel_mode"), str) else travel_mode
+            travel_mode = _normalize_value(
+                meta.get("travel_mode") if isinstance(meta.get("travel_mode"), str) else travel_mode,
+                TRAVEL_MODE_ALIASES,
             )
             pace = meta.get("pace") if isinstance(meta.get("pace"), str) else pace
             skipped = bool(meta.get("skipped", skipped))
 
     has_completed = _survey_has_completed(
-        interests=interests,
-        trip_formats=trip_formats,
+        interests=_filter_known_values(interests, INTEREST_TAGS),
+        trip_formats=_filter_known_values(trip_formats, TRIP_FORMAT_TAGS),
         budget=budget,
-        travel_mode=travel_mode,
-        pace=pace,
-        interest_weights=interest_weights,
+        travel_mode=travel_mode if travel_mode in TRAVEL_MODE_TAGS else None,
+        pace=pace if pace in PACE_VALUES else None,
+        interest_weights={tag: weight for tag, weight in interest_weights.items() if tag in INTEREST_TAGS},
         skipped=skipped,
     )
+
+    interests = _filter_known_values(interests, INTEREST_TAGS)
+    trip_formats = _filter_known_values(trip_formats, TRIP_FORMAT_TAGS)
+    interest_weights = {
+        tag: weight for tag, weight in interest_weights.items() if tag in INTEREST_TAGS
+    }
+    travel_mode = travel_mode if travel_mode in TRAVEL_MODE_TAGS else None
+    pace = pace if pace in PACE_VALUES else None
 
     return SurveyProfileOut(
         interests=interests,

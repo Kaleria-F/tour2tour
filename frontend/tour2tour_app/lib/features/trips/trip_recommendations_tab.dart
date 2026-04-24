@@ -18,6 +18,7 @@ class TripRecommendationsTab extends StatefulWidget {
   final String tripTitle;
   final List<TripStage> stages;
   final VoidCallback onStagesChanged;
+  final VoidCallback onOpenTripFavorites;
 
   const TripRecommendationsTab({
     super.key,
@@ -29,6 +30,7 @@ class TripRecommendationsTab extends StatefulWidget {
     required this.stages,
     required this.tripTitle,
     required this.onStagesChanged,
+    required this.onOpenTripFavorites,
     this.tripId,
     this.destinationCity,
   });
@@ -363,17 +365,8 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
     await _load();
   }
 
-  Future<void> _openTripFavorites() async {
-    final city = _tripCity();
-    final params = <String, String>{
-      if (widget.tripId != null) 'tripId': widget.tripId.toString(),
-      if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
-      if (city != null && city.trim().isNotEmpty)
-        'title': '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0435 \u00b7 ${city.trim()}',
-      'subtitle': '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0434\u043b\u044f \u0433\u043e\u0440\u043e\u0434\u0430 \u044d\u0442\u043e\u0433\u043e \u043c\u0430\u0440\u0448\u0440\u0443\u0442\u0430',
-    };
-    final query = Uri(queryParameters: params).query;
-    await context.push('/trip-favorites${query.isEmpty ? '' : '?$query'}');
+  void _openTripFavorites() {
+    widget.onOpenTripFavorites();
   }
 
   Widget _tag(String text) {

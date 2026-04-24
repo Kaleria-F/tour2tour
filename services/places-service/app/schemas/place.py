@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.tag_catalog import validate_place_tags
 
 
 class PlaceBase(BaseModel):
@@ -27,6 +29,11 @@ class PlaceBase(BaseModel):
     working_hours_json: dict[str, Any] | None = None
     metadata_json: dict[str, Any] | None = None
     tags: dict[str, int] = Field(default_factory=dict)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: dict[str, int]) -> dict[str, int]:
+        return validate_place_tags(value)
 
 
 class PlaceCreate(PlaceBase):
@@ -54,6 +61,11 @@ class PlaceUpdate(BaseModel):
     working_hours_json: dict[str, Any] | None = None
     metadata_json: dict[str, Any] | None = None
     tags: dict[str, int] | None = None
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: dict[str, int] | None) -> dict[str, int]:
+        return validate_place_tags(value)
 
 
 class PlaceOut(PlaceBase):
@@ -96,6 +108,14 @@ class PlaceCandidateOut(BaseModel):
 class PlaceCandidateDecision(BaseModel):
     status: str = Field(pattern="^(approved|rejected|pending_review)$")
     notes: str | None = None
+
+
+class TagCatalogItemOut(BaseModel):
+    key: str
+    label: str
+    group: str
+    color: str
+    description: str
 
 
 class ImportJobCreate(BaseModel):

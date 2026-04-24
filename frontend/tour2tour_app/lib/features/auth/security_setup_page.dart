@@ -1,8 +1,7 @@
-﻿import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'auth_chrome.dart';
 import 'auth_repo.dart';
 import 'auth_ui.dart';
 
@@ -81,8 +80,10 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
       await widget.auth.enableTotp(code);
       if (!mounted) return;
       showAuthSuccess(context, 'TOTP успешно подключен.');
-      _totpSecret = null;
-      _totpUri = null;
+      setState(() {
+        _totpSecret = null;
+        _totpUri = null;
+      });
       _totpCode.clear();
       await _loadStatus();
     } catch (error) {
@@ -95,287 +96,109 @@ class _SecuritySetupPageState extends State<SecuritySetupPage> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final isConfigured = _secondFactorRequired || _totpEnabled;
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          const _NightBackground(),
-          SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          _Logo(cs: cs),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              isConfigured ? 'Настройки безопасности' : 'Подключение защиты',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 20,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: ListView(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: Colors.white.withOpacity(0.12)),
-                              ),
-                              child: Text(
-                                _statusLoading
-                                    ? 'Проверяем текущие настройки безопасности...'
-                                    : isConfigured
-                                        ? 'Защита аккаунта уже настроена. Здесь можно посмотреть активные способы входа и добавить недостающие.'
-                                        : 'Подключите второй фактор, чтобы усилить защиту входа в аккаунт.',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.85),
-                                  fontSize: 13.5,
-                                  height: 1.45,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            _sectionCard(
-                              title: 'TOTP',
-                              status: _statusLoading
-                                  ? 'Проверка...'
-                                  : (_totpEnabled ? 'Подключен' : 'Не подключен'),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _totpEnabled
-                                        ? 'Вход по паролю будет дополнительно подтверждаться кодом из приложения-аутентификатора.'
-                                        : 'Google Authenticator, Microsoft Authenticator или 1Password.',
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.82),
-                                      fontSize: 12.5,
-                                    ),
-                                  ),
-                                  if (!_totpEnabled) ...[
-                                    const SizedBox(height: 10),
-                                    OutlinedButton(
-                                      onPressed: _loading ? null : _startTotp,
-                                      child: const Text('Сгенерировать TOTP-секрет'),
-                                    ),
-                                  ],
-                                  if (_totpSecret != null) ...[
-                                    const SizedBox(height: 10),
-                                    SelectableText(
-                                      'Secret: $_totpSecret',
-                                      style: const TextStyle(color: Colors.white),
-                                    ),
-                                    if (_totpUri != null)
-                                      SelectableText(
-                                        'URI: $_totpUri',
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.85),
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    const SizedBox(height: 10),
-                                    TextField(
-                                      controller: _totpCode,
-                                      keyboardType: TextInputType.number,
-                                      style: const TextStyle(color: Colors.white),
-                                      decoration: InputDecoration(
-                                        labelText: 'Код из приложения',
-                                        labelStyle: TextStyle(color: Colors.white.withOpacity(0.85)),
-                                        border: const OutlineInputBorder(),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 10),
-                                    ElevatedButton(
-                                      onPressed: _loading ? null : _confirmTotp,
-                                      child: const Text('Подтвердить TOTP'),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [cs.primary, cs.primary.withOpacity(0.75)],
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              shadowColor: Colors.transparent,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            onPressed: () => context.go('/preferences'),
-                            child: const Text(
-                              'Продолжить',
-                              style: TextStyle(
-                                fontSize: 16.5,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => context.go('/profile'),
-                        child: Text(
-                          'Вернуться в профиль',
-                          style: TextStyle(color: Colors.white.withOpacity(0.85)),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                  ),
+    return AuthScaffold(
+      maxWidth: 640,
+      padding: const EdgeInsets.fromLTRB(6, 16, 6, 18),
+      child: AuthGlassCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(child: AuthBrandMark(title: 'Typ2Typ')),
+                AuthPillButton(
+                  label: 'Профиль',
+                  icon: Icons.arrow_forward_rounded,
+                  minimumSize: const Size(110, 38),
+                  fontSize: 12,
+                  iconSize: 13,
+                  onPressed: () => context.go('/account'),
                 ),
-              ),
+              ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionCard({
-    required String title,
-    required String status,
-    required Widget child,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                title,
+            const SizedBox(height: 22),
+            AuthHeadline(
+              title: isConfigured ? 'Настройки безопасности' : 'Подключение защиты',
+              fontSize: 34,
+              fontWeight: FontWeight.w300,
+              description: _statusLoading
+                  ? 'Проверяем текущие настройки безопасности.'
+                  : isConfigured
+                      ? 'Второй фактор уже подключен. Здесь можно посмотреть активный способ входа и при необходимости обновить настройки.'
+                      : 'Подключите второй фактор, чтобы вход в аккаунт требовал не только пароль, но и код из приложения-аутентификатора.',
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                AuthSectionChip(
+                  label: _statusLoading
+                      ? 'Проверка...'
+                      : (_totpEnabled ? 'TOTP подключен' : 'TOTP не подключен'),
+                  icon: Icons.security_rounded,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const AuthHelperText(
+              text: 'Поддерживаются Google Authenticator, Microsoft Authenticator, 1Password и другие приложения с TOTP.',
+            ),
+            const SizedBox(height: 16),
+            if (!_totpEnabled)
+              AuthPillButton(
+                label: 'Сгенерировать TOTP-секрет',
+                icon: Icons.qr_code_2_rounded,
+                onPressed: _loading ? null : _startTotp,
+              ),
+            if (_totpSecret != null) ...[
+              const SizedBox(height: 18),
+              const AuthSectionChip(
+                label: 'Секрет для привязки',
+                icon: Icons.key_rounded,
+              ),
+              const SizedBox(height: 12),
+              SelectableText(
+                'Secret: $_totpSecret',
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
+                  color: Color(0xFFF3F6EE),
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  status,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+              if (_totpUri != null) ...[
+                const SizedBox(height: 8),
+                SelectableText(
+                  _totpUri!,
+                  style: const TextStyle(
+                    color: Color(0xFFAEB7A4),
+                    fontSize: 12.5,
+                    height: 1.4,
                   ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              AuthTextField(
+                controller: _totpCode,
+                hintText: 'код из приложения',
+                icon: Icons.password_rounded,
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: AuthOrganicButton(
+                  label: 'Подтвердить TOTP',
+                  width: 220,
+                  loading: _loading,
+                  onTap: _loading ? null : _confirmTotp,
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 10),
-          child,
-        ],
+          ],
+        ),
       ),
     );
   }
 }
-
-class _Logo extends StatelessWidget {
-  final ColorScheme cs;
-  const _Logo({required this.cs});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: cs.primary.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.primary.withOpacity(0.3)),
-      ),
-      child: Icon(Icons.security_rounded, color: cs.primary),
-    );
-  }
-}
-
-class _NightBackground extends StatelessWidget {
-  const _NightBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _NightPainter(),
-      child: const SizedBox.expand(),
-    );
-  }
-}
-
-class _NightPainter extends CustomPainter {
-  final _rng = math.Random(7);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    const gradient = LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [Color(0xFF0B1023), Color(0xFF090D1A)],
-    );
-    canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
-    final vignette = RadialGradient(
-      colors: [Colors.transparent, Colors.black.withOpacity(0.55)],
-      stops: const [0.55, 1.0],
-    );
-    canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
-    final starPaint = Paint()..color = Colors.white.withOpacity(0.55);
-    final starPaintDim = Paint()..color = Colors.white.withOpacity(0.22);
-    final count = (size.width * size.height / 6500).clamp(70, 170).toInt();
-    for (var i = 0; i < count; i++) {
-      final x = _rng.nextDouble() * size.width;
-      final y = _rng.nextDouble() * size.height * 0.6;
-      final r = _rng.nextDouble() * 1.35 + 0.2;
-      canvas.drawCircle(Offset(x, y), r, (i % 3 == 0) ? starPaint : starPaintDim);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-

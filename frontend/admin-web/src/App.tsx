@@ -10,6 +10,7 @@ import {
   listCandidates,
   listImportJobs,
   listPlaces,
+  listTagCatalog,
   login,
   setStoredToken,
   suggestCities,
@@ -18,19 +19,20 @@ import {
   uploadPlaceImage,
   verify2fa,
 } from './api';
-import type { AdminImportJob, AdminPlace, AdminPlaceCandidate, CitySuggestion, UserMe } from './types';
+import type {
+  AdminImportJob,
+  AdminPlace,
+  AdminPlaceCandidate,
+  AdminTagCatalogItem,
+  CitySuggestion,
+  UserMe,
+} from './types';
 
 type TabKey = 'places' | 'candidates' | 'imports';
 
 type Option = {
   value: string;
   label: string;
-};
-
-type TagOption = {
-  key: string;
-  label: string;
-  color: string;
 };
 
 type PlaceFormState = {
@@ -114,17 +116,31 @@ const IMPORT_KIND_OPTIONS: Option[] = [
   { value: 'stay', label: 'Проживание' },
 ];
 
-const TAG_OPTIONS: TagOption[] = [
-  { key: 'history', label: 'История', color: 'tag-blue' },
-  { key: 'culture', label: 'Культура', color: 'tag-violet' },
-  { key: 'museums', label: 'Музеи', color: 'tag-amber' },
-  { key: 'architecture', label: 'Архитектура', color: 'tag-cyan' },
-  { key: 'nature', label: 'Природа', color: 'tag-green' },
-  { key: 'active', label: 'Активный отдых', color: 'tag-orange' },
-  { key: 'family', label: 'Семейный отдых', color: 'tag-pink' },
-  { key: 'food', label: 'Гастрономия', color: 'tag-red' },
-  { key: 'romantic', label: 'Романтика', color: 'tag-rose' },
-  { key: 'nightlife', label: 'Ночная жизнь', color: 'tag-purple' },
+const FALLBACK_TAG_OPTIONS: AdminTagCatalogItem[] = [
+  { key: 'history', label: 'История', group: 'interest', color: 'tag-blue', description: 'Исторические места и сюжеты.' },
+  { key: 'culture', label: 'Культура', group: 'interest', color: 'tag-violet', description: 'Культурные пространства и локальные традиции.' },
+  { key: 'museums', label: 'Музеи', group: 'interest', color: 'tag-amber', description: 'Музеи, выставки и экспозиции.' },
+  { key: 'architecture', label: 'Архитектура', group: 'interest', color: 'tag-cyan', description: 'Архитектурно значимые объекты.' },
+  { key: 'nature', label: 'Природа', group: 'interest', color: 'tag-green', description: 'Парки, сады и природные точки.' },
+  { key: 'food', label: 'Гастрономия', group: 'interest', color: 'tag-red', description: 'Еда, локальная кухня и гастроточки.' },
+  { key: 'active', label: 'Активный отдых', group: 'interest', color: 'tag-orange', description: 'Прогулки, спорт и активности.' },
+  { key: 'shopping', label: 'Шопинг', group: 'interest', color: 'tag-cyan', description: 'Покупки и торговые точки.' },
+  { key: 'photo', label: 'Фотолокации', group: 'interest', color: 'tag-amber', description: 'Видовые и фотогеничные места.' },
+  { key: 'nightlife', label: 'Ночная жизнь', group: 'interest', color: 'tag-purple', description: 'Вечерние и ночные активности.' },
+  { key: 'hidden', label: 'Необычные места', group: 'interest', color: 'tag-green', description: 'Небанальные hidden gems.' },
+  { key: 'family', label: 'Семейный отдых', group: 'audience', color: 'tag-pink', description: 'Подходит для поездок с семьей.' },
+  { key: 'romantic', label: 'Романтика', group: 'trip_format', color: 'tag-rose', description: 'Подходит для романтических маршрутов.' },
+  { key: 'calm', label: 'Спокойный формат', group: 'trip_format', color: 'tag-green', description: 'Неспешный формат поездки.' },
+  { key: 'active_format', label: 'Активный формат', group: 'trip_format', color: 'tag-orange', description: 'Активный сценарий поездки.' },
+  { key: 'intense', label: 'Насыщенный формат', group: 'trip_format', color: 'tag-red', description: 'Плотный и насыщенный сценарий.' },
+  { key: 'friends', label: 'С друзьями', group: 'audience', color: 'tag-violet', description: 'Подходит для компании друзей.' },
+  { key: 'solo', label: 'Соло', group: 'audience', color: 'tag-blue', description: 'Подходит для одного путешественника.' },
+  { key: 'couple', label: 'Для пары', group: 'audience', color: 'tag-rose', description: 'Подходит для поездки вдвоем.' },
+  { key: 'landmark', label: 'Знаковое место', group: 'system', color: 'tag-cyan', description: 'Главная точка притяжения в городе.' },
+  { key: 'walk', label: 'Для прогулки', group: 'system', color: 'tag-green', description: 'Удобно для пешего маршрута.' },
+  { key: 'city', label: 'Городской опыт', group: 'system', color: 'tag-default', description: 'Часть знакомства с городом.' },
+  { key: 'attraction', label: 'Точка притяжения', group: 'system', color: 'tag-amber', description: 'Яркая точка интереса.' },
+  { key: 'cafe', label: 'Кафе-формат', group: 'system', color: 'tag-red', description: 'Подходит для короткой гастроостановки.' },
 ];
 
 const EMPTY_FORM: PlaceFormState = {
@@ -173,12 +189,12 @@ function getCandidateValue(candidate: AdminPlaceCandidate, key: string) {
   return normalized[key] ?? payload[key];
 }
 
-function getTagLabel(key: string) {
-  return TAG_OPTIONS.find((item) => item.key === key)?.label ?? key;
+function getTagLabel(key: string, catalog: AdminTagCatalogItem[]) {
+  return catalog.find((item) => item.key === key)?.label ?? key;
 }
 
-function getTagColor(key: string) {
-  return TAG_OPTIONS.find((item) => item.key === key)?.color ?? 'tag-default';
+function getTagColor(key: string, catalog: AdminTagCatalogItem[]) {
+  return catalog.find((item) => item.key === key)?.color ?? 'tag-default';
 }
 
 function isPlaceFieldMissing(
@@ -204,6 +220,7 @@ export function App() {
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([]);
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([]);
+  const [tagCatalog, setTagCatalog] = useState<AdminTagCatalogItem[]>(FALLBACK_TAG_OPTIONS);
 
   const selectedCategory = useMemo(
     () => CATEGORY_OPTIONS.find((item) => item.value === placeForm.category) ?? CATEGORY_OPTIONS[0],
@@ -271,6 +288,12 @@ export function App() {
         listCandidates(activeToken),
         listImportJobs(activeToken),
       ]);
+      try {
+        const catalog = await listTagCatalog(activeToken);
+        setTagCatalog(catalog.length > 0 ? catalog : FALLBACK_TAG_OPTIONS);
+      } catch {
+        setTagCatalog(FALLBACK_TAG_OPTIONS);
+      }
       setPlaces(placeItems);
       setCandidates(candidateItems);
       setImports(importItems);
@@ -515,47 +538,35 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <div>
-          <div className="brand">Tour2Tour Admin</div>
-          <div className="muted">{me?.email || me?.phone}</div>
-        </div>
-        <div className="nav">
-          <button className={tab === 'places' ? 'nav-active' : ''} onClick={() => setTab('places')}>
-            Места
-          </button>
-          <button className={tab === 'candidates' ? 'nav-active' : ''} onClick={() => setTab('candidates')}>
-            Кандидаты
-          </button>
-          <button className={tab === 'imports' ? 'nav-active' : ''} onClick={() => setTab('imports')}>
-            Импорт
-          </button>
-        </div>
-        <button
-          className="ghost"
-          onClick={() => {
-            setStoredToken(null);
-            setToken(null);
-          }}
-        >
-          Выйти
-        </button>
-      </aside>
-
       <main className="content">
         <div className="topbar">
           <div>
             <h1>{title}</h1>
             <div className="muted">{isAdmin ? 'Роль администратора подтверждена' : 'Доступ ограничен'}</div>
           </div>
-          <div className="row">
-            {tab === 'candidates' && (
-              <button className="ghost" onClick={() => setTab('places')}>
-                Вернуться к местам
+          <div className="topbar-actions">
+            <div className="nav nav-inline">
+              <button className={tab === 'places' ? 'nav-active' : ''} onClick={() => setTab('places')}>
+                Места
               </button>
-            )}
+              <button className={tab === 'candidates' ? 'nav-active' : ''} onClick={() => setTab('candidates')}>
+                Кандидаты
+              </button>
+              <button className={tab === 'imports' ? 'nav-active' : ''} onClick={() => setTab('imports')}>
+                Импорт
+              </button>
+            </div>
             <button className="ghost" onClick={() => token && refreshAll(token)}>
               Обновить
+            </button>
+            <button
+              className="ghost"
+              onClick={() => {
+                setStoredToken(null);
+                setToken(null);
+              }}
+            >
+              Выйти
             </button>
           </div>
         </div>
@@ -567,7 +578,7 @@ export function App() {
         {!loading && isAdmin && (
           <>
             {tab === 'places' && (
-              <div className="grid-2">
+              <div className="places-layout">
                 <div className="card">
                   <div className="section-head">
                     <h2>Места</h2>
@@ -654,8 +665,8 @@ export function App() {
                               <div className="tag-cloud">
                                 {Object.entries(place.tags || {}).length > 0 ? (
                                   Object.entries(place.tags || {}).map(([key, weight]) => (
-                                    <span key={key} className={`tag-pill ${getTagColor(key)}`}>
-                                      {getTagLabel(key)}: {weight}
+                                    <span key={key} className={`tag-pill ${getTagColor(key, tagCatalog)}`}>
+                                      {getTagLabel(key, tagCatalog)}: {weight}
                                     </span>
                                   ))
                                 ) : (
@@ -804,11 +815,14 @@ export function App() {
                     <div className="field-group">
                       <label>Теги и веса для рекомендаций</label>
                       <div className="tag-editor">
-                        {TAG_OPTIONS.map((tag) => {
+                        {tagCatalog.map((tag) => {
                           const value = placeForm.tags[tag.key] ?? 0;
                           return (
                             <div key={tag.key} className="tag-editor-row">
-                              <span className={`tag-pill ${tag.color}`}>{tag.label}</span>
+                              <div className="tag-editor-copy">
+                                <span className={`tag-pill ${tag.color}`}>{tag.label}</span>
+                                <span className="muted small">{tag.description}</span>
+                              </div>
                               <div className="score-group">
                                 {[0, 1, 2, 3, 4, 5].map((score) => (
                                   <button
@@ -818,7 +832,12 @@ export function App() {
                                     onClick={() =>
                                       setPlaceForm((current) => ({
                                         ...current,
-                                        tags: { ...current.tags, [tag.key]: score },
+                                        tags:
+                                          score === 0
+                                            ? Object.fromEntries(
+                                                Object.entries(current.tags).filter(([key]) => key !== tag.key),
+                                              )
+                                            : { ...current.tags, [tag.key]: score },
                                       }))
                                     }
                                   >
@@ -916,8 +935,8 @@ export function App() {
                           <div className="tag-cloud">
                             {Object.entries(tags).length > 0 ? (
                               Object.entries(tags).map(([key, weight]) => (
-                                <span key={key} className={`tag-pill ${getTagColor(key)}`}>
-                                  {getTagLabel(key)}: {weight}
+                                <span key={key} className={`tag-pill ${getTagColor(key, tagCatalog)}`}>
+                                  {getTagLabel(key, tagCatalog)}: {weight}
                                 </span>
                               ))
                             ) : (
@@ -976,6 +995,21 @@ export function App() {
                       Поддерживаются CSV в UTF-8 или CP1251, разделители: запятая, точка с запятой или tab.
                     </div>
                     <button type="submit">Загрузить</button>
+
+                    <div className="field-group">
+                      <label>Справочник тегов</label>
+                      <div className="catalog-grid">
+                        {tagCatalog.map((tag) => (
+                          <div key={tag.key} className="catalog-item">
+                            <div className="row">
+                              <span className={`tag-pill ${tag.color}`}>{tag.label}</span>
+                              <span className="muted small">{tag.key}</span>
+                            </div>
+                            <div className="muted small">{tag.description}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </form>
                 </div>
                 <div className="card">
