@@ -311,6 +311,7 @@ def _create_place_from_candidate(db: Session, candidate: PlaceCandidate) -> Plac
 def list_places(
     city: str | None = None,
     category: str | None = None,
+    q: str | None = Query(default=None, min_length=1, max_length=128),
     status_filter: str | None = Query(default=None, alias="status"),
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -327,6 +328,10 @@ def list_places(
     if status_filter:
         query = query.where(Place.status == status_filter)
         count_query = count_query.where(Place.status == status_filter)
+    if q:
+        pattern = f"%{q.strip()}%"
+        query = query.where((Place.name.ilike(pattern)) | (Place.city.ilike(pattern)))
+        count_query = count_query.where((Place.name.ilike(pattern)) | (Place.city.ilike(pattern)))
 
     items = db.execute(query.offset(offset).limit(limit)).scalars().unique().all()
     total = db.execute(count_query).scalar_one()

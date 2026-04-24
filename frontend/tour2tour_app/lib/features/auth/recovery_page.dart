@@ -91,21 +91,26 @@ class _RecoveryPageState extends State<RecoveryPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const AuthBrandMark(title: 'Typ2Typ'),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(child: AuthBrandMark(title: 'Typ2Typ')),
+                AuthPillButton(
+                  label: 'Войти',
+                  icon: Icons.login_rounded,
+                  minimumSize: const Size(92, 38),
+                  fontSize: 12,
+                  iconSize: 13,
+                  onPressed: () => context.go('/login'),
+                ),
+              ],
+            ),
             const SizedBox(height: 22),
             AuthHeadline(
               title: _codeRequested ? 'Новый пароль' : 'Восстановление',
-              fontSize: 30,
+              fontSize: 24,
               fontWeight: FontWeight.w300,
               titleHeight: 0.92,
-              trailing: AuthPillButton(
-                label: 'Войти',
-                icon: Icons.login_rounded,
-                minimumSize: const Size(92, 38),
-                fontSize: 12,
-                iconSize: 13,
-                onPressed: () => context.go('/login'),
-              ),
             ),
             const SizedBox(height: 18),
             AuthTextField(

@@ -69,6 +69,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
   String _sortMode = 'none';
   String _categoryFilter = 'all';
+  String _lastStageType = 'place';
 
   List<TripDocument> _documents = const [];
   bool _documentsLoading = false;
@@ -235,18 +236,12 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       return;
     }
 
-    final pickedType = await Navigator.of(context).push<String>(
-      MaterialPageRoute(
-        builder: (_) => _StageTypePickerPage(stageTypeLabels: _stageTypeLabels),
-      ),
-    );
-    if (pickedType == null || !mounted) return;
     final payload = await Navigator.of(context).push<_AddStagePayload>(
       MaterialPageRoute(
         builder: (_) => _StageFormPage(
           stageTypeLabels: _stageTypeLabels,
           stageSubtypes: _stageSubtypes,
-          initialType: pickedType,
+          initialType: _lastStageType,
           routeDay: _ensureSelectedRouteDay(
             _selectedRouteDay,
             stages: [..._stages]..sort((a, b) => a.position.compareTo(b.position)),
@@ -259,6 +254,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
     setState(() {
       _addingStage = true;
+      _lastStageType = payload.stageType;
     });
 
     try {
@@ -2603,6 +2599,7 @@ class _StageFormPageState extends State<_StageFormPage> {
   final _startTimeCtrl = TextEditingController();
   final _endTimeCtrl = TextEditingController();
   bool _uploadingStageDocument = false;
+  bool _showAdvanced = false;
 
   late String _stageType;
   late String _subtype;
@@ -2612,6 +2609,7 @@ class _StageFormPageState extends State<_StageFormPage> {
     super.initState();
     _stageType = widget.initial?.stageType ?? widget.initialType;
     _subtype = widget.initial?.subtype ?? (widget.stageSubtypes[_stageType]?.first ?? '');
+    _showAdvanced = widget.initial != null;
 
     final initial = widget.initial;
     if (initial != null) {
@@ -2677,21 +2675,152 @@ class _StageFormPageState extends State<_StageFormPage> {
     return _subtypeLabels[subtype] ?? subtype;
   }
 
-  Future<void> _pickTime(TextEditingController controller) async {
+  IconData _typeIcon(String type) {
+    switch (type) {
+      case 'transport':
+        return Icons.directions_transit_rounded;
+      case 'place':
+        return Icons.place_rounded;
+      case 'stay':
+        return Icons.hotel_rounded;
+      case 'food':
+        return Icons.restaurant_rounded;
+      case 'shopping':
+        return Icons.shopping_bag_rounded;
+      case 'activity':
+        return Icons.directions_run_rounded;
+      case 'document':
+        return Icons.description_rounded;
+      default:
+        return Icons.route_rounded;
+    }
+  }
+
+  Future<void> _pickTime(
+    TextEditingController controller, {
+    TextEditingController? nextController,
+  }) async {
     final current = _parseTime(controller.text, widget.routeDay);
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: current?.hour ?? 12, minute: current?.minute ?? 0),
+      helpText: 'Выберите время',
+      cancelText: 'Отмена',
+      confirmText: 'ОК',
       builder: (context, child) {
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-          child: child ?? const SizedBox.shrink(),
+          child: Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: const ColorScheme.dark(
+                primary: Color(0xFFD7E37A),
+                onPrimary: Color(0xFF161616),
+                surface: Color(0xFF1D1D1D),
+                onSurface: Colors.white,
+              ),
+              timePickerTheme: TimePickerThemeData(
+                backgroundColor: const Color(0xFF1D1D1D),
+                hourMinuteColor: WidgetStateColor.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return const Color(0xFF222715);
+                  }
+                  return const Color(0xFF2B2B2B);
+                }),
+                hourMinuteTextColor: WidgetStateColor.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return const Color(0xFFD7E37A);
+                  }
+                  return Colors.white;
+                }),
+                dayPeriodColor: WidgetStateColor.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return const Color(0xFF222715);
+                  }
+                  return const Color(0xFF2B2B2B);
+                }),
+                dayPeriodTextColor: WidgetStateColor.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return const Color(0xFFD7E37A);
+                  }
+                  return Colors.white;
+                }),
+                dialBackgroundColor: const Color(0xFF2B2B2B),
+                dialHandColor: const Color(0xFFD7E37A),
+                dialTextColor: WidgetStateColor.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return const Color(0xFF161616);
+                  }
+                  return Colors.white;
+                }),
+                entryModeIconColor: const Color(0xFFD7E37A),
+                helpTextStyle: const TextStyle(
+                  color: Color(0xFFAEB7A4),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                ),
+                hourMinuteTextStyle: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w400,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28),
+                  side: BorderSide(color: Colors.white.withOpacity(0.08)),
+                ),
+              ),
+              textButtonTheme: TextButtonThemeData(
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFD7E37A),
+                ),
+              ),
+            ),
+            child: child ?? const SizedBox.shrink(),
+          ),
         );
       },
     );
     if (picked == null) return;
     controller.text =
         '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    setState(() {});
+    if (nextController != null) {
+      await _pickTime(nextController);
+    }
+  }
+
+  void _applyQuickTime(
+    TextEditingController controller,
+    int hour,
+    int minute,
+  ) {
+    controller.text =
+        '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    setState(() {});
+  }
+
+  Widget _quickTimeChip(
+    String label,
+    TextEditingController controller,
+    int hour,
+    int minute,
+  ) {
+    final value = '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    final selected = controller.text.trim() == value;
+    return ChoiceChip(
+      selected: selected,
+      label: Text(label),
+      labelStyle: TextStyle(
+        color: selected ? const Color(0xFFD7E37A) : Colors.white,
+        fontWeight: FontWeight.w500,
+      ),
+      backgroundColor: const Color(0xFF2B2B2B),
+      selectedColor: const Color(0xFF222715),
+      side: BorderSide(
+        color: selected
+            ? const Color(0xFFD7E37A).withOpacity(0.6)
+            : Colors.white.withOpacity(0.24),
+      ),
+      onSelected: (_) => _applyQuickTime(controller, hour, minute),
+    );
   }
 
   Widget _bubble(String title, List<Widget> children, Color color) {
@@ -2706,7 +2835,7 @@ class _StageFormPageState extends State<_StageFormPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
           ...children,
         ],
@@ -2717,16 +2846,36 @@ class _StageFormPageState extends State<_StageFormPage> {
   Widget _timeField(String label, TextEditingController controller) {
     return TextFormField(
       controller: controller,
-      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+      readOnly: true,
+      onTap: () => _pickTime(
+        controller,
+        nextController: identical(controller, _startTimeCtrl) ? _endTimeCtrl : null,
+      ),
+      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w400),
       decoration: InputDecoration(
         labelText: label,
-        hintText: 'HH:MM',
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.access_time_rounded, color: Colors.white70),
-          onPressed: () => _pickTime(controller),
+        hintText: 'Выбрать',
+        suffixIcon: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (controller.text.trim().isNotEmpty)
+              IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white54),
+                onPressed: () {
+                  controller.clear();
+                  setState(() {});
+                },
+              ),
+            IconButton(
+              icon: const Icon(Icons.access_time_rounded, color: Colors.white70),
+              onPressed: () => _pickTime(
+                controller,
+                nextController: identical(controller, _startTimeCtrl) ? _endTimeCtrl : null,
+              ),
+            ),
+          ],
         ),
       ),
-      keyboardType: TextInputType.datetime,
       validator: (value) {
         final raw = (value ?? '').trim();
         if (raw.isEmpty) return null;
@@ -2757,6 +2906,424 @@ class _StageFormPageState extends State<_StageFormPage> {
     if (!subtypes.contains(_subtype) && subtypes.isNotEmpty) {
       _subtype = subtypes.first;
     }
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          const _NightBackground(),
+          SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          _Logo(cs: cs),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              widget.submitLabel == 'Сохранить'
+                                  ? 'Редактирование этапа'
+                                  : 'Новый этап',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w400,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: Theme(
+                          data: Theme.of(context).copyWith(
+                            inputDecorationTheme: InputDecorationTheme(
+                              labelStyle: TextStyle(color: Colors.white.withOpacity(0.9)),
+                              hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
+                              filled: true,
+                              fillColor: Colors.white.withOpacity(0.06),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.white.withOpacity(0.20)),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: cs.primary.withOpacity(0.8),
+                                  width: 1.4,
+                                ),
+                              ),
+                            ),
+                          ),
+                          child: Form(
+                            key: _formKey,
+                            child: ListView(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              children: [
+                                _bubble('Быстрое создание', [
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: widget.stageTypeLabels.entries.map((entry) {
+                                      final selected = entry.key == _stageType;
+                                      return ChoiceChip(
+                                        selected: selected,
+                                        label: Text(entry.value),
+                                        avatar: Icon(
+                                          _typeIcon(entry.key),
+                                          size: 16,
+                                          color: selected
+                                              ? const Color(0xFFD7E37A)
+                                              : Colors.white70,
+                                        ),
+                                        labelStyle: TextStyle(
+                                          color: selected
+                                              ? const Color(0xFFD7E37A)
+                                              : Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                        backgroundColor: const Color(0xFF2B2B2B),
+                                        selectedColor: const Color(0xFF222715),
+                                        side: BorderSide(
+                                          color: selected
+                                              ? const Color(0xFFD7E37A).withOpacity(0.6)
+                                              : Colors.white.withOpacity(0.3),
+                                        ),
+                                        onSelected: (_) {
+                                          setState(() {
+                                            _stageType = entry.key;
+                                            _subtype =
+                                                widget.stageSubtypes[entry.key]?.first ?? '';
+                                          });
+                                        },
+                                      );
+                                    }).toList(),
+                                  ),
+                                ], cs.primary),
+                                _bubble('Основное', [
+                                  TextFormField(
+                                    controller: _titleCtrl,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    decoration: const InputDecoration(labelText: 'Название'),
+                                    validator: (v) =>
+                                        (v ?? '').trim().isEmpty ? 'Введите название' : null,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  if (isTransport) ...[
+                                    TextFormField(
+                                      controller: _startLocationCtrl,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      decoration: const InputDecoration(labelText: 'Откуда'),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    TextFormField(
+                                      controller: _endLocationCtrl,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      decoration: const InputDecoration(labelText: 'Куда'),
+                                    ),
+                                  ] else ...[
+                                    TextFormField(
+                                      controller: _addressCtrl,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      decoration: InputDecoration(
+                                        labelText: isStay
+                                            ? 'Адрес проживания'
+                                            : isFood
+                                                ? 'Место / адрес'
+                                                : 'Адрес / место',
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _timeField(
+                                          isTransport ? 'Старт' : 'Время',
+                                          _startTimeCtrl,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: _timeField(
+                                          isTransport ? 'Финиш' : 'До',
+                                          _endTimeCtrl,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      _quickTimeChip(
+                                        '09:00',
+                                        _startTimeCtrl,
+                                        9,
+                                        0,
+                                      ),
+                                      _quickTimeChip(
+                                        '12:00',
+                                        _startTimeCtrl,
+                                        12,
+                                        0,
+                                      ),
+                                      _quickTimeChip(
+                                        '15:00',
+                                        _startTimeCtrl,
+                                        15,
+                                        0,
+                                      ),
+                                      _quickTimeChip(
+                                        '18:00',
+                                        _startTimeCtrl,
+                                        18,
+                                        0,
+                                      ),
+                                    ],
+                                  ),
+                                ], Colors.cyan),
+                                const SizedBox(height: 2),
+                                TextButton.icon(
+                                  onPressed: () => setState(() => _showAdvanced = !_showAdvanced),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFFD7E37A),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                  icon: Icon(
+                                    _showAdvanced
+                                        ? Icons.keyboard_arrow_up_rounded
+                                        : Icons.keyboard_arrow_down_rounded,
+                                  ),
+                                  label: Text(
+                                    _showAdvanced ? 'Скрыть дополнительное' : 'Дополнительно',
+                                  ),
+                                ),
+                                if (_showAdvanced)
+                                  _bubble('Детали', [
+                                    if (subtypes.isNotEmpty) ...[
+                                      DropdownButtonFormField<String>(
+                                        value: (_subtype.isNotEmpty && subtypes.contains(_subtype))
+                                            ? _subtype
+                                            : null,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        dropdownColor: const Color(0xFF2B2B2B),
+                                        iconEnabledColor: Colors.white70,
+                                        decoration: const InputDecoration(labelText: 'Подтип'),
+                                        items: subtypes
+                                            .map(
+                                              (e) => DropdownMenuItem(
+                                                value: e,
+                                                child: Text(_prettySubtype(e)),
+                                              ),
+                                            )
+                                            .toList(),
+                                        onChanged: (value) {
+                                          if (value == null) return;
+                                          setState(() => _subtype = value);
+                                        },
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (!isTransport) ...[
+                                      TextFormField(
+                                        controller: _addressCtrl,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: const InputDecoration(labelText: 'Точный адрес'),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (!isDocument) ...[
+                                      TextFormField(
+                                        controller: _costCtrl,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: InputDecoration(
+                                          labelText: isFood ? 'Средний чек, руб' : 'Стоимость, руб',
+                                        ),
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(decimal: true),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (needsReference) ...[
+                                      TextFormField(
+                                        controller: _refCtrl,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Номер рейса / брони',
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (isPlace) ...[
+                                      TextFormField(
+                                        controller: _websiteCtrl,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: const InputDecoration(labelText: 'Сайт'),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (isTransport || isStay) ...[
+                                      TextFormField(
+                                        controller: _docCtrl,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: const InputDecoration(labelText: 'Ключ документа'),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (isDocument) ...[
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: OutlinedButton.icon(
+                                          onPressed: (_uploadingStageDocument ||
+                                                  widget.onUploadDocument == null)
+                                              ? null
+                                              : () async {
+                                                  setState(() => _uploadingStageDocument = true);
+                                                  final objectKey =
+                                                      await widget.onUploadDocument!.call();
+                                                  if (!mounted) return;
+                                                  if (objectKey != null &&
+                                                      objectKey.isNotEmpty) {
+                                                    _docCtrl.text = objectKey;
+                                                  }
+                                                  setState(() => _uploadingStageDocument = false);
+                                                },
+                                          icon: _uploadingStageDocument
+                                              ? const SizedBox(
+                                                  width: 14,
+                                                  height: 14,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                )
+                                              : const Icon(Icons.upload_file_rounded),
+                                          label: Text(
+                                            _docCtrl.text.trim().isEmpty
+                                                ? 'Загрузить документ'
+                                                : 'Документ загружен',
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    TextFormField(
+                                      controller: _notesCtrl,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      decoration: const InputDecoration(labelText: 'Комментарий'),
+                                      maxLines: 3,
+                                    ),
+                                  ], Colors.greenAccent),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  height: 46,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      if (!(_formKey.currentState?.validate() ?? false)) return;
+                                      Navigator.of(context).pop(
+                                        _AddStagePayload(
+                                          stageType: _stageType,
+                                          subtype: _subtype,
+                                          title: _titleCtrl.text.trim(),
+                                          startLocation: _startLocationCtrl.text.trim().isEmpty
+                                              ? null
+                                              : _startLocationCtrl.text.trim(),
+                                          endLocation: _endLocationCtrl.text.trim().isEmpty
+                                              ? null
+                                              : _endLocationCtrl.text.trim(),
+                                          address: _addressCtrl.text.trim().isEmpty
+                                              ? null
+                                              : _addressCtrl.text.trim(),
+                                          latitude: widget.initial?.latitude,
+                                          longitude: widget.initial?.longitude,
+                                          startTime: _parseTime(
+                                            _startTimeCtrl.text,
+                                            widget.initial?.startTime,
+                                          ),
+                                          endTime: _parseTime(
+                                            _endTimeCtrl.text,
+                                            widget.initial?.endTime,
+                                          ),
+                                          durationMinutes: widget.initial?.durationMinutes,
+                                          costRub: double.tryParse(
+                                            _costCtrl.text.trim().replaceAll(',', '.'),
+                                          ),
+                                          referenceNumber: _refCtrl.text.trim().isEmpty
+                                              ? null
+                                              : _refCtrl.text.trim(),
+                                          notes: _notesCtrl.text.trim().isEmpty
+                                              ? null
+                                              : _notesCtrl.text.trim(),
+                                          websiteUrl: _websiteCtrl.text.trim().isEmpty
+                                              ? null
+                                              : _websiteCtrl.text.trim(),
+                                          rating: widget.initial?.rating,
+                                          documentKey: _docCtrl.text.trim().isEmpty
+                                              ? null
+                                              : _docCtrl.text.trim(),
+                                        ),
+                                      );
+                                    },
+                                    child: Text(widget.submitLabel),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
 
     return Scaffold(
       body: Stack(

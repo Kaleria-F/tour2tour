@@ -89,6 +89,7 @@ GoRouter buildRouter() {
           tripsRepo: trips,
           preferencesRepo: prefs,
           recommendationsRepo: recommendations,
+          interactionsRepo: interactions,
         ),
       ),
       GoRoute(

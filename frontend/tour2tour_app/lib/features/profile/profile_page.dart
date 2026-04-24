@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
 import '../recommendations/recommendations_repo.dart';
 import '../shared/travel_app_shell.dart';
@@ -12,6 +13,7 @@ class ProfilePage extends StatefulWidget {
   final TripsRepo tripsRepo;
   final PreferencesRepo preferencesRepo;
   final RecommendationsRepo recommendationsRepo;
+  final InteractionsRepo interactionsRepo;
 
   const ProfilePage({
     super.key,
@@ -19,6 +21,7 @@ class ProfilePage extends StatefulWidget {
     required this.tripsRepo,
     required this.preferencesRepo,
     required this.recommendationsRepo,
+    required this.interactionsRepo,
   });
 
   @override
@@ -38,6 +41,7 @@ class _ProfilePageState extends State<ProfilePage> {
   SurveyProfile? _surveyProfile;
   List<TripSummary> _trips = const [];
   List<RecommendationItem> _recommendations = const [];
+  final Set<String> _savedRecommendationIds = {};
   bool _loading = true;
   bool _recommendationsLoading = false;
   String? _error;
@@ -71,6 +75,7 @@ class _ProfilePageState extends State<ProfilePage> {
         _trips = results[1] as List<TripSummary>;
         _surveyProfile = profile;
       });
+      await _loadSavedRecommendations();
       await _loadRecommendations();
     } catch (e) {
       if (!mounted) return;
@@ -83,6 +88,163 @@ class _ProfilePageState extends State<ProfilePage> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _loadSavedRecommendations() async {
+    final me = _me;
+    if (me == null) return;
+    try {
+      final groups = await widget.interactionsRepo.getFavorites(
+        userId: me.id.toString(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _savedRecommendationIds
+          ..clear()
+          ..addAll(groups.expand((group) => group.items).map((item) => item.placeId));
+      });
+    } catch (_) {}
+  }
+
+  Map<String, dynamic> _metadata(RecommendationItem item) => {
+        'title': item.title,
+        'city': item.city,
+        'address': item.address,
+        'image_url': item.imageUrl,
+        'category': item.category,
+        'subcategory': item.subcategory,
+        'rating': item.rating,
+        'description': item.description,
+      };
+
+  Future<void> _saveRecommendation(RecommendationItem item) async {
+    final me = _me;
+    if (me == null) return;
+    setState(() => _savedRecommendationIds.add(item.id));
+    try {
+      await widget.interactionsRepo.trackEvent(
+        userId: me.id.toString(),
+        placeId: item.id,
+        action: 'saved',
+        recommendationId: item.id,
+        weight: 3,
+        metadata: _metadata(item),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Сохранено в избранное · ${item.city}')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _savedRecommendationIds.remove(item.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось сохранить место')),
+      );
+    }
+  }
+
+  Future<void> _openRecommendationDetails(RecommendationItem item) async {
+    final me = _me;
+    if (me != null) {
+      try {
+        await widget.interactionsRepo.trackEvent(
+          userId: me.id.toString(),
+          placeId: item.id,
+          action: 'opened',
+          recommendationId: item.id,
+          weight: 2,
+          metadata: _metadata(item),
+        );
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1D1D1D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Text(
+                item.title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _MetaChip(icon: Icons.location_on_rounded, label: item.city),
+                  if (item.address.isNotEmpty)
+                    _MetaChip(icon: Icons.place_outlined, label: item.address),
+                  _MetaChip(
+                    icon: Icons.star_rounded,
+                    label: item.rating.toStringAsFixed(1),
+                  ),
+                  _MetaChip(
+                    icon: Icons.auto_awesome_rounded,
+                    label: item.subcategory.isEmpty ? item.category : item.subcategory,
+                  ),
+                ],
+              ),
+              if (item.description.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text(
+                  item.description,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.84),
+                    height: 1.45,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _savedRecommendationIds.contains(item.id)
+                      ? null
+                      : () async {
+                          Navigator.of(context).pop();
+                          await _saveRecommendation(item);
+                        },
+                  icon: Icon(
+                    _savedRecommendationIds.contains(item.id)
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_add_outlined,
+                  ),
+                  label: Text(
+                    _savedRecommendationIds.contains(item.id)
+                        ? 'Уже сохранено'
+                        : 'Сохранить',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _loadRecommendations() async {
@@ -207,6 +369,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                       final item = _recommendations[index];
                                       return _RecommendationCarouselCard(
                                         item: item,
+                                        isSaved: _savedRecommendationIds.contains(item.id),
+                                        onSave: () => _saveRecommendation(item),
+                                        onOpen: () => _openRecommendationDetails(item),
                                       );
                                     },
                                   ),
@@ -245,7 +410,7 @@ class _SectionHeader extends StatelessWidget {
             style: const TextStyle(
               color: Colors.white,
               fontSize: 22,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
@@ -443,105 +608,142 @@ class _TripCarouselCard extends StatelessWidget {
 }
 
 class _RecommendationCarouselCard extends StatelessWidget {
-  const _RecommendationCarouselCard({required this.item});
+  const _RecommendationCarouselCard({
+    required this.item,
+    required this.isSaved,
+    required this.onSave,
+    required this.onOpen,
+  });
 
   final RecommendationItem item;
+  final bool isSaved;
+  final VoidCallback onSave;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: 240,
-      child: Container(
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(30),
-          color: const Color(0xFF1D1D1D),
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            item.imageUrl.isNotEmpty
-                ? Image.network(
-                    item.imageUrl,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _RecommendationPlaceholderArt(
-                      city: item.city,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(30),
+        onTap: onOpen,
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(30),
+            color: const Color(0xFF1D1D1D),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              item.imageUrl.isNotEmpty
+                  ? Image.network(
+                      item.imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _RecommendationPlaceholderArt(
+                        city: item.city,
+                      ),
+                    )
+                  : _RecommendationPlaceholderArt(city: item.city),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.76),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Spacer(),
+                        Material(
+                          color: Colors.black.withOpacity(0.24),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: isSaved ? onOpen : onSave,
+                            child: SizedBox(
+                              width: 34,
+                              height: 34,
+                              child: Icon(
+                                isSaved
+                                    ? Icons.bookmark_rounded
+                                    : Icons.bookmark_add_outlined,
+                                color: isSaved
+                                    ? const Color(0xFFD7E37A)
+                                    : Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.24),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.north_east_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                      ],
                     ),
-                  )
-                : _RecommendationPlaceholderArt(city: item.city),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withOpacity(0.76),
+                    const Spacer(),
+                    Text(
+                      item.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        height: 1,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      item.city,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _MetaChip(
+                          icon: Icons.star_rounded,
+                          label: item.rating.toStringAsFixed(1),
+                        ),
+                        const SizedBox(width: 8),
+                        _MetaChip(
+                          icon: Icons.auto_awesome_rounded,
+                          label: item.category,
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Align(
-                    alignment: Alignment.topRight,
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.24),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.north_east_rounded,
-                        color: Colors.white,
-                        size: 18,
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    item.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      height: 1,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    item.city,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
-                      fontSize: 15,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      _MetaChip(
-                        icon: Icons.star_rounded,
-                        label: item.rating.toStringAsFixed(1),
-                      ),
-                      const SizedBox(width: 8),
-                      _MetaChip(
-                        icon: Icons.auto_awesome_rounded,
-                        label: item.category,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

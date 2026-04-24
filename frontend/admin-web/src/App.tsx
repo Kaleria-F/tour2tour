@@ -216,7 +216,12 @@ export function App() {
   const [candidates, setCandidates] = useState<AdminPlaceCandidate[]>([]);
   const [imports, setImports] = useState<AdminImportJob[]>([]);
   const [placeEditor, setPlaceEditor] = useState<AdminPlace | null>(null);
+  const [placeModalOpen, setPlaceModalOpen] = useState(false);
   const [placeForm, setPlaceForm] = useState<PlaceFormState>(EMPTY_FORM);
+  const [placeSearchInput, setPlaceSearchInput] = useState('');
+  const [placeSearchQuery, setPlaceSearchQuery] = useState('');
+  const [placesTotal, setPlacesTotal] = useState(0);
+  const [placesLoading, setPlacesLoading] = useState(false);
   const [selectedPlaceIds, setSelectedPlaceIds] = useState<string[]>([]);
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([]);
@@ -279,12 +284,12 @@ export function App() {
       setMe(user);
       if (user.role !== 'admin') {
         setPlaces([]);
+        setPlacesTotal(0);
         setCandidates([]);
         setImports([]);
         return;
       }
-      const [placeItems, candidateItems, importItems] = await Promise.all([
-        listPlaces(activeToken),
+      const [candidateItems, importItems] = await Promise.all([
         listCandidates(activeToken),
         listImportJobs(activeToken),
       ]);
@@ -294,15 +299,59 @@ export function App() {
       } catch {
         setTagCatalog(FALLBACK_TAG_OPTIONS);
       }
-      setPlaces(placeItems);
       setCandidates(candidateItems);
       setImports(importItems);
-      setSelectedPlaceIds((current) => current.filter((id) => placeItems.some((place) => place.id === id)));
+      await loadPlacesPage(activeToken, { reset: true, query: placeSearchQuery });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadPlacesPage(
+    activeToken: string,
+    options?: { reset?: boolean; query?: string },
+  ) {
+    const reset = options?.reset ?? false;
+    const query = options?.query ?? placeSearchQuery;
+    const offset = reset ? 0 : places.length;
+    setPlacesLoading(true);
+    try {
+      const payload = await listPlaces(activeToken, {
+        limit: 20,
+        offset,
+        q: query.trim() || undefined,
+      });
+      setPlaces((current) => (reset ? payload.items : [...current, ...payload.items]));
+      setPlacesTotal(payload.total);
+      setSelectedPlaceIds((current) =>
+        current.filter((id) =>
+          (reset ? payload.items : [...places, ...payload.items]).some((place) => place.id === id),
+        ),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка загрузки мест');
+    } finally {
+      setPlacesLoading(false);
+    }
+  }
+
+  function openNewPlaceModal() {
+    setPlaceEditor(null);
+    setPlaceForm(EMPTY_FORM);
+    setPlaceModalOpen(true);
+  }
+
+  function openEditPlaceModal(place: AdminPlace) {
+    setPlaceEditor(place);
+    setPlaceModalOpen(true);
+  }
+
+  function closePlaceModal() {
+    setPlaceModalOpen(false);
+    setPlaceEditor(null);
+    setPlaceForm(EMPTY_FORM);
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -378,8 +427,7 @@ export function App() {
       } else {
         await createPlace(token, payload);
       }
-      setPlaceEditor(null);
-      setPlaceForm(EMPTY_FORM);
+      closePlaceModal();
       await refreshAll(token);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка сохранения места');
@@ -393,8 +441,7 @@ export function App() {
       setPlaces((current) => current.filter((place) => place.id !== id));
       setSelectedPlaceIds((current) => current.filter((item) => item !== id));
       if (placeEditor?.id === id) {
-        setPlaceEditor(null);
-        setPlaceForm(EMPTY_FORM);
+        closePlaceModal();
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка удаления');
@@ -423,8 +470,7 @@ export function App() {
     try {
       await decideCandidate(token, id, status);
       setCandidates((current) => current.filter((candidate) => candidate.id !== id));
-      const [placeItems, importItems] = await Promise.all([listPlaces(token), listImportJobs(token)]);
-      setPlaces(placeItems);
+      const [, importItems] = await Promise.all([loadPlacesPage(token, { reset: true, query: placeSearchQuery }), listImportJobs(token)]);
       setImports(importItems);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка модерации');
@@ -450,8 +496,7 @@ export function App() {
         await decideCandidate(token, candidate.id, 'approved');
       }
       setCandidates([]);
-      const [placeItems, importItems] = await Promise.all([listPlaces(token), listImportJobs(token)]);
-      setPlaces(placeItems);
+      const [, importItems] = await Promise.all([loadPlacesPage(token, { reset: true, query: placeSearchQuery }), listImportJobs(token)]);
       setImports(importItems);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка массового одобрения');
@@ -492,11 +537,38 @@ export function App() {
   }
 
   function toggleAllPlaces() {
-    if (selectedPlaceIds.length === places.length) {
-      setSelectedPlaceIds([]);
+    const visibleIds = places.map((place) => place.id);
+    const allVisibleSelected =
+      visibleIds.length > 0 && visibleIds.every((id) => selectedPlaceIds.includes(id));
+    if (allVisibleSelected) {
+      setSelectedPlaceIds((current) => current.filter((id) => !visibleIds.includes(id)));
       return;
     }
-    setSelectedPlaceIds(places.map((place) => place.id));
+    setSelectedPlaceIds((current) => Array.from(new Set([...current, ...visibleIds])));
+  }
+
+  async function handlePlaceSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    const nextQuery = placeSearchInput.trim();
+    setPlaceSearchQuery(nextQuery);
+    setSelectedPlaceIds([]);
+    await loadPlacesPage(token, { reset: true, query: nextQuery });
+  }
+
+  async function handleLoadMorePlaces() {
+    if (!token || placesLoading || places.length >= placesTotal) return;
+    await loadPlacesPage(token, { reset: false, query: placeSearchQuery });
+  }
+
+  async function handleResetPlaceSearch() {
+    if (!token && !placeSearchQuery && !placeSearchInput) return;
+    setPlaceSearchInput('');
+    setPlaceSearchQuery('');
+    setSelectedPlaceIds([]);
+    if (token) {
+      await loadPlacesPage(token, { reset: true, query: '' });
+    }
   }
 
   const isAdmin = me?.role === 'admin';
@@ -583,22 +655,34 @@ export function App() {
                   <div className="section-head">
                     <h2>Места</h2>
                     <div className="row">
-                      <span className="muted small">Всего: {places.length}</span>
+                      <span className="muted small">
+                        Всего: {placesTotal}
+                        {placeSearchQuery ? ` · поиск: ${placeSearchQuery}` : ''}
+                      </span>
                       {selectedPlaceIds.length > 0 && (
                         <button className="danger" onClick={handleDeleteSelectedPlaces} disabled={bulkProcessing}>
                           Удалить выбранные ({selectedPlaceIds.length})
                         </button>
                       )}
-                      <button
-                        onClick={() => {
-                          setPlaceEditor(null);
-                          setPlaceForm(EMPTY_FORM);
-                        }}
-                      >
-                        Новое место
-                      </button>
+                      <button onClick={openNewPlaceModal}>Новое место</button>
                     </div>
                   </div>
+
+                  <form className="places-toolbar" onSubmit={handlePlaceSearchSubmit}>
+                    <input
+                      value={placeSearchInput}
+                      onChange={(event) => setPlaceSearchInput(event.target.value)}
+                      placeholder="Поиск по названию или городу"
+                    />
+                    <div className="row">
+                      <button type="submit">Найти</button>
+                      {(placeSearchQuery || placeSearchInput) && (
+                        <button className="ghost" type="button" onClick={() => void handleResetPlaceSearch()}>
+                          Сбросить
+                        </button>
+                      )}
+                    </div>
+                  </form>
 
                   <div className="table-wrap">
                     <table className="places-table">
@@ -607,7 +691,10 @@ export function App() {
                           <th>
                             <input
                               type="checkbox"
-                              checked={places.length > 0 && selectedPlaceIds.length === places.length}
+                              checked={
+                                places.length > 0 &&
+                                places.every((place) => selectedPlaceIds.includes(place.id))
+                              }
                               onChange={toggleAllPlaces}
                             />
                           </th>
@@ -676,7 +763,7 @@ export function App() {
                             </td>
                             <td>
                               <div className="row">
-                                <button className="ghost" onClick={() => setPlaceEditor(place)}>
+                                <button className="ghost" onClick={() => openEditPlaceModal(place)}>
                                   Изменить
                                 </button>
                                 <button className="danger" onClick={() => handleDeletePlace(place.id)}>
@@ -689,185 +776,24 @@ export function App() {
                       </tbody>
                     </table>
                   </div>
+
+                  <div className="table-footer">
+                    <span className="muted small">
+                      Показано: {places.length} из {placesTotal}
+                    </span>
+                    {places.length < placesTotal && (
+                      <button
+                        className="ghost"
+                        type="button"
+                        onClick={() => void handleLoadMorePlaces()}
+                        disabled={placesLoading}
+                      >
+                        {placesLoading ? 'Загрузка...' : 'Показать ещё 20'}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
-                <div className="card">
-                  <h2>{placeEditor ? 'Редактирование места' : 'Создание места'}</h2>
-                  <form className="stack" onSubmit={handleSavePlace}>
-                    <input
-                      value={placeForm.name}
-                      onChange={(event) => setPlaceForm((current) => ({ ...current, name: event.target.value }))}
-                      placeholder="Название"
-                      required
-                    />
-                    <input
-                      value={placeForm.city}
-                      onChange={(event) => setPlaceForm((current) => ({ ...current, city: event.target.value }))}
-                      placeholder="Город"
-                      list="city-suggestions"
-                      required
-                    />
-                    <datalist id="city-suggestions">
-                      {citySuggestions.map((suggestion) => (
-                        <option
-                          key={`${suggestion.city}-${suggestion.region ?? ''}`}
-                          value={suggestion.city}
-                          label={suggestion.display_name}
-                        />
-                      ))}
-                    </datalist>
-                    <input
-                      value={placeForm.address}
-                      onChange={(event) => setPlaceForm((current) => ({ ...current, address: event.target.value }))}
-                      placeholder="Адрес"
-                    />
-                    <input
-                      value={placeForm.image_url}
-                      onChange={(event) => setPlaceForm((current) => ({ ...current, image_url: event.target.value }))}
-                      placeholder="Ссылка на фото (если уже есть)"
-                    />
-                    <input name="image_file" type="file" accept="image/*" />
-                    {placeForm.image_url && <img className="form-image-preview" src={placeForm.image_url} alt="preview" />}
-
-                    <div className="field-group">
-                      <label>Категория</label>
-                      <div className="chip-group">
-                        {CATEGORY_OPTIONS.map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            className={placeForm.category === option.value ? 'chip chip-active' : 'chip'}
-                            onClick={() =>
-                              setPlaceForm((current) => ({
-                                ...current,
-                                category: option.value,
-                                subcategory: option.subcategories[0]?.value ?? '',
-                              }))
-                            }
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="field-group">
-                      <label>Подкатегория</label>
-                      <div className="chip-group">
-                        {selectedCategory.subcategories.map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            className={placeForm.subcategory === option.value ? 'chip chip-active' : 'chip'}
-                            onClick={() => setPlaceForm((current) => ({ ...current, subcategory: option.value }))}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="field-group">
-                      <label>Источник</label>
-                      <div className="chip-group">
-                        {SOURCE_OPTIONS.map((option) => (
-                          <button
-                            key={option.value}
-                            type="button"
-                            className={placeForm.source === option.value ? 'chip chip-active' : 'chip'}
-                            onClick={() => setPlaceForm((current) => ({ ...current, source: option.value }))}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="field-group">
-                      <label>Уровень цены</label>
-                      <div className="chip-group">
-                        {PRICE_OPTIONS.map((option) => (
-                          <button
-                            key={option.value || 'empty'}
-                            type="button"
-                            className={placeForm.price_level === option.value ? 'chip chip-active' : 'chip'}
-                            onClick={() => setPlaceForm((current) => ({ ...current, price_level: option.value }))}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <input
-                      value={placeForm.rating}
-                      onChange={(event) => setPlaceForm((current) => ({ ...current, rating: event.target.value }))}
-                      placeholder="Рейтинг от 0 до 5"
-                    />
-
-                    <textarea
-                      rows={4}
-                      value={placeForm.description}
-                      onChange={(event) => setPlaceForm((current) => ({ ...current, description: event.target.value }))}
-                      placeholder="Описание"
-                    />
-
-                    <div className="field-group">
-                      <label>Теги и веса для рекомендаций</label>
-                      <div className="tag-editor">
-                        {tagCatalog.map((tag) => {
-                          const value = placeForm.tags[tag.key] ?? 0;
-                          return (
-                            <div key={tag.key} className="tag-editor-row">
-                              <div className="tag-editor-copy">
-                                <span className={`tag-pill ${tag.color}`}>{tag.label}</span>
-                                <span className="muted small">{tag.description}</span>
-                              </div>
-                              <div className="score-group">
-                                {[0, 1, 2, 3, 4, 5].map((score) => (
-                                  <button
-                                    key={score}
-                                    type="button"
-                                    className={value === score ? 'score-chip score-chip-active' : 'score-chip'}
-                                    onClick={() =>
-                                      setPlaceForm((current) => ({
-                                        ...current,
-                                        tags:
-                                          score === 0
-                                            ? Object.fromEntries(
-                                                Object.entries(current.tags).filter(([key]) => key !== tag.key),
-                                              )
-                                            : { ...current.tags, [tag.key]: score },
-                                      }))
-                                    }
-                                  >
-                                    {score}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="row">
-                      <button type="submit">Сохранить</button>
-                      {placeEditor && (
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => {
-                            setPlaceEditor(null);
-                            setPlaceForm(EMPTY_FORM);
-                          }}
-                        >
-                          Сбросить
-                        </button>
-                      )}
-                    </div>
-                  </form>
-                </div>
               </div>
             )}
 
@@ -1035,6 +961,219 @@ export function App() {
               </div>
             )}
           </>
+        )}
+
+        {isAdmin && placeModalOpen && (
+          <div className="modal-backdrop" onClick={closePlaceModal}>
+            <div className="modal-panel card" onClick={(event) => event.stopPropagation()}>
+              <div className="section-head modal-head">
+                <div>
+                  <h2>{placeEditor ? 'Редактирование места' : 'Новое место'}</h2>
+                  <div className="muted">Заполнение карточки места и тегов рекомендаций.</div>
+                </div>
+                <button className="ghost modal-close" type="button" onClick={closePlaceModal}>
+                  Закрыть
+                </button>
+              </div>
+
+              <form className="stack" onSubmit={handleSavePlace}>
+                <div className="place-form-grid">
+                  <div className="form-panel form-panel-wide">
+                    <div className="field-grid field-grid-2">
+                      <div className="field-group">
+                        <label>Название</label>
+                        <input
+                          value={placeForm.name}
+                          onChange={(event) => setPlaceForm((current) => ({ ...current, name: event.target.value }))}
+                          placeholder="Название"
+                          required
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label>Город</label>
+                        <input
+                          value={placeForm.city}
+                          onChange={(event) => setPlaceForm((current) => ({ ...current, city: event.target.value }))}
+                          placeholder="Город"
+                          list="city-suggestions"
+                          required
+                        />
+                      </div>
+                      <div className="field-group form-span-2">
+                        <label>Адрес</label>
+                        <input
+                          value={placeForm.address}
+                          onChange={(event) => setPlaceForm((current) => ({ ...current, address: event.target.value }))}
+                          placeholder="Адрес"
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label>Ссылка на фото</label>
+                        <input
+                          value={placeForm.image_url}
+                          onChange={(event) => setPlaceForm((current) => ({ ...current, image_url: event.target.value }))}
+                          placeholder="Ссылка на фото"
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label>Загрузить фото</label>
+                        <input name="image_file" type="file" accept="image/*" />
+                      </div>
+                      <div className="field-group">
+                        <label>Рейтинг</label>
+                        <input
+                          value={placeForm.rating}
+                          onChange={(event) => setPlaceForm((current) => ({ ...current, rating: event.target.value }))}
+                          placeholder="От 0 до 5"
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label>Уровень цены</label>
+                        <div className="chip-group">
+                          {PRICE_OPTIONS.map((option) => (
+                            <button
+                              key={option.value || 'empty'}
+                              type="button"
+                              className={placeForm.price_level === option.value ? 'chip chip-active' : 'chip'}
+                              onClick={() => setPlaceForm((current) => ({ ...current, price_level: option.value }))}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="field-group form-span-2">
+                        <label>Описание</label>
+                        <textarea
+                          rows={5}
+                          value={placeForm.description}
+                          onChange={(event) => setPlaceForm((current) => ({ ...current, description: event.target.value }))}
+                          placeholder="Описание"
+                        />
+                      </div>
+                    </div>
+                    <datalist id="city-suggestions">
+                      {citySuggestions.map((suggestion) => (
+                        <option
+                          key={`${suggestion.city}-${suggestion.region ?? ''}`}
+                          value={suggestion.city}
+                          label={suggestion.display_name}
+                        />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  <div className="form-panel">
+                    <div className="field-group">
+                      <label>Категория</label>
+                      <div className="chip-group">
+                        {CATEGORY_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={placeForm.category === option.value ? 'chip chip-active' : 'chip'}
+                            onClick={() =>
+                              setPlaceForm((current) => ({
+                                ...current,
+                                category: option.value,
+                                subcategory: option.subcategories[0]?.value ?? '',
+                              }))
+                            }
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="field-group">
+                      <label>Подкатегория</label>
+                      <div className="chip-group">
+                        {selectedCategory.subcategories.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={placeForm.subcategory === option.value ? 'chip chip-active' : 'chip'}
+                            onClick={() => setPlaceForm((current) => ({ ...current, subcategory: option.value }))}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="field-group">
+                      <label>Источник</label>
+                      <div className="chip-group">
+                        {SOURCE_OPTIONS.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={placeForm.source === option.value ? 'chip chip-active' : 'chip'}
+                            onClick={() => setPlaceForm((current) => ({ ...current, source: option.value }))}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {placeForm.image_url && (
+                      <img className="form-image-preview" src={placeForm.image_url} alt="preview" />
+                    )}
+                  </div>
+
+                  <div className="form-panel form-panel-full">
+                    <div className="field-group">
+                      <label>Теги и веса для рекомендаций</label>
+                      <div className="tag-editor-grid">
+                        {tagCatalog.map((tag) => {
+                          const value = placeForm.tags[tag.key] ?? 0;
+                          return (
+                            <div key={tag.key} className="tag-editor-card">
+                              <div className="tag-editor-copy">
+                                <span className={`tag-pill ${tag.color}`}>{tag.label}</span>
+                                <span className="muted small">{tag.description}</span>
+                              </div>
+                              <div className="score-group compact-score-group">
+                                {[0, 1, 2, 3, 4, 5].map((score) => (
+                                  <button
+                                    key={score}
+                                    type="button"
+                                    className={value === score ? 'score-chip score-chip-active' : 'score-chip'}
+                                    onClick={() =>
+                                      setPlaceForm((current) => ({
+                                        ...current,
+                                        tags:
+                                          score === 0
+                                            ? Object.fromEntries(
+                                                Object.entries(current.tags).filter(([key]) => key !== tag.key),
+                                              )
+                                            : { ...current.tags, [tag.key]: score },
+                                      }))
+                                    }
+                                  >
+                                    {score}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="row modal-actions">
+                  <button type="submit">Сохранить</button>
+                  <button type="button" className="ghost" onClick={closePlaceModal}>
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
       </main>
     </div>

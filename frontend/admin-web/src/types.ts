@@ -34,6 +34,11 @@ export type AdminPlace = {
   tags: Record<string, number>;
 };
 
+export type AdminPlaceListResponse = {
+  items: AdminPlace[];
+  total: number;
+};
+
 export type AdminPlaceCandidate = {
   id: string;
   source: string;

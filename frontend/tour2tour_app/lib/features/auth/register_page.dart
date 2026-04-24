@@ -104,7 +104,20 @@ class _RegisterPageState extends State<RegisterPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const AuthBrandMark(title: 'Typ2Typ'),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(child: AuthBrandMark(title: 'Typ2Typ')),
+                AuthPillButton(
+                  label: 'Войти',
+                  icon: Icons.login_rounded,
+                  minimumSize: const Size(92, 38),
+                  fontSize: 12,
+                  iconSize: 13,
+                  onPressed: () => context.go('/login'),
+                ),
+              ],
+            ),
             const SizedBox(height: 22),
             if (_codeSent)
               AuthHeadline(
@@ -112,32 +125,15 @@ class _RegisterPageState extends State<RegisterPage> {
                 fontSize: 34,
                 fontWeight: FontWeight.w300,
                 titleHeight: 0.92,
-                trailing: AuthPillButton(
-                  label: 'Войти',
-                  icon: Icons.login_rounded,
-                  minimumSize: const Size(104, 38),
-                  fontSize: 12,
-                  iconSize: 13,
-                  onPressed: () => context.go('/login'),
-                ),
+                maxLines: 1,
               )
             else
               AuthHeadline(
                 title: title,
-                fontSize: 28,
+                fontSize: 24,
                 fontWeight: FontWeight.w300,
                 titleHeight: 0.92,
-                trailing: Transform.translate(
-                  offset: const Offset(0, 6),
-                  child: AuthPillButton(
-                    label: 'Войти',
-                    icon: Icons.login_rounded,
-                    minimumSize: const Size(92, 38),
-                    fontSize: 12,
-                    iconSize: 13,
-                    onPressed: () => context.go('/login'),
-                  ),
-                ),
+                maxLines: 1,
               ),
             const SizedBox(height: 18),
             AuthTextField(

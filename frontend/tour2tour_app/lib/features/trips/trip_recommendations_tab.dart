@@ -326,7 +326,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 20,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               if (item.description.isNotEmpty) ...[
@@ -396,39 +396,34 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
         Row(
           children: [
             const Expanded(
-              child: Text(
-                '\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '\u0420\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u0438',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ),
-            TextButton.icon(
+            IconButton(
               onPressed: _openTripFavorites,
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.white70,
-                textStyle: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              icon: const Icon(Icons.bookmark_rounded, size: 14),
-              label: const Text('\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0435'),
+              tooltip: '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0435',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.bookmark_rounded, size: 20),
+              color: Colors.white70,
             ),
-            const SizedBox(width: 4),
-            TextButton.icon(
+            IconButton(
               onPressed: _openSurvey,
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFFD7E37A),
-                textStyle: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              icon: const Icon(Icons.tune_rounded, size: 14),
-              label: const Text('\u041e\u043f\u0440\u043e\u0441'),
+              tooltip: '\u041e\u043f\u0440\u043e\u0441',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.tune_rounded, size: 20),
+              color: const Color(0xFFD7E37A),
             ),
           ],
         ),
@@ -664,7 +659,7 @@ class _SwipeCard extends StatelessWidget {
                               color: Colors.white,
                               fontSize: 22,
                               height: 1.05,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -675,7 +670,7 @@ class _SwipeCard extends StatelessWidget {
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.8),
                               fontSize: 14,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.w400,
                             ),
                           ),
                           const SizedBox(height: 10),

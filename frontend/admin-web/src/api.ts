@@ -1,6 +1,7 @@
 import type {
   AdminImportJob,
   AdminPlace,
+  AdminPlaceListResponse,
   AdminPlaceCandidate,
   AdminTagCatalogItem,
   CitySuggestion,
@@ -79,9 +80,19 @@ export async function getMe(token: string): Promise<UserMe> {
   return request<UserMe>('/users/me', { method: 'GET' }, token);
 }
 
-export async function listPlaces(token: string): Promise<AdminPlace[]> {
-  const payload = await request<{ items: AdminPlace[] }>('/places', { method: 'GET' }, token);
-  return payload.items;
+export async function listPlaces(
+  token: string,
+  params?: { limit?: number; offset?: number; q?: string; city?: string; category?: string; status?: string },
+): Promise<AdminPlaceListResponse> {
+  const search = new URLSearchParams();
+  if (params?.limit != null) search.set('limit', String(params.limit));
+  if (params?.offset != null) search.set('offset', String(params.offset));
+  if (params?.q) search.set('q', params.q);
+  if (params?.city) search.set('city', params.city);
+  if (params?.category) search.set('category', params.category);
+  if (params?.status) search.set('status', params.status);
+  const suffix = search.toString() ? `?${search.toString()}` : '';
+  return request<AdminPlaceListResponse>(`/places${suffix}`, { method: 'GET' }, token);
 }
 
 export async function createPlace(token: string, data: Record<string, unknown>): Promise<AdminPlace> {
