@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:ui_web' as ui_web;
 
@@ -7,8 +8,13 @@ int _mapViewCounter = 0;
 
 class YandexCityMap extends StatefulWidget {
   final String? city;
+  final List<Map<String, String>> stagePoints;
 
-  const YandexCityMap({super.key, required this.city});
+  const YandexCityMap({
+    super.key,
+    required this.city,
+    this.stagePoints = const [],
+  });
 
   @override
   State<YandexCityMap> createState() => _YandexCityMapState();
@@ -18,6 +24,7 @@ class _YandexCityMapState extends State<YandexCityMap> {
   late final String _viewType;
   late final html.DivElement _container;
   String? _lastCity;
+  String? _lastPointsJson;
 
   @override
   void initState() {
@@ -42,7 +49,11 @@ class _YandexCityMapState extends State<YandexCityMap> {
   @override
   void didUpdateWidget(covariant YandexCityMap oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if ((oldWidget.city ?? '').trim() != (widget.city ?? '').trim()) {
+    final oldCity = (oldWidget.city ?? '').trim();
+    final newCity = (widget.city ?? '').trim();
+    final oldPoints = jsonEncode(oldWidget.stagePoints);
+    final newPoints = jsonEncode(widget.stagePoints);
+    if (oldCity != newCity || oldPoints != newPoints) {
       _syncCityAttribute();
     }
   }
@@ -51,11 +62,23 @@ class _YandexCityMapState extends State<YandexCityMap> {
     final city = (widget.city ?? '').trim();
     if (city.isEmpty) {
       _container.attributes.remove('data-city');
-      return;
+    } else {
+      _lastCity = city;
+      _container.setAttribute('data-city', city);
     }
-    if (city == _lastCity) return;
-    _lastCity = city;
-    _container.setAttribute('data-city', city);
+    final points = widget.stagePoints
+        .map((point) => {
+              'title': (point['title'] ?? '').trim(),
+              'address': (point['address'] ?? '').trim(),
+              'order': (point['order'] ?? '').trim(),
+            })
+        .where((point) => (point['address'] ?? '').isNotEmpty)
+        .toList();
+    final pointsJson = jsonEncode(points);
+    if (_lastPointsJson != pointsJson) {
+      _lastPointsJson = pointsJson;
+      _container.setAttribute('data-stage-points', pointsJson);
+    }
     _container.dispatchEvent(html.CustomEvent('t2t-city-change'));
   }
 
@@ -63,7 +86,7 @@ class _YandexCityMapState extends State<YandexCityMap> {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      height: 220,
+      height: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),

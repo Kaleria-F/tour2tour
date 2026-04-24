@@ -1,14 +1,15 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../documents/documents_repo.dart';
 import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
 import '../profile/profile_repo.dart';
 import '../recommendations/recommendations_repo.dart';
+import 'widgets/pdf_memory_preview.dart';
 import 'widgets/yandex_city_map.dart';
 import 'trip_recommendations_tab.dart';
 import 'trips_repo.dart';
@@ -49,6 +50,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   static const _accent = Color(0xFFD7E37A);
 
   int _currentIndex = 1;
+  DateTime? _selectedRouteDay;
 
   bool _budgetLoading = false;
   bool _addingExpense = false;
@@ -185,6 +187,10 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       setState(() {
         _stages = ordered;
         _selectedStageId = nextSelectedId;
+        _selectedRouteDay = _ensureSelectedRouteDay(
+          _selectedRouteDay,
+          stages: ordered,
+        );
       });
       if (nextSelectedId != null) {
         final selected = ordered.cast<TripStage?>().firstWhere(
@@ -239,6 +245,10 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           stageTypeLabels: _stageTypeLabels,
           stageSubtypes: _stageSubtypes,
           initialType: pickedType,
+          routeDay: _ensureSelectedRouteDay(
+            _selectedRouteDay,
+            stages: [..._stages]..sort((a, b) => a.position.compareTo(b.position)),
+          ),
           onUploadDocument: _pickAndUploadDocumentForStage,
         ),
       ),
@@ -925,12 +935,20 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         );
         return;
       }
+      final fileBytes = await widget.documentsRepo.fetchFileBytes(downloadUrl);
+      if (!mounted) return;
+      if (fileBytes.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Файл пустой или недоступен')),
+        );
+        return;
+      }
 
       await showDialog<void>(
         context: context,
         builder: (_) => _DocumentPreviewDialog(
           title: doc.fileName,
-          fileUrl: downloadUrl,
+          fileBytes: fileBytes,
           fileType: fileType,
         ),
       );
@@ -955,11 +973,19 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         );
         return;
       }
+      final fileBytes = await widget.documentsRepo.fetchFileBytes(downloadUrl);
+      if (!mounted) return;
+      if (fileBytes.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Файл пустой или недоступен')),
+        );
+        return;
+      }
       await showDialog<void>(
         context: context,
         builder: (_) => _DocumentPreviewDialog(
           title: title,
-          fileUrl: downloadUrl,
+          fileBytes: fileBytes,
           fileType: fileType,
         ),
       );
@@ -990,12 +1016,45 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
   Future<void> _openRouteMap() async {
     final city = (widget.destinationCity ?? '').trim();
-    if (city.isEmpty) return;
+    final stagesForDay = _visibleStagesForSelectedDay();
+    int sortStamp(TripStage stage) {
+      final dt = stage.startTime ?? stage.endTime;
+      if (dt == null) return 1 << 30;
+      return dt.hour * 60 + dt.minute;
+    }
+
+    final orderedStages = [...stagesForDay]
+      ..sort((a, b) {
+        final byTime = sortStamp(a).compareTo(sortStamp(b));
+        if (byTime != 0) return byTime;
+        return a.position.compareTo(b.position);
+      });
+
+    final stagePoints = <Map<String, String>>[];
+    var routeOrder = 1;
+    for (final stage in orderedStages) {
+      final address = (stage.address ?? '').trim();
+      if (address.isEmpty) continue;
+      stagePoints.add({
+        'title': stage.title.trim(),
+        'address': address,
+        'order': '$routeOrder',
+      });
+      routeOrder += 1;
+    }
+    if (city.isEmpty && stagePoints.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Нет адресов этапов для отображения')),
+      );
+      return;
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => _TripRouteMapPage(
           tripTitle: widget.tripTitle,
           destinationCity: city,
+          stagePoints: stagePoints,
           startDate: widget.startDate,
           endDate: widget.endDate,
         ),
@@ -1010,6 +1069,13 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final routeOrdered = [..._stages]
+      ..sort((a, b) => a.position.compareTo(b.position));
+    final routeDays = _tripDays(stages: routeOrdered);
+    final routeSelectedDay = _ensureSelectedRouteDay(
+      _selectedRouteDay,
+      stages: routeOrdered,
+    );
 
     return Scaffold(
       body: Stack(
@@ -1024,7 +1090,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 6),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
@@ -1047,7 +1113,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 4),
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1062,51 +1128,22 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                               ),
                             ),
                           ),
-                          if ((widget.destinationCity ?? '').trim().isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 10, top: 2),
-                              child: OutlinedButton.icon(
-                                onPressed: () => _openRouteMap(),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: _accent,
-                                  side: BorderSide(
-                                    color: Colors.white.withOpacity(0.22),
-                                  ),
-                                  backgroundColor: Colors.white.withOpacity(
-                                    0.08,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 9,
-                                  ),
-                                ),
-                                icon: const Icon(
-                                  Icons.map_outlined,
-                                  size: 16,
-                                ),
-                                label: const Text(
-                                  'Маршрут на карте',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      if (widget.startDate != null && widget.endDate != null)
-                        Text(
-                          '${_fmtDate(widget.startDate!)} - ${_fmtDate(widget.endDate!)}',
-                          style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
-                              fontSize: 13),
+                      if (_currentIndex == 1 && routeDays.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        _RouteDayStrip(
+                          days: routeDays,
+                          selectedDay: routeSelectedDay,
+                          compact: true,
+                          onDayTap: (day) {
+                            setState(() {
+                              _selectedRouteDay = day;
+                            });
+                          },
                         ),
-                      const SizedBox(height: 12),
+                      ],
+                      const SizedBox(height: 8),
                       Expanded(
                         child: _currentIndex == 1
                             ? _buildRouteCard(cs)
@@ -1162,8 +1199,13 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   }
 
   Widget _buildRouteCard(ColorScheme cs) {
-    final ordered = [..._stages]
-      ..sort((a, b) => a.position.compareTo(b.position));
+    final ordered = [..._stages]..sort((a, b) => a.position.compareTo(b.position));
+    final selectedDay = _ensureSelectedRouteDay(_selectedRouteDay, stages: ordered);
+    final visibleStages = _filterStagesByDay(
+      ordered,
+      selectedDay,
+      _tripDays(stages: ordered),
+    );
 
     return Container(
       width: double.infinity,
@@ -1176,323 +1218,294 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: ElevatedButton.icon(
-              onPressed: _addingStage ? null : _openAddStageDialog,
-              icon: _addingStage
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.add_road_rounded),
-              label: const Text('Добавить этап'),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _openRouteMap(),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _accent,
+                    side: BorderSide(color: _accent.withOpacity(0.44)),
+                    backgroundColor: const Color(0xFF222715),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                  icon: const Icon(Icons.map_outlined, size: 16),
+                  label: const Text(
+                    'Маршрут на карте',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _addingStage ? null : _openAddStageDialog,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFD7E37A),
+                    foregroundColor: const Color(0xFF161616),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                  icon: _addingStage
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.add_road_rounded, size: 16),
+                  label: const Text(
+                    'Добавить этап',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
-          Expanded(
-            child: _stagesLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ordered.isEmpty
-                ? Center(
-                    child: Text(
-                      'Пока нет этапов маршрута',
-                      style: TextStyle(color: Colors.white.withOpacity(0.85)),
-                    ),
-                  )
-                : ReorderableListView.builder(
-                    itemCount: ordered.length,
-                    onReorder: (oldIndex, newIndex) {
-                      final normalized = newIndex > oldIndex
-                          ? newIndex - 1
-                          : newIndex;
-                      _moveStage(oldIndex, normalized);
-                    },
-                    itemBuilder: (_, index) {
-                      final stage = ordered[index];
-                      final typeLabel =
-                          _stageTypeLabels[stage.stageType] ?? stage.stageType;
-                      final location = (stage.address ?? '').isNotEmpty
-                          ? stage.address
-                          : ((stage.endLocation ?? '').isNotEmpty ? stage.endLocation : stage.startLocation);
-                      final subtypeLabel = _prettySubtype(stage.subtype);
-                      final timeRange = _formatTimeRange(stage.startTime, stage.endTime);
-
-                      final isSelected = stage.id == _selectedStageId;
-                      final visual = _stageVisual(stage.stageType);
-                      final isFirst = index == 0;
-                      final isLast = index == ordered.length - 1;
-                      final subtitle = (location ?? '').isNotEmpty
-                          ? location!
-                          : ((stage.startLocation ?? '').isNotEmpty || (stage.endLocation ?? '').isNotEmpty)
-                              ? '${stage.startLocation ?? '-'} → ${stage.endLocation ?? '-'}'
-                              : 'Без указанной локации';
-
-                      return Container(
-                        key: ValueKey(stage.id),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(20),
-                          onTap: () async {
-                            setState(() {
-                              _selectedStageId = stage.id;
-                            });
-                            await Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => _StageDetailsPage(
-                                  stage: stage,
-                                  typeLabel: typeLabel,
-                                  subtypeLabel: subtypeLabel,
-                                  timeRange: timeRange,
-                                  onOpenDocument: (stage.documentKey ?? '').isEmpty
-                                      ? null
-                                      : () => _openDocumentByKey(
-                                            stage.documentKey!,
-                                            stage.title,
-                                          ),
-                                ),
-                              ),
-                            );
-                          },
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                width: 40,
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      width: 2,
-                                      height: isFirst ? 10 : 22,
-                                      color: isFirst ? Colors.transparent : Colors.white12,
-                                    ),
-                                    Container(
-                                      height: 32,
-                                      width: 32,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: visual.backgroundColor,
-                                        border: Border.all(color: visual.borderColor, width: 1.1),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: visual.iconColor.withOpacity(0.22),
-                                            blurRadius: 12,
-                                            offset: const Offset(0, 3),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Icon(
-                                        _iconForStageType(stage.stageType),
-                                        size: 17,
-                                        color: visual.iconColor,
-                                      ),
-                                    ),
-                                    Container(
-                                      width: 2,
-                                      height: isLast ? 10 : 95,
-                                      color: isLast ? Colors.transparent : Colors.white12,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 180),
-                                  padding: const EdgeInsets.all(14),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.06),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? cs.primary.withOpacity(0.7)
-                                          : Colors.white.withOpacity(0.1),
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.18),
-                                        blurRadius: 14,
-                                        offset: const Offset(0, 6),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              stage.title,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 16,
-                                              ),
-                                            ),
-                                          ),
-                                          if ((stage.documentKey ?? '').isNotEmpty) ...[
-                                            const SizedBox(width: 6),
-                                            Icon(
-                                              Icons.attach_file_rounded,
-                                              size: 18,
-                                              color: Colors.white.withOpacity(0.85),
-                                            ),
-                                          ],
-                                          if (timeRange != null) ...[
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFF222715),
-                                                borderRadius: BorderRadius.circular(999),
-                                                border: Border.all(
-                                                  color: _accent.withOpacity(0.34),
-                                                ),
-                                              ),
-                                              child: Text(
-                                                timeRange,
-                                                style: const TextStyle(
-                                                  color: _accent,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        subtitle,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.8),
-                                          fontSize: 13,
-                                          height: 1.35,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Wrap(
-                                              spacing: 6,
-                                              runSpacing: 6,
-                                              children: [
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                                                  decoration: BoxDecoration(
-                                                    color: visual.backgroundColor,
-                                                    borderRadius: BorderRadius.circular(999),
-                                                    border: Border.all(color: visual.borderColor),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Icon(
-                                                        _iconForStageType(stage.stageType),
-                                                        size: 13,
-                                                        color: visual.iconColor,
-                                                      ),
-                                                      const SizedBox(width: 5),
-                                                      Text(
-                                                        typeLabel,
-                                                        style: TextStyle(
-                                                          color: visual.iconColor,
-                                                          fontSize: 11,
-                                                          fontWeight: FontWeight.w700,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.white.withOpacity(0.08),
-                                                    borderRadius: BorderRadius.circular(999),
-                                                    border: Border.all(color: Colors.white.withOpacity(0.16)),
-                                                  ),
-                                                  child: Text(
-                                                    subtypeLabel,
-                                                    style: TextStyle(
-                                                      color: Colors.white.withOpacity(0.9),
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          PopupMenuButton<String>(
-                                            tooltip: '',
-                                            onSelected: (value) {
-                                              if (value == 'edit') {
-                                                _openEditStageDialog(stage);
-                                              } else if (value == 'copy') {
-                                                _copyStage(stage);
-                                              } else if (value == 'delete') {
-                                                _deleteStage(stage);
-                                              }
-                                            },
-                                            itemBuilder: (_) => const [
-                                              PopupMenuItem(
-                                                value: 'edit',
-                                                child: Text('Редактировать'),
-                                              ),
-                                              PopupMenuItem(
-                                                value: 'copy',
-                                                child: Text('Копировать'),
-                                              ),
-                                              PopupMenuItem(
-                                                value: 'delete',
-                                                child: Text('Удалить'),
-                                              ),
-                                            ],
-                                            child: const Padding(
-                                              padding: EdgeInsets.symmetric(horizontal: 2),
-                                              child: Icon(Icons.more_vert, color: Colors.white),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Container(
-                                            width: 26,
-                                            height: 26,
-                                            decoration: BoxDecoration(
-                                              color: Colors.white.withOpacity(0.08),
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(color: Colors.white.withOpacity(0.16)),
-                                            ),
-                                            child: Icon(
-                                              Icons.drag_indicator_rounded,
-                                              size: 18,
-                                              color: Colors.white.withOpacity(0.9),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
+          Expanded(child: _buildRouteTimelineSection(stages: visibleStages)),
         ],
       ),
     );
   }
 
+  Future<void> _openStageDetails(TripStage stage) async {
+    final typeLabel = _stageTypeLabels[stage.stageType] ?? stage.stageType;
+    final subtypeLabel = _prettySubtype(stage.subtype);
+    final timeRange = _formatTimeRange(stage.startTime, stage.endTime);
+    setState(() {
+      _selectedStageId = stage.id;
+    });
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _StageDetailsPage(
+          stage: stage,
+          typeLabel: typeLabel,
+          subtypeLabel: subtypeLabel,
+          timeRange: timeRange,
+          onOpenDocument: (stage.documentKey ?? '').isEmpty
+              ? null
+              : () => _openDocumentByKey(stage.documentKey!, stage.title),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showStageActions(TripStage stage) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_rounded),
+              title: const Text('Редактировать'),
+              onTap: () => Navigator.of(context).pop('edit'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.copy_rounded),
+              title: const Text('Копировать'),
+              onTap: () => Navigator.of(context).pop('copy'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded),
+              title: const Text('Удалить'),
+              onTap: () => Navigator.of(context).pop('delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'edit') {
+      await _openEditStageDialog(stage);
+    } else if (action == 'copy') {
+      await _copyStage(stage);
+    } else if (action == 'delete') {
+      await _deleteStage(stage);
+    }
+  }
+
+  Widget _buildRouteTimelineSection({required List<TripStage> stages}) {
+    if (_stagesLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (stages.isEmpty) {
+      return Center(
+        child: Text(
+          'На выбранный день нет этапов',
+          style: TextStyle(color: Colors.white.withOpacity(0.85)),
+        ),
+      );
+    }
+
+    final timed = <_TimelineStageItem>[];
+    final withoutTime = <TripStage>[];
+    for (final stage in stages) {
+      final item = _toTimelineStage(stage);
+      if (item == null) {
+        withoutTime.add(stage);
+      } else {
+        timed.add(item);
+      }
+    }
+
+    return Column(
+      children: [
+        if (withoutTime.isNotEmpty) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Без времени',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.75),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: withoutTime.map((stage) {
+              return InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () => _openStageDetails(stage),
+                onLongPress: () => _showStageActions(stage),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white.withOpacity(0.15)),
+                  ),
+                  child: Text(
+                    stage.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 10),
+        ],
+        Expanded(
+          child: timed.isEmpty
+              ? Center(
+                  child: Text(
+                    'Добавьте время этапам, чтобы они появились на шкале',
+                    style: TextStyle(color: Colors.white.withOpacity(0.82)),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              : _RouteTimeline(
+                  items: timed,
+                  onTapStage: (stage) => _openStageDetails(stage),
+                  onLongPressStage: (stage) => _showStageActions(stage),
+                ),
+        ),
+      ],
+    );
+  }
+
+  _TimelineStageItem? _toTimelineStage(TripStage stage) {
+    final start = stage.startTime;
+    final end = stage.endTime;
+    if (start == null && end == null) return null;
+
+    int minutesOfDay(DateTime date) => date.hour * 60 + date.minute;
+    var startMin = start != null ? minutesOfDay(start) : minutesOfDay(end!) - 60;
+    var endMin = end != null ? minutesOfDay(end) : startMin + 60;
+    if (endMin <= startMin) {
+      endMin = startMin + 45;
+    }
+
+    startMin = startMin.clamp(0, 23 * 60 + 59);
+    endMin = endMin.clamp(startMin + 15, 24 * 60);
+    final visual = _stageVisual(stage.stageType);
+    return _TimelineStageItem(
+      stage: stage,
+      startMin: startMin,
+      endMin: endMin,
+      color: visual.iconColor,
+    );
+  }
+
+  List<DateTime> _tripDays({required List<TripStage> stages}) {
+    DateTime toDay(DateTime date) => DateTime(date.year, date.month, date.day);
+    if (widget.startDate != null && widget.endDate != null) {
+      final start = toDay(widget.startDate!);
+      final end = toDay(widget.endDate!);
+      if (!end.isBefore(start)) {
+        final days = <DateTime>[];
+        var cursor = start;
+        while (!cursor.isAfter(end)) {
+          days.add(cursor);
+          cursor = cursor.add(const Duration(days: 1));
+        }
+        return days;
+      }
+    }
+    final values = stages
+        .map((stage) => stage.startTime ?? stage.endTime)
+        .whereType<DateTime>()
+        .map(toDay)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a.compareTo(b));
+    if (values.isNotEmpty) return values;
+    final now = DateTime.now();
+    return [DateTime(now.year, now.month, now.day)];
+  }
+
+  DateTime _ensureSelectedRouteDay(
+    DateTime? selected, {
+    required List<TripStage> stages,
+  }) {
+    final days = _tripDays(stages: stages);
+    if (days.isEmpty) {
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day);
+    }
+    if (selected == null) return days.first;
+    final normalized = DateTime(selected.year, selected.month, selected.day);
+    return days.firstWhere((day) => day == normalized, orElse: () => days.first);
+  }
+
+  List<TripStage> _filterStagesByDay(
+    List<TripStage> stages,
+    DateTime selectedDay,
+    List<DateTime> tripDays,
+  ) {
+    DateTime toDay(DateTime date) => DateTime(date.year, date.month, date.day);
+    final firstDay = tripDays.isNotEmpty ? tripDays.first : selectedDay;
+    return stages.where((stage) {
+      final candidate = stage.startTime ?? stage.endTime;
+      if (candidate == null) {
+        return selectedDay == firstDay;
+      }
+      return toDay(candidate) == selectedDay;
+    }).toList();
+  }
+
+  List<TripStage> _visibleStagesForSelectedDay() {
+    final ordered = [..._stages]..sort((a, b) => a.position.compareTo(b.position));
+    final days = _tripDays(stages: ordered);
+    final selectedDay = _ensureSelectedRouteDay(_selectedRouteDay, stages: ordered);
+    return _filterStagesByDay(ordered, selectedDay, days);
+  }
   Widget _buildBudgetCard(ColorScheme cs) {
     if (_showBudgetAnalytics) {
       return _buildBudgetAnalyticsCard(cs);
@@ -2005,12 +2018,12 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
 class _DocumentPreviewDialog extends StatelessWidget {
   final String title;
-  final String fileUrl;
+  final Uint8List fileBytes;
   final String fileType;
 
   const _DocumentPreviewDialog({
     required this.title,
-    required this.fileUrl,
+    required this.fileBytes,
     required this.fileType,
   });
 
@@ -2045,13 +2058,13 @@ class _DocumentPreviewDialog extends StatelessWidget {
             const Divider(height: 1),
             Expanded(
               child: fileType == 'pdf'
-                  ? SfPdfViewer.network(fileUrl)
+                  ? PdfMemoryPreview(bytes: fileBytes)
                   : InteractiveViewer(
                       minScale: 0.8,
                       maxScale: 4.0,
                       child: Center(
-                        child: Image.network(
-                          fileUrl,
+                        child: Image.memory(
+                          fileBytes,
                           fit: BoxFit.contain,
                           errorBuilder: (context, error, stackTrace) {
                             return const Text(
@@ -2479,6 +2492,7 @@ class _StageFormPage extends StatefulWidget {
   final Map<String, String> stageTypeLabels;
   final Map<String, List<String>> stageSubtypes;
   final String initialType;
+  final DateTime? routeDay;
   final _AddStagePayload? initial;
   final String submitLabel;
   final Future<String?> Function()? onUploadDocument;
@@ -2487,6 +2501,7 @@ class _StageFormPage extends StatefulWidget {
     required this.stageTypeLabels,
     required this.stageSubtypes,
     required this.initialType,
+    this.routeDay,
     this.onUploadDocument,
     this.initial,
     this.submitLabel = 'Добавить',
@@ -2620,7 +2635,7 @@ class _StageFormPageState extends State<_StageFormPage> {
     final minute = int.tryParse(parts[1]);
     if (hour == null || minute == null) return null;
     if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-    final base = fallbackDate ?? DateTime.now();
+    final base = fallbackDate ?? widget.routeDay ?? DateTime.now();
     return DateTime(base.year, base.month, base.day, hour, minute);
   }
 
@@ -2629,7 +2644,7 @@ class _StageFormPageState extends State<_StageFormPage> {
   }
 
   Future<void> _pickTime(TextEditingController controller) async {
-    final current = _parseTime(controller.text, null);
+    final current = _parseTime(controller.text, widget.routeDay);
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: current?.hour ?? 12, minute: current?.minute ?? 0),
@@ -3057,18 +3072,344 @@ class _BottomMenu extends StatelessWidget {
   }
 }
 
-class _TripRouteMapPage extends StatelessWidget {
+class _TimelineStageItem {
+  final TripStage stage;
+  final int startMin;
+  final int endMin;
+  final Color color;
+
+  const _TimelineStageItem({
+    required this.stage,
+    required this.startMin,
+    required this.endMin,
+    required this.color,
+  });
+}
+
+class _RouteTimeline extends StatelessWidget {
+  final List<_TimelineStageItem> items;
+  final ValueChanged<TripStage> onTapStage;
+  final ValueChanged<TripStage> onLongPressStage;
+
+  const _RouteTimeline({
+    required this.items,
+    required this.onTapStage,
+    required this.onLongPressStage,
+  });
+
+  static const int _startHour = 8;
+  static const int _endHour = 22;
+  static const double _pxPerHour = 56;
+  static const double _timeColumnWidth = 52;
+
+  String _hhmm(int minutes) {
+    final h = (minutes ~/ 60).toString().padLeft(2, '0');
+    final m = (minutes % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dayStart = _startHour * 60;
+    final dayEnd = _endHour * 60;
+
+    final visible = items.where((item) {
+      return item.endMin > dayStart && item.startMin < dayEnd;
+    }).toList()
+      ..sort((a, b) => a.startMin.compareTo(b.startMin));
+
+    final layout = <_TimelineStageItem, int>{};
+    final colEnd = <int>[];
+    var maxColumns = 1;
+    for (final item in visible) {
+      var col = -1;
+      for (var i = 0; i < colEnd.length; i++) {
+        if (item.startMin >= colEnd[i] + 2) {
+          col = i;
+          break;
+        }
+      }
+      if (col == -1) {
+        col = colEnd.length;
+        colEnd.add(item.endMin);
+      } else {
+        colEnd[col] = item.endMin;
+      }
+      layout[item] = col;
+      if (col + 1 > maxColumns) maxColumns = col + 1;
+    }
+
+    final totalHours = _endHour - _startHour;
+    final timelineHeight = totalHours * _pxPerHour;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: SingleChildScrollView(
+        child: SizedBox(
+          height: timelineHeight,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final contentLeft = _timeColumnWidth + 6;
+              final contentWidth =
+                  (constraints.maxWidth - contentLeft - 8).clamp(120, 1200).toDouble();
+              final gap = 6.0;
+              final blockWidth = (contentWidth - gap * (maxColumns - 1)) / maxColumns;
+
+              return Stack(
+                children: [
+                  for (var hour = _startHour; hour <= _endHour; hour++) ...[
+                    Positioned(
+                      top: (hour - _startHour) * _pxPerHour - 8,
+                      left: 0,
+                      width: _timeColumnWidth,
+                      child: Text(
+                        '${hour.toString().padLeft(2, '0')}:00',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.62),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: (hour - _startHour) * _pxPerHour,
+                      left: _timeColumnWidth + 8,
+                      right: 0,
+                      child: Container(
+                        height: 1,
+                        color: Colors.white.withOpacity(0.1),
+                      ),
+                    ),
+                  ],
+                  for (final item in visible)
+                    Positioned(
+                      top: ((item.startMin - dayStart) / 60) * _pxPerHour + 2,
+                      left: contentLeft + (layout[item]! * (blockWidth + gap)),
+                      width: blockWidth,
+                      height: (((item.endMin - item.startMin) / 60) * _pxPerHour)
+                          .clamp(34, 170),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(10),
+                        onTap: () => onTapStage(item.stage),
+                        onLongPress: () => onLongPressStage(item.stage),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: item.color.withOpacity(0.22),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: item.color.withOpacity(0.6)),
+                          ),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final canShowTime = constraints.maxHeight >= 52;
+                              final verticalPadding = canShowTime ? 6.0 : 4.0;
+                              return Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: verticalPadding,
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: canShowTime
+                                      ? MainAxisAlignment.start
+                                      : MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.stage.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        height: 1.15,
+                                      ),
+                                    ),
+                                    if (canShowTime) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${_hhmm(item.startMin)} - ${_hhmm(item.endMin)}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.9),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RouteDayStrip extends StatelessWidget {
+  final List<DateTime> days;
+  final DateTime selectedDay;
+  final ValueChanged<DateTime> onDayTap;
+  final bool compact;
+
+  const _RouteDayStrip({
+    required this.days,
+    required this.selectedDay,
+    required this.onDayTap,
+    this.compact = false,
+  });
+
+  String _weekday(DateTime day) {
+    const map = <int, String>{
+      DateTime.monday: 'ПН',
+      DateTime.tuesday: 'ВТ',
+      DateTime.wednesday: 'СР',
+      DateTime.thursday: 'ЧТ',
+      DateTime.friday: 'ПТ',
+      DateTime.saturday: 'СБ',
+      DateTime.sunday: 'ВС',
+    };
+    return map[day.weekday] ?? '';
+  }
+
+  bool _sameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final itemWidth = compact ? 46.0 : 56.0;
+    final itemHeight = compact ? 64.0 : 78.0;
+    final dayFont = compact ? 16.0 : 21.0;
+    final weekFont = compact ? 9.0 : 10.0;
+    final radius = compact ? 16.0 : 20.0;
+    final vertical = compact ? 6.0 : 8.0;
+
+    return SizedBox(
+      height: itemHeight,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: days.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, index) {
+          final day = days[index];
+          final selected = _sameDay(day, selectedDay);
+          return InkWell(
+            borderRadius: BorderRadius.circular(radius),
+            onTap: () => onDayTap(day),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: itemWidth,
+              padding: EdgeInsets.symmetric(vertical: vertical),
+              decoration: BoxDecoration(
+                color: selected
+                    ? const Color(0xFF222715)
+                    : Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(radius),
+                border: Border.all(
+                  color: selected
+                      ? const Color(0xFFD7E37A).withOpacity(0.75)
+                      : Colors.white.withOpacity(0.12),
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    day.day.toString(),
+                    style: TextStyle(
+                      color: selected
+                          ? const Color(0xFFD7E37A)
+                          : Colors.white.withOpacity(0.9),
+                      fontSize: dayFont,
+                      fontWeight: FontWeight.w700,
+                      height: 1,
+                    ),
+                  ),
+                  SizedBox(height: compact ? 3 : 4),
+                  Text(
+                    _weekday(day),
+                    style: TextStyle(
+                      color: selected
+                          ? const Color(0xFFD7E37A).withOpacity(0.9)
+                          : Colors.white.withOpacity(0.62),
+                      fontSize: weekFont,
+                      fontWeight: FontWeight.w600,
+                      height: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TripRouteMapPage extends StatefulWidget {
   final String tripTitle;
   final String destinationCity;
+  final List<Map<String, String>> stagePoints;
   final DateTime? startDate;
   final DateTime? endDate;
 
   const _TripRouteMapPage({
     required this.tripTitle,
     required this.destinationCity,
+    required this.stagePoints,
     this.startDate,
     this.endDate,
   });
+
+  @override
+  State<_TripRouteMapPage> createState() => _TripRouteMapPageState();
+}
+
+class _TripRouteMapPageState extends State<_TripRouteMapPage> {
+  late final TextEditingController _searchCtrl;
+  late String _mapQuery;
+
+  @override
+  void initState() {
+    super.initState();
+    _mapQuery = widget.destinationCity.trim();
+    _searchCtrl = TextEditingController(text: _mapQuery);
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submitSearch() {
+    final value = _searchCtrl.text.trim();
+    if (value.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Введите адрес для поиска')),
+      );
+      return;
+    }
+    setState(() {
+      _mapQuery = value;
+    });
+  }
 
   String _fmtDate(DateTime date) {
     final d = date.day.toString().padLeft(2, '0');
@@ -3079,8 +3420,8 @@ class _TripRouteMapPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateLabel = (startDate != null && endDate != null)
-        ? '${_fmtDate(startDate!)} - ${_fmtDate(endDate!)}'
+    final dateLabel = (widget.startDate != null && widget.endDate != null)
+        ? '${_fmtDate(widget.startDate!)} - ${_fmtDate(widget.endDate!)}'
         : null;
 
     return Scaffold(
@@ -3118,7 +3459,7 @@ class _TripRouteMapPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        tripTitle,
+                        widget.tripTitle,
                         style: const TextStyle(
                           fontSize: 30,
                           fontWeight: FontWeight.w800,
@@ -3136,10 +3477,46 @@ class _TripRouteMapPage extends StatelessWidget {
                           ),
                         ),
                       const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white.withOpacity(0.14)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.search_rounded, color: Colors.white70),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _searchCtrl,
+                                style: const TextStyle(color: Colors.white),
+                                textInputAction: TextInputAction.search,
+                                onSubmitted: (_) => _submitSearch(),
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  hintText: 'Введите адрес',
+                                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
+                                  border: InputBorder.none,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: _submitSearch,
+                              child: const Text('Найти'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       Expanded(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: YandexCityMap(city: destinationCity),
+                          child: YandexCityMap(
+                            city: _mapQuery,
+                            stagePoints: widget.stagePoints,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 18),
