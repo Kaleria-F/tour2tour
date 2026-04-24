@@ -155,7 +155,10 @@ def _to_place_out(place: Place) -> PlaceOut:
 
 def _replace_tags(db: Session, place: Place, tags: dict[str, int]) -> None:
     tags = validate_place_tags(tags)
-    db.query(PlaceTag).filter(PlaceTag.place_id == place.id).delete()
+    if "tags" in place.__dict__:
+        place.tags.clear()
+    db.query(PlaceTag).filter(PlaceTag.place_id == place.id).delete(synchronize_session=False)
+    db.flush()
     for tag, weight in tags.items():
         db.add(PlaceTag(id=str(uuid4()), place_id=place.id, tag=tag, weight=weight))
 
@@ -657,6 +660,7 @@ def update_place(
 
     db.add(place)
     db.commit()
+    db.expire_all()
     place = db.execute(_place_query().where(Place.id == place_id)).scalar_one()
     return _to_place_out(place)
 

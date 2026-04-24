@@ -469,9 +469,13 @@ export function App() {
     if (!token) return;
     try {
       await decideCandidate(token, id, status);
-      setCandidates((current) => current.filter((candidate) => candidate.id !== id));
-      const [, importItems] = await Promise.all([loadPlacesPage(token, { reset: true, query: placeSearchQuery }), listImportJobs(token)]);
+      const [candidateItems, importItems] = await Promise.all([
+        listCandidates(token),
+        listImportJobs(token),
+      ]);
+      setCandidates(candidateItems);
       setImports(importItems);
+      await loadPlacesPage(token, { reset: true, query: placeSearchQuery });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка модерации');
     }
@@ -495,9 +499,13 @@ export function App() {
       for (const candidate of candidates) {
         await decideCandidate(token, candidate.id, 'approved');
       }
-      setCandidates([]);
-      const [, importItems] = await Promise.all([loadPlacesPage(token, { reset: true, query: placeSearchQuery }), listImportJobs(token)]);
+      const [candidateItems, importItems] = await Promise.all([
+        listCandidates(token),
+        listImportJobs(token),
+      ]);
+      setCandidates(candidateItems);
       setImports(importItems);
+      await loadPlacesPage(token, { reset: true, query: placeSearchQuery });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка массового одобрения');
     } finally {
@@ -588,7 +596,7 @@ export function App() {
       <div className="auth-shell">
         <div className="auth-card">
           <div className="brand">Tour2Tour Admin</div>
-          <h1>{challengeId ? 'Подтверждение входа' : 'Вход администратора'}</h1>
+          <h1 className="auth-title">{challengeId ? 'Подтверждение входа' : 'Вход администратора'}</h1>
           <p>{challengeId ? 'Введите TOTP-код' : 'Используйте отдельную учетную запись администратора.'}</p>
           {error && <div className="error">{error}</div>}
           {!challengeId ? (
@@ -614,7 +622,6 @@ export function App() {
         <div className="topbar">
           <div>
             <h1>{title}</h1>
-            <div className="muted">{isAdmin ? 'Роль администратора подтверждена' : 'Доступ ограничен'}</div>
           </div>
           <div className="topbar-actions">
             <div className="nav nav-inline">
@@ -892,30 +899,6 @@ export function App() {
                 <div className="card">
                   <h2>Загрузить CSV</h2>
                   <form className="stack" onSubmit={handleImport}>
-                    <div className="field-group">
-                      <label>Источник</label>
-                      <div className="chip-group">
-                        {SOURCE_OPTIONS.map((option) => (
-                          <label key={option.value} className="chip chip-radio">
-                            <input type="radio" name="source" value={option.value} defaultChecked={option.value === 'csv'} />
-                            {option.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="field-group">
-                      <label>Тип данных</label>
-                      <div className="chip-group">
-                        {IMPORT_KIND_OPTIONS.map((option) => (
-                          <label key={option.value} className="chip chip-radio">
-                            <input type="radio" name="kind" value={option.value} defaultChecked={option.value === 'place'} />
-                            {option.label}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
                     <input name="file" type="file" accept=".csv,text/csv" required />
                     <div className="muted small">
                       Поддерживаются CSV в UTF-8 или CP1251, разделители: запятая, точка с запятой или tab.
