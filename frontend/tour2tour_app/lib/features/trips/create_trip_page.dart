@@ -22,6 +22,7 @@ class _CreateTripPageState extends State<CreateTripPage> {
   DateTime? _endDate;
   bool _saving = false;
   List<CitySuggestion> _citySuggestions = const [];
+  List<CitySuggestion> _lastNonEmptyCitySuggestions = const [];
   int _cityRequestId = 0;
 
   @override
@@ -72,7 +73,10 @@ class _CreateTripPageState extends State<CreateTripPage> {
     final query = value.trim();
     if (query.length < 2) {
       if (mounted) {
-        setState(() => _citySuggestions = const []);
+        setState(() {
+          _citySuggestions = const [];
+          _lastNonEmptyCitySuggestions = const [];
+        });
       }
       return;
     }
@@ -81,10 +85,25 @@ class _CreateTripPageState extends State<CreateTripPage> {
     try {
       final suggestions = await widget.tripsRepo.suggestCities(query);
       if (!mounted || requestId != _cityRequestId) return;
-      setState(() => _citySuggestions = suggestions);
+      setState(() {
+        if (suggestions.isNotEmpty) {
+          _citySuggestions = suggestions;
+          _lastNonEmptyCitySuggestions = suggestions;
+        } else if (_lastNonEmptyCitySuggestions.isNotEmpty) {
+          _citySuggestions = _lastNonEmptyCitySuggestions;
+        } else {
+          _citySuggestions = const [];
+        }
+      });
     } catch (_) {
       if (!mounted || requestId != _cityRequestId) return;
-      setState(() => _citySuggestions = const []);
+      setState(() {
+        if (_lastNonEmptyCitySuggestions.isNotEmpty) {
+          _citySuggestions = _lastNonEmptyCitySuggestions;
+        } else {
+          _citySuggestions = const [];
+        }
+      });
     }
   }
 
@@ -263,6 +282,23 @@ class _CreateTripPageState extends State<CreateTripPage> {
                                       ),
                                       itemBuilder: (context, index) {
                                         final option = items[index];
+                                        final region = (option.region ?? '').trim();
+                                        final district =
+                                            (option.district ?? '').trim();
+                                        final country = option.country.trim();
+
+                                        final subtitleParts = <String>[
+                                          if (region.isNotEmpty &&
+                                              region != option.city.trim())
+                                            region
+                                          else if (district.isNotEmpty &&
+                                              district != option.city.trim())
+                                            district.toLowerCase().contains('округ')
+                                                ? district
+                                                : '$district округ',
+                                          if (country.isNotEmpty) country,
+                                        ];
+                                        final subtitle = subtitleParts.join(', ');
                                         return ListTile(
                                           dense: true,
                                           title: Text(
@@ -271,13 +307,15 @@ class _CreateTripPageState extends State<CreateTripPage> {
                                               color: Colors.white,
                                             ),
                                           ),
-                                          subtitle: Text(
-                                            option.displayName,
-                                            style: TextStyle(
-                                              color: Colors.white
-                                                  .withOpacity(0.62),
-                                            ),
-                                          ),
+                                          subtitle: subtitle.isEmpty
+                                              ? null
+                                              : Text(
+                                                  '${option.city}, $subtitle',
+                                                  style: TextStyle(
+                                                    color: Colors.white
+                                                        .withOpacity(0.62),
+                                                  ),
+                                                ),
                                           onTap: () => onSelected(option),
                                         );
                                       },

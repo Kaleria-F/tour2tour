@@ -273,6 +273,20 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final activeTrips = _trips
+        .where((trip) {
+          final tripEnd = DateTime(
+            trip.endDate.year,
+            trip.endDate.month,
+            trip.endDate.day,
+          );
+          return !tripEnd.isBefore(today);
+        })
+        .toList()
+      ..sort((a, b) => a.startDate.compareTo(b.startDate));
+
     return TravelAppShell(
       title: 'Привет',
       subtitle: 'Соберите поездку и посмотрите новые идеи для путешествий',
@@ -303,24 +317,27 @@ class _ProfilePageState extends State<ProfilePage> {
                     children: [
                       _StoriesRow(labels: _storyLabels),
                       const SizedBox(height: 18),
-                      _SectionHeader(
+                      const _SectionHeader(
                         title: 'Мои поездки',
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
                         height: 248,
-                        child: _trips.isEmpty
-                            ? const _EmptyStrip(
+                        child: activeTrips.isEmpty
+                            ? _EmptyStrip(
                                 title: 'Пока нет поездок',
-                                subtitle: 'Создайте первое путешествие, и здесь появятся ваши маршруты.',
+                                subtitle:
+                                    'Создайте первое путешествие, и здесь появятся ваши маршруты.',
+                                actionLabel: 'Создать путешествие',
+                                onAction: () => context.go('/create-trip'),
                               )
                             : ListView.separated(
                                 scrollDirection: Axis.horizontal,
-                                itemCount: _trips.length,
+                                itemCount: activeTrips.length,
                                 separatorBuilder: (_, __) =>
                                     const SizedBox(width: 14),
                                 itemBuilder: (_, index) {
-                                  final trip = _trips[index];
+                                  final trip = activeTrips[index];
                                   return _TripCarouselCard(
                                     trip: trip,
                                     onTap: () {
@@ -394,11 +411,13 @@ class _SectionHeader extends StatelessWidget {
     required this.title,
     this.actionLabel,
     this.onTap,
+    this.trailing,
   });
 
   final String title;
   final String? actionLabel;
   final VoidCallback? onTap;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -426,6 +445,7 @@ class _SectionHeader extends StatelessWidget {
             ),
             child: Text(actionLabel!),
           ),
+        if (trailing != null) trailing!,
       ],
     );
   }
@@ -510,6 +530,14 @@ class _TripCarouselCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final city = trip.destinationCity;
+    final startLabel =
+        '${_twoDigits(trip.startDate.day)}.${_twoDigits(trip.startDate.month)}';
+    final endLabel =
+        '${_twoDigits(trip.endDate.day)}.${_twoDigits(trip.endDate.month)}';
+    final isSameDay = trip.startDate.year == trip.endDate.year &&
+        trip.startDate.month == trip.endDate.month &&
+        trip.startDate.day == trip.endDate.day;
+    final tripPeriodLabel = isSameDay ? startLabel : '$startLabel - $endLabel';
     final cityLabel = city == null || city.isEmpty ? 'Маршрут' : city;
     return InkWell(
       borderRadius: BorderRadius.circular(30),
@@ -585,14 +613,7 @@ class _TripCarouselCard extends StatelessWidget {
                       children: [
                         _MetaChip(
                           icon: Icons.calendar_today_rounded,
-                          label:
-                              '${_twoDigits(trip.startDate.day)}.${_twoDigits(trip.startDate.month)}',
-                        ),
-                        const SizedBox(width: 8),
-                        _MetaChip(
-                          icon: Icons.route_rounded,
-                          label:
-                              '${_twoDigits(trip.endDate.day)}.${_twoDigits(trip.endDate.month)}',
+                          label: tripPeriodLabel,
                         ),
                       ],
                     ),
@@ -787,10 +808,14 @@ class _EmptyStrip extends StatelessWidget {
   const _EmptyStrip({
     required this.title,
     required this.subtitle,
+    this.actionLabel,
+    this.onAction,
   });
 
   final String title;
   final String subtitle;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -826,6 +851,17 @@ class _EmptyStrip extends StatelessWidget {
                   height: 1.35,
                 ),
               ),
+              if (actionLabel != null && onAction != null) ...[
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: onAction,
+                    icon: const Icon(Icons.add_rounded),
+                    label: Text(actionLabel!),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

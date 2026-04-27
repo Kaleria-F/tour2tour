@@ -25,6 +25,7 @@ class AccountPage extends StatefulWidget {
 class _AccountPageState extends State<AccountPage> {
   UserMe? _me;
   List<TripSummary> _trips = const [];
+  bool _tripsExpanded = false;
   bool _loading = true;
   bool _loggingOut = false;
   String? _error;
@@ -238,45 +239,75 @@ class _AccountPageState extends State<AccountPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      _sectionTitle('Мои поездки'),
-                      const SizedBox(height: 10),
-                      if (_trips.isEmpty)
-                        TravelCard(
-                          child: Text(
-                            'Пока нет путешествий',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
-                              fontSize: 15,
+                      Row(
+                        children: [
+                          Expanded(child: _sectionTitle('Мои поездки')),
+                          IconButton(
+                            tooltip:
+                                _tripsExpanded ? 'Свернуть' : 'Развернуть',
+                            onPressed: () {
+                              setState(() {
+                                _tripsExpanded = !_tripsExpanded;
+                              });
+                            },
+                            icon: AnimatedRotation(
+                              turns: _tripsExpanded ? 0.5 : 0.0,
+                              duration: const Duration(milliseconds: 180),
+                              child: const Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
-                        )
-                      else
-                        Column(
-                          children: _trips
-                              .map(
-                                (trip) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 10),
-                                  child: _TripRowCard(
-                                    trip: trip,
-                                    formatDate: _formatDate,
-                                    onTap: () {
-                                      context.go(
-                                        '/trip-workspace',
-                                        extra: {
-                                          'id': trip.id,
-                                          'title': trip.title,
-                                          'destination_city':
-                                              trip.destinationCity,
-                                          'start_date': trip.startDate,
-                                          'end_date': trip.endDate,
-                                        },
-                                      );
-                                    },
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      AnimatedCrossFade(
+                        firstCurve: Curves.easeOut,
+                        secondCurve: Curves.easeIn,
+                        duration: const Duration(milliseconds: 220),
+                        crossFadeState: _tripsExpanded
+                            ? CrossFadeState.showFirst
+                            : CrossFadeState.showSecond,
+                        firstChild: _trips.isEmpty
+                            ? TravelCard(
+                                child: Text(
+                                  'Пока нет путешествий',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.7),
+                                    fontSize: 15,
                                   ),
                                 ),
                               )
-                              .toList(),
-                        ),
+                            : Column(
+                                children: _trips
+                                    .map(
+                                      (trip) => Padding(
+                                        padding:
+                                            const EdgeInsets.only(bottom: 10),
+                                        child: _TripRowCard(
+                                          trip: trip,
+                                          formatDate: _formatDate,
+                                          onTap: () {
+                                            context.go(
+                                              '/trip-workspace',
+                                              extra: {
+                                                'id': trip.id,
+                                                'title': trip.title,
+                                                'destination_city':
+                                                    trip.destinationCity,
+                                                'start_date': trip.startDate,
+                                                'end_date': trip.endDate,
+                                              },
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                              ),
+                        secondChild: const SizedBox.shrink(),
+                      ),
                       const SizedBox(height: 8),
                       SizedBox(
                         width: double.infinity,

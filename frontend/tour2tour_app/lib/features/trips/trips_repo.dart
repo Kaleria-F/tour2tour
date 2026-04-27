@@ -64,6 +64,57 @@ class CitySuggestion {
     required this.source,
   });
 
+  static String? _extractText(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is String) {
+      final value = raw.trim();
+      if (value.isEmpty) return null;
+      if (value.startsWith('{') || value.startsWith('[')) return null;
+      return value;
+    }
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw as Map);
+      const keys = [
+        'display_name',
+        'displayName',
+        'fullname',
+        'full_name',
+        'name',
+        'title',
+        'value',
+        'city',
+        'label',
+      ];
+      for (final key in keys) {
+        final value = _extractText(map[key]);
+        if (value != null) return value;
+      }
+      return null;
+    }
+    final value = raw.toString().trim();
+    if (value.isEmpty) return null;
+    if (value.startsWith('{') || value.startsWith('[')) return null;
+    return value;
+  }
+
+  static String? _extractFromDictLikeString(
+    String? raw,
+    List<String> keys,
+  ) {
+    if (raw == null) return null;
+    final source = raw.trim();
+    if (source.isEmpty) return null;
+    for (final key in keys) {
+      final pattern = RegExp("['\\\"]$key['\\\"]\\s*:\\s*['\\\"]([^'\\\"]+)['\\\"]");
+      final match = pattern.firstMatch(source);
+      if (match != null) {
+        final value = match.group(1)?.trim();
+        if (value != null && value.isNotEmpty) return value;
+      }
+    }
+    return null;
+  }
+
   factory CitySuggestion.fromJson(Map<String, dynamic> json) {
     double? parseDouble(dynamic raw) {
       if (raw == null) return null;
@@ -75,21 +126,44 @@ class CitySuggestion {
       return int.tryParse(raw.toString());
     }
 
+    final city = _extractText(json['city']) ?? _extractText(json['name']) ?? '';
+    final regionRaw = json['region'];
+    final region = _extractText(regionRaw) ??
+        _extractText(json['region_name']) ??
+        _extractFromDictLikeString(
+          regionRaw?.toString(),
+          const ['fullname', 'name', 'label', 'title'],
+        );
+
+    final districtRaw = json['district'];
+    final district = _extractText(districtRaw) ??
+        _extractFromDictLikeString(
+          districtRaw?.toString(),
+          const ['name', 'fullname', 'label', 'title'],
+        );
+    final country = _extractText(json['country']) ?? 'Россия';
+    final rawDisplayName = _extractText(json['display_name']);
+    final displayName = rawDisplayName ??
+        [
+          city,
+          if (region != null && region != city) region,
+          country,
+        ].where((item) => item.trim().isNotEmpty).join(', ');
+
     return CitySuggestion(
-      city: (json['city'] ?? '').toString(),
-      region: json['region']?.toString(),
-      district: json['district']?.toString(),
-      country: (json['country'] ?? 'Россия').toString(),
-      displayName: (json['display_name'] ?? json['city'] ?? '').toString(),
+      city: city,
+      region: region,
+      district: district,
+      country: country,
+      displayName: displayName,
       latitude: parseDouble(json['lat']),
       longitude: parseDouble(json['lon']),
       population: parseInt(json['population']),
-      type: json['type']?.toString(),
-      source: (json['source'] ?? '').toString(),
+      type: _extractText(json['type']),
+      source: _extractText(json['source']) ?? '',
     );
   }
 }
-
 class TripExpense {
   final int id;
   final int tripId;
