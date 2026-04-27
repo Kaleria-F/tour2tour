@@ -46,18 +46,127 @@ class _CreateTripPageState extends State<CreateTripPage> {
       lastDate: DateTime(2030),
       initialDateRange: DateTimeRange(start: start, end: end),
       helpText: 'Выберите период поездки',
+      cancelText: 'Отмена',
       saveText: 'ОК',
-      builder: (context, child) {
-        final theme = Theme.of(context);
+      locale: const Locale('ru', 'RU'),
+      switchToInputEntryModeIcon:
+          const Icon(Icons.edit_outlined, color: Color(0xFFD7E37A)),
+      switchToCalendarEntryModeIcon:
+          const Icon(Icons.calendar_month_rounded, color: Color(0xFFD7E37A)),
+      builder: (dialogContext, child) {
+        final theme = Theme.of(dialogContext);
         return Theme(
           data: theme.copyWith(
-            colorScheme: theme.colorScheme.copyWith(
-              primary: const Color(0xFFD7E37A),
-              onPrimary: const Color(0xFF151515),
-              secondary: const Color(0xFFD7E37A),
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFFD7E37A),
+              onPrimary: Color(0xFF161616),
+              surface: Color(0xFF1E1F24),
+              onSurface: Colors.white,
+            ),
+            textTheme: theme.textTheme.apply(
+              fontFamily: 'Geologica',
+              bodyColor: Colors.white,
+              displayColor: Colors.white,
+            ),
+            scaffoldBackgroundColor: const Color(0xFF1E1F24),
+            canvasColor: const Color(0xFF1E1F24),
+            dialogTheme: DialogThemeData(
+              backgroundColor: const Color(0xFF1E1F24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+                side: BorderSide(color: Colors.white.withOpacity(0.08)),
+              ),
+            ),
+            datePickerTheme: DatePickerThemeData(
+              backgroundColor: const Color(0xFF1E1F24),
+              headerBackgroundColor: const Color(0xFF1E1F24),
+              rangePickerBackgroundColor: const Color(0xFF1E1F24),
+              rangePickerHeaderBackgroundColor: const Color(0xFF1E1F24),
+              surfaceTintColor: Colors.transparent,
+              rangePickerSurfaceTintColor: Colors.transparent,
+              rangeSelectionBackgroundColor:
+                  const Color(0xFFD7E37A).withOpacity(0.20),
+              rangeSelectionOverlayColor: WidgetStateProperty.all(
+                const Color(0xFFD7E37A).withOpacity(0.16),
+              ),
+              dayForegroundColor: WidgetStateColor.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return const Color(0xFF161616);
+                }
+                if (states.contains(WidgetState.disabled)) {
+                  return Colors.white.withOpacity(0.38);
+                }
+                return Colors.white;
+              }),
+              dayStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+              dayBackgroundColor: WidgetStateColor.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return const Color(0xFFD7E37A);
+                }
+                return Colors.transparent;
+              }),
+              todayForegroundColor:
+                  WidgetStateProperty.all(const Color(0xFFD7E37A)),
+              todayBackgroundColor:
+                  WidgetStateProperty.all(const Color(0xFF222715)),
+              headerForegroundColor: Colors.white,
+              rangePickerHeaderForegroundColor: Colors.white,
+              headerHeadlineStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 40,
+                fontWeight: FontWeight.w600,
+              ),
+              rangePickerHeaderHeadlineStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 40,
+                fontWeight: FontWeight.w600,
+              ),
+              headerHelpStyle: const TextStyle(
+                color: Color(0xFFAEB7A4),
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+              ),
+              rangePickerHeaderHelpStyle: const TextStyle(
+                color: Color(0xFFAEB7A4),
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+              ),
+              weekdayStyle: TextStyle(
+                color: Colors.white.withOpacity(0.72),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              yearStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+              dividerColor: Colors.white.withOpacity(0.08),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+                side: BorderSide(color: Colors.white.withOpacity(0.08)),
+              ),
+              rangePickerShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+                side: BorderSide(color: Colors.white.withOpacity(0.08)),
+              ),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFD7E37A),
+                textStyle: const TextStyle(
+                  fontFamily: 'Geologica',
+                  fontSize: 33,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
-          child: child!,
+          child: child ?? const SizedBox.shrink(),
         );
       },
     );

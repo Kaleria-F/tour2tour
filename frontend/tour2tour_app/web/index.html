@@ -23,6 +23,7 @@
   <script>
     (function () {
       const API_KEY = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
+      const ROUTER_API_KEY = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
       const CACHE_KEY = 't2t_yandex_geocode_cache_v1';
       const BUDGET_KEY = 't2t_yandex_geocode_budget_v1';
       const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -31,6 +32,15 @@
       const fallbackCenter = [37.617635, 55.755814]; // Moscow fallback
       const mapState = new WeakMap();
       const retryState = new WeakMap();
+      let routerConfigured = false;
+
+      const routeLineStyle = {
+        simplificationRate: 0,
+        stroke: [
+          { width: 6, color: '#D7E37A' },
+          { width: 9, color: '#000000', opacity: 0.28 },
+        ],
+      };
 
       async function ensureYmaps() {
         const maxAttempts = 60;
@@ -43,6 +53,12 @@
           throw new Error('ymaps3 is not loaded after waiting');
         }
         await window.ymaps3.ready;
+        if (!routerConfigured && ROUTER_API_KEY) {
+          try {
+            window.ymaps3.getDefaultConfig().setApikeys({ router: ROUTER_API_KEY });
+            routerConfigured = true;
+          } catch (_) {}
+        }
         return window.ymaps3;
       }
 
@@ -184,15 +200,26 @@
         state.markers = [];
       }
 
+      function clearSearchMarkers(state) {
+        if (!state || !state.map || !Array.isArray(state.searchMarkers)) return;
+        state.searchMarkers.forEach((marker) => {
+          try {
+            state.map.removeChild(marker);
+          } catch (_) {}
+        });
+        state.searchMarkers = [];
+      }
+
       function createMarkerElement(options) {
         const isPrimary = Boolean(options && options.isPrimary);
+        const isSelected = Boolean(options && options.isSelected);
         const label = String((options && options.label) || '').trim();
         const markerElement = document.createElement('div');
         markerElement.style.width = isPrimary ? '18px' : '24px';
         markerElement.style.height = isPrimary ? '18px' : '24px';
         markerElement.style.borderRadius = '50%';
         markerElement.style.background = isPrimary ? '#D7E37A' : '#7EA6FF';
-        markerElement.style.border = '2px solid #151515';
+        markerElement.style.border = isSelected ? '2px solid #ffffff' : '2px solid #151515';
         markerElement.style.boxShadow = isPrimary
           ? '0 0 0 4px rgba(215,227,122,.24)'
           : '0 0 0 3px rgba(126,166,255,.22)';
@@ -208,6 +235,435 @@
           markerElement.textContent = label;
         }
         return markerElement;
+      }
+
+      function createSearchMarkerElement(index) {
+        const markerElement = document.createElement('div');
+        markerElement.style.width = '22px';
+        markerElement.style.height = '22px';
+        markerElement.style.borderRadius = '50%';
+        markerElement.style.background = '#A7E38A';
+        markerElement.style.border = '2px solid #13281a';
+        markerElement.style.boxShadow = '0 0 0 3px rgba(167,227,138,.28)';
+        markerElement.style.display = 'flex';
+        markerElement.style.alignItems = 'center';
+        markerElement.style.justifyContent = 'center';
+        markerElement.style.fontSize = '11px';
+        markerElement.style.fontWeight = '700';
+        markerElement.style.color = '#0F1B14';
+        markerElement.style.fontFamily =
+          '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        markerElement.textContent = String(index + 1);
+        return markerElement;
+      }
+
+      async function geocodeSuggestions(query, results) {
+        const text = String(query || '').trim();
+        if (!text) return [];
+        consumeGeocoderBudget();
+        const url =
+          'https://geocode-maps.yandex.ru/v1/?apikey=' +
+          encodeURIComponent(API_KEY) +
+          '&format=json&results=' +
+          encodeURIComponent(String(Math.max(1, Math.min(Number(results) || 6, 10)))) +
+          '&lang=ru_RU&geocode=' +
+          encodeURIComponent(text);
+
+        const resp = await fetch(url);
+        if (resp.status === 429) {
+          throw makeDailyLimitError();
+        }
+        if (!resp.ok) {
+          throw new Error('Geocoder request failed');
+        }
+        const data = await resp.json();
+        const members =
+          data &&
+          data.response &&
+          data.response.GeoObjectCollection &&
+          data.response.GeoObjectCollection.featureMember;
+
+        if (!Array.isArray(members) || !members.length) return [];
+
+        return members
+          .map((member) => member && member.GeoObject)
+          .filter(Boolean)
+          .map((geoObject) => {
+            const pos = geoObject && geoObject.Point && geoObject.Point.pos;
+            if (!pos) return null;
+            const parts = String(pos).split(' ');
+            if (parts.length !== 2) return null;
+            const lon = Number(parts[0]);
+            const lat = Number(parts[1]);
+            if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+            const title = String((geoObject.name || '').trim());
+            const subtitle = String(
+              (geoObject.description ||
+                (geoObject.metaDataProperty &&
+                  geoObject.metaDataProperty.GeocoderMetaData &&
+                  geoObject.metaDataProperty.GeocoderMetaData.text) ||
+                '')
+                .trim(),
+            );
+            return {
+              title: title || subtitle || text,
+              subtitle: subtitle,
+              coords: [lon, lat],
+            };
+          })
+          .filter(Boolean);
+      }
+
+      function ensureSearchPanel(state) {
+        if (!state || !state.container) return;
+        if (state.searchPanel) return;
+        const panel = document.createElement('div');
+        panel.style.position = 'absolute';
+        panel.style.left = '10px';
+        panel.style.top = '10px';
+        panel.style.maxWidth = 'min(92%, 420px)';
+        panel.style.zIndex = '6';
+        panel.style.pointerEvents = 'auto';
+        panel.style.border = '1px solid rgba(255,255,255,.16)';
+        panel.style.background = 'rgba(15,19,32,.86)';
+        panel.style.backdropFilter = 'blur(2px)';
+        panel.style.borderRadius = '12px';
+        panel.style.padding = '8px';
+        panel.style.color = '#dfe7fb';
+        panel.style.fontFamily =
+          '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        panel.style.fontSize = '12px';
+        panel.style.display = 'none';
+        panel.style.maxHeight = '190px';
+        panel.style.overflowY = 'auto';
+        state.container.appendChild(panel);
+        state.searchPanel = panel;
+      }
+
+      function updateSearchPanel(state, query, items) {
+        if (!state) return;
+        ensureSearchPanel(state);
+        if (!state.searchPanel) return;
+        const q = String(query || '').trim();
+        const list = Array.isArray(items) ? items : [];
+        if (!q || !list.length) {
+          state.searchPanel.style.display = 'none';
+          state.searchPanel.innerHTML = '';
+          return;
+        }
+        state.searchPanel.style.display = 'block';
+        state.searchPanel.innerHTML = '';
+        list.slice(0, 8).forEach((item, idx) => {
+          const row = document.createElement('button');
+          row.type = 'button';
+          row.style.width = '100%';
+          row.style.textAlign = 'left';
+          row.style.border = 'none';
+          row.style.borderBottom = '1px solid rgba(255,255,255,.1)';
+          row.style.background = 'transparent';
+          row.style.cursor = 'pointer';
+          row.style.padding = '8px 6px';
+          row.style.color = '#dfe7fb';
+
+          const title = document.createElement('div');
+          title.style.fontSize = '13px';
+          title.style.fontWeight = '700';
+          title.textContent = `${idx + 1}. ${item.title || 'Объект'}`;
+
+          const subtitle = document.createElement('div');
+          subtitle.style.fontSize = '11px';
+          subtitle.style.opacity = '0.78';
+          subtitle.style.marginTop = '2px';
+          subtitle.textContent = item.subtitle || 'Результат поиска';
+
+          row.appendChild(title);
+          row.appendChild(subtitle);
+          row.addEventListener('click', () => {
+            state.map.update({
+              location: { center: item.coords, zoom: 14, duration: 220 },
+            });
+          });
+          state.searchPanel.appendChild(row);
+        });
+      }
+
+      async function renderSearchResults(state, query) {
+        if (!state || !state.map) return;
+        clearSearchMarkers(state);
+        state.searchResults = [];
+        state.searchError = '';
+        const q = String(query || '').trim();
+        if (!q) {
+          updateSearchPanel(state, '', []);
+          return;
+        }
+        try {
+          const suggestions = await geocodeSuggestions(q, 6);
+          state.searchResults = suggestions;
+          if (!suggestions.length) {
+            updateSearchPanel(state, q, []);
+            return;
+          }
+          suggestions.forEach((item, idx) => {
+            const el = createSearchMarkerElement(idx);
+            el.style.cursor = 'pointer';
+            el.title = item.title || '';
+            el.addEventListener('click', (event) => {
+              event.stopPropagation();
+              state.map.update({
+                location: { center: item.coords, zoom: 14, duration: 220 },
+              });
+            });
+            const marker = new window.ymaps3.YMapMarker(
+              { coordinates: item.coords },
+              el,
+            );
+            state.map.addChild(marker);
+            state.searchMarkers.push(marker);
+          });
+          updateSearchPanel(state, q, suggestions);
+        } catch (error) {
+          if (error && error.code === 'DAILY_LIMIT') {
+            state.searchError = 'Лимит поиска на сегодня исчерпан';
+          } else {
+            state.searchError = 'Поиск сейчас недоступен';
+          }
+          updateSearchPanel(state, '', []);
+        }
+      }
+
+      function getDistanceMeters(route) {
+        const p = (route && route.properties) || {};
+        return (
+          p.distance?.value ??
+          p.distance?.meters ??
+          p.distance ??
+          p.length?.value ??
+          p.length ??
+          p.weight?.distance ??
+          null
+        );
+      }
+
+      function getDurationSeconds(route) {
+        const p = (route && route.properties) || {};
+        return (
+          p.duration?.value ??
+          p.duration?.seconds ??
+          p.time?.value ??
+          p.time ??
+          p.duration ??
+          p.weight?.time ??
+          null
+        );
+      }
+
+      function formatDistance(meters) {
+        const value = Number(meters);
+        if (!Number.isFinite(value) || value <= 0) return '—';
+        if (value >= 1000) return `${(value / 1000).toFixed(1)} км`;
+        return `${Math.round(value)} м`;
+      }
+
+      function formatDuration(seconds) {
+        const value = Number(seconds);
+        if (!Number.isFinite(value) || value <= 0) return '—';
+        const totalMinutes = Math.round(value / 60);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        if (hours <= 0) return `${minutes} мин`;
+        if (minutes === 0) return `${hours} ч`;
+        return `${hours} ч ${minutes} мин`;
+      }
+
+      function clearRoute(state) {
+        if (!state || !state.map) return;
+        if (state.routeFeature) {
+          try {
+            state.map.removeChild(state.routeFeature);
+          } catch (_) {}
+          state.routeFeature = null;
+        }
+        state.routeInfo = null;
+      }
+
+      function ensureRoutePanel(state) {
+        if (!state || !state.container) return;
+        if (state.routePanel) return;
+        const panel = document.createElement('div');
+        panel.style.position = 'absolute';
+        panel.style.left = '10px';
+        panel.style.right = '10px';
+        panel.style.bottom = '10px';
+        panel.style.zIndex = '6';
+        panel.style.pointerEvents = 'auto';
+        panel.style.border = '1px solid rgba(255,255,255,.18)';
+        panel.style.background = 'rgba(19,24,41,.88)';
+        panel.style.backdropFilter = 'blur(3px)';
+        panel.style.borderRadius = '12px';
+        panel.style.padding = '8px';
+        panel.style.color = '#dfe7fb';
+        panel.style.fontFamily =
+          '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        panel.style.fontSize = '12px';
+
+        const controls = document.createElement('div');
+        controls.style.display = 'flex';
+        controls.style.flexWrap = 'wrap';
+        controls.style.gap = '6px';
+        controls.style.marginBottom = '8px';
+
+        const modes = [
+          { key: 'driving', title: 'Авто' },
+          { key: 'pedestrian', title: 'Пешком' },
+          { key: 'transit', title: 'ОТ' },
+          { key: 'bicycle', title: 'Вело' },
+        ];
+
+        modes.forEach((mode) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.dataset.routeMode = mode.key;
+          btn.textContent = mode.title;
+          btn.style.border = '1px solid rgba(255,255,255,.2)';
+          btn.style.borderRadius = '999px';
+          btn.style.padding = '5px 10px';
+          btn.style.cursor = 'pointer';
+          btn.style.fontSize = '12px';
+          btn.style.color = '#dfe7fb';
+          btn.style.background = 'rgba(255,255,255,.08)';
+          btn.addEventListener('click', () => {
+            state.routeType = mode.key;
+            refreshRoutePanel(state);
+            if (state.selectedPoints.length === 2) {
+              buildRoute(state);
+            }
+          });
+          controls.appendChild(btn);
+        });
+
+        const info = document.createElement('div');
+        info.dataset.routeInfo = '1';
+        info.style.fontSize = '12px';
+        info.style.lineHeight = '1.35';
+        info.style.color = '#c9d3eb';
+        info.textContent = 'Выберите 2 точки на карте для маршрута';
+
+        panel.appendChild(controls);
+        panel.appendChild(info);
+        state.container.appendChild(panel);
+        state.routePanel = panel;
+      }
+
+      function refreshRoutePanel(state) {
+        if (!state || !state.routePanel) return;
+        const buttons = state.routePanel.querySelectorAll('button[data-route-mode]');
+        buttons.forEach((button) => {
+          const active = button.dataset.routeMode === state.routeType;
+          button.style.background = active ? 'rgba(215,227,122,.22)' : 'rgba(255,255,255,.08)';
+          button.style.borderColor = active ? 'rgba(215,227,122,.62)' : 'rgba(255,255,255,.2)';
+          button.style.color = active ? '#e8f2b5' : '#dfe7fb';
+        });
+        const info = state.routePanel.querySelector('div[data-route-info]');
+        if (!info) return;
+        if (state.routeError) {
+          info.textContent = state.routeError;
+          info.style.color = '#f2b0a3';
+          return;
+        }
+        if (state.routeInfo) {
+          const d = formatDistance(state.routeInfo.distanceMeters);
+          const t = formatDuration(state.routeInfo.durationSeconds);
+          info.textContent = `Маршрут: ${t} • ${d}`;
+          info.style.color = '#cfe3b5';
+          return;
+        }
+        if (state.selectedPoints.length === 0) {
+          info.textContent = 'Выберите 2 точки на карте для маршрута';
+        } else if (state.selectedPoints.length === 1) {
+          info.textContent = 'Выберите вторую точку';
+        } else {
+          info.textContent = 'Строим маршрут...';
+        }
+        info.style.color = '#c9d3eb';
+      }
+
+      function updateMarkerSelections(state) {
+        if (!state || !Array.isArray(state.markersMeta)) return;
+        state.markersMeta.forEach((meta, index) => {
+          const selected = state.selectedPoints.includes(index);
+          if (meta && meta.element) {
+            meta.element.style.border = selected ? '2px solid #ffffff' : '2px solid #151515';
+          }
+        });
+      }
+
+      async function buildRoute(state) {
+        if (!state || state.selectedPoints.length !== 2) return;
+        const [firstIdx, secondIdx] = state.selectedPoints;
+        const first = state.points[firstIdx];
+        const second = state.points[secondIdx];
+        if (!first || !second) return;
+        clearRoute(state);
+        state.routeError = '';
+        refreshRoutePanel(state);
+        try {
+          const ymaps3 = await ensureYmaps();
+          const routes = await ymaps3.route({
+            points: [first.coords, second.coords],
+            type: state.routeType || 'driving',
+            bounds: true,
+          });
+          if (!routes || !routes[0]) {
+            throw new Error('ROUTE_NOT_FOUND');
+          }
+          const route = routes[0].toRoute();
+          if (!route || !route.geometry || !route.geometry.coordinates?.length) {
+            throw new Error('ROUTE_NOT_FOUND');
+          }
+          const featureData = { ...route, style: routeLineStyle };
+          const routeFeature = new ymaps3.YMapFeature(featureData);
+          state.map.addChild(routeFeature);
+          state.routeFeature = routeFeature;
+          state.routeInfo = {
+            distanceMeters: getDistanceMeters(route),
+            durationSeconds: getDurationSeconds(route),
+          };
+          state.map.update({
+            location: { bounds: routes[0].bounds, duration: 300 },
+          });
+        } catch (error) {
+          const message =
+            String(error && error.message || '').includes('apikey') ||
+            String(error && error.message || '').includes('router')
+              ? 'Нужен активный Router API ключ Яндекс Карт'
+              : 'Маршрут построить не удалось';
+          state.routeError = message;
+          state.routeInfo = null;
+        }
+        refreshRoutePanel(state);
+      }
+
+      function onMarkerClick(state, markerIndex) {
+        if (!state) return;
+        const alreadySelected = state.selectedPoints.indexOf(markerIndex);
+        if (alreadySelected >= 0) {
+          state.selectedPoints.splice(alreadySelected, 1);
+          clearRoute(state);
+        } else if (state.selectedPoints.length < 2) {
+          state.selectedPoints.push(markerIndex);
+        } else {
+          state.selectedPoints = [markerIndex];
+          clearRoute(state);
+        }
+        state.routeError = '';
+        updateMarkerSelections(state);
+        if (state.selectedPoints.length === 2) {
+          buildRoute(state);
+        } else {
+          state.routeInfo = null;
+          refreshRoutePanel(state);
+        }
       }
 
       function averageCenter(points) {
@@ -302,34 +758,75 @@
 
         if (!state) {
           container.innerHTML = '';
+          container.style.position = 'relative';
           const center = averageCenter(points);
           const map = new YMap(container, {
             location: { center: center, zoom: 11 },
           });
           map.addChild(new YMapDefaultSchemeLayer());
           map.addChild(new YMapDefaultFeaturesLayer());
-          state = { map: map, markers: [] };
+          state = {
+            map: map,
+            container: container,
+            markers: [],
+            searchMarkers: [],
+            markersMeta: [],
+            points: [],
+            selectedPoints: [],
+            routeType: 'driving',
+            routeFeature: null,
+            routeInfo: null,
+            routeError: '',
+            routePanel: null,
+            searchPanel: null,
+            searchResults: [],
+            searchError: '',
+          };
           mapState.set(container, state);
+          ensureRoutePanel(state);
+          ensureSearchPanel(state);
         }
 
         clearMarkers(state);
+        clearRoute(state);
+        clearSearchMarkers(state);
+        state.points = points;
+        state.markersMeta = [];
+        state.selectedPoints = [];
+        state.routeError = '';
+        state.routeInfo = null;
+        ensureRoutePanel(state);
         const center = averageCenter(points);
         const zoom = points.length > 1 ? 10 : 12;
         state.map.update({
           location: { center: center, zoom: zoom, duration: 300 },
         });
 
-        points.forEach((point) => {
+        points.forEach((point, pointIndex) => {
+          const markerElement = createMarkerElement({
+            isPrimary: point.isPrimary,
+            label: point.isPrimary ? '' : String(point.markerOrder || ''),
+            isSelected: false,
+          });
+          markerElement.style.cursor = 'pointer';
+          markerElement.title = point.title || '';
+          markerElement.addEventListener('click', (event) => {
+            event.stopPropagation();
+            onMarkerClick(state, pointIndex);
+          });
           const marker = new YMapMarker(
             { coordinates: point.coords },
-            createMarkerElement({
-              isPrimary: point.isPrimary,
-              label: point.isPrimary ? '' : String(point.markerOrder || ''),
-            }),
+            markerElement,
           );
           state.map.addChild(marker);
           state.markers.push(marker);
+          state.markersMeta.push({
+            isPrimary: point.isPrimary,
+            element: markerElement,
+          });
         });
+        await renderSearchResults(state, focusQuery);
+        refreshRoutePanel(state);
       }
 
       async function syncContainer(container) {
