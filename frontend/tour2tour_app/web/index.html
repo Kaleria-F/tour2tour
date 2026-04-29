@@ -32,6 +32,7 @@
       const fallbackCenter = [37.617635, 55.755814]; // Moscow fallback
       const mapState = new WeakMap();
       const retryState = new WeakMap();
+      const syncQueue = new WeakMap();
       let routerConfigured = false;
 
       const routeLineStyle = {
@@ -200,14 +201,68 @@
         state.markers = [];
       }
 
-      function clearSearchMarkers(state) {
-        if (!state || !state.map || !Array.isArray(state.searchMarkers)) return;
-        state.searchMarkers.forEach((marker) => {
-          try {
-            state.map.removeChild(marker);
-          } catch (_) {}
+      function clearSelectedSuggestionMarker(state) {
+        if (!state || !state.map || !state.selectedSuggestionMarker) return;
+        try {
+          state.map.removeChild(state.selectedSuggestionMarker);
+        } catch (_) {}
+        state.selectedSuggestionMarker = null;
+      }
+
+      function hideAddRouteButton(state) {
+        if (!state || !state.addRouteButton) return;
+        state.addRouteButton.style.display = 'none';
+        state.addRouteButton.dataset.address = '';
+      }
+
+      function ensureAddRouteButton(state) {
+        if (!state || !state.container) return null;
+        if (state.addRouteButton) return state.addRouteButton;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = 'Добавить в маршрут';
+        button.style.position = 'absolute';
+        button.style.right = '12px';
+        button.style.bottom = '78px';
+        button.style.zIndex = '7';
+        button.style.display = 'none';
+        button.style.pointerEvents = 'auto';
+        button.style.border = '1px solid rgba(255,255,255,.24)';
+        button.style.borderRadius = '999px';
+        button.style.padding = '9px 14px';
+        button.style.background = 'rgba(19,24,41,.92)';
+        button.style.color = '#D7E37A';
+        button.style.fontSize = '13px';
+        button.style.fontWeight = '700';
+        button.style.cursor = 'pointer';
+        button.style.boxShadow = '0 6px 18px rgba(0,0,0,.28)';
+        button.style.fontFamily =
+          '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        button.addEventListener('click', () => {
+          const address = String(button.dataset.address || '').trim();
+          if (!address) return;
+          state.container.dispatchEvent(
+            new CustomEvent('t2t-add-route-from-search', {
+              detail: { address },
+            }),
+          );
         });
-        state.searchMarkers = [];
+        state.container.appendChild(button);
+        state.addRouteButton = button;
+        return button;
+      }
+
+      function showAddRouteButton(state, address) {
+        const button = ensureAddRouteButton(state);
+        if (!button) return;
+        const cleanAddress = String(address || '').trim();
+        if (!cleanAddress) {
+          hideAddRouteButton(state);
+          return;
+        }
+        button.dataset.address = cleanAddress;
+        button.style.display = 'inline-flex';
+        button.style.alignItems = 'center';
       }
 
       function createMarkerElement(options) {
@@ -237,200 +292,47 @@
         return markerElement;
       }
 
-      function createSearchMarkerElement(index) {
+      function createSelectedSuggestionMarkerElement() {
         const markerElement = document.createElement('div');
         markerElement.style.width = '22px';
         markerElement.style.height = '22px';
         markerElement.style.borderRadius = '50%';
-        markerElement.style.background = '#A7E38A';
-        markerElement.style.border = '2px solid #13281a';
-        markerElement.style.boxShadow = '0 0 0 3px rgba(167,227,138,.28)';
-        markerElement.style.display = 'flex';
-        markerElement.style.alignItems = 'center';
-        markerElement.style.justifyContent = 'center';
-        markerElement.style.fontSize = '11px';
-        markerElement.style.fontWeight = '700';
-        markerElement.style.color = '#0F1B14';
-        markerElement.style.fontFamily =
-          '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-        markerElement.textContent = String(index + 1);
+        markerElement.style.background = '#88e27e';
+        markerElement.style.border = '2px solid #173117';
+        markerElement.style.boxShadow = '0 0 0 4px rgba(136,226,126,.25)';
         return markerElement;
       }
 
-      async function geocodeSuggestions(query, results) {
+      async function renderAddressSearchMarker(state, query, contextCity) {
+        if (!state || !state.map) return;
+        clearSelectedSuggestionMarker(state);
         const text = String(query || '').trim();
-        if (!text) return [];
-        consumeGeocoderBudget();
-        const url =
-          'https://geocode-maps.yandex.ru/v1/?apikey=' +
-          encodeURIComponent(API_KEY) +
-          '&format=json&results=' +
-          encodeURIComponent(String(Math.max(1, Math.min(Number(results) || 6, 10)))) +
-          '&lang=ru_RU&geocode=' +
-          encodeURIComponent(text);
-
-        const resp = await fetch(url);
-        if (resp.status === 429) {
-          throw makeDailyLimitError();
-        }
-        if (!resp.ok) {
-          throw new Error('Geocoder request failed');
-        }
-        const data = await resp.json();
-        const members =
-          data &&
-          data.response &&
-          data.response.GeoObjectCollection &&
-          data.response.GeoObjectCollection.featureMember;
-
-        if (!Array.isArray(members) || !members.length) return [];
-
-        return members
-          .map((member) => member && member.GeoObject)
-          .filter(Boolean)
-          .map((geoObject) => {
-            const pos = geoObject && geoObject.Point && geoObject.Point.pos;
-            if (!pos) return null;
-            const parts = String(pos).split(' ');
-            if (parts.length !== 2) return null;
-            const lon = Number(parts[0]);
-            const lat = Number(parts[1]);
-            if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
-            const title = String((geoObject.name || '').trim());
-            const subtitle = String(
-              (geoObject.description ||
-                (geoObject.metaDataProperty &&
-                  geoObject.metaDataProperty.GeocoderMetaData &&
-                  geoObject.metaDataProperty.GeocoderMetaData.text) ||
-                '')
-                .trim(),
-            );
-            return {
-              title: title || subtitle || text,
-              subtitle: subtitle,
-              coords: [lon, lat],
-            };
-          })
-          .filter(Boolean);
-      }
-
-      function ensureSearchPanel(state) {
-        if (!state || !state.container) return;
-        if (state.searchPanel) return;
-        const panel = document.createElement('div');
-        panel.style.position = 'absolute';
-        panel.style.left = '10px';
-        panel.style.top = '10px';
-        panel.style.maxWidth = 'min(92%, 420px)';
-        panel.style.zIndex = '6';
-        panel.style.pointerEvents = 'auto';
-        panel.style.border = '1px solid rgba(255,255,255,.16)';
-        panel.style.background = 'rgba(15,19,32,.86)';
-        panel.style.backdropFilter = 'blur(2px)';
-        panel.style.borderRadius = '12px';
-        panel.style.padding = '8px';
-        panel.style.color = '#dfe7fb';
-        panel.style.fontFamily =
-          '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-        panel.style.fontSize = '12px';
-        panel.style.display = 'none';
-        panel.style.maxHeight = '190px';
-        panel.style.overflowY = 'auto';
-        state.container.appendChild(panel);
-        state.searchPanel = panel;
-      }
-
-      function updateSearchPanel(state, query, items) {
-        if (!state) return;
-        ensureSearchPanel(state);
-        if (!state.searchPanel) return;
-        const q = String(query || '').trim();
-        const list = Array.isArray(items) ? items : [];
-        if (!q || !list.length) {
-          state.searchPanel.style.display = 'none';
-          state.searchPanel.innerHTML = '';
+        const city = String(contextCity || '').trim();
+        if (!text) {
+          hideAddRouteButton(state);
           return;
         }
-        state.searchPanel.style.display = 'block';
-        state.searchPanel.innerHTML = '';
-        list.slice(0, 8).forEach((item, idx) => {
-          const row = document.createElement('button');
-          row.type = 'button';
-          row.style.width = '100%';
-          row.style.textAlign = 'left';
-          row.style.border = 'none';
-          row.style.borderBottom = '1px solid rgba(255,255,255,.1)';
-          row.style.background = 'transparent';
-          row.style.cursor = 'pointer';
-          row.style.padding = '8px 6px';
-          row.style.color = '#dfe7fb';
-
-          const title = document.createElement('div');
-          title.style.fontSize = '13px';
-          title.style.fontWeight = '700';
-          title.textContent = `${idx + 1}. ${item.title || 'Объект'}`;
-
-          const subtitle = document.createElement('div');
-          subtitle.style.fontSize = '11px';
-          subtitle.style.opacity = '0.78';
-          subtitle.style.marginTop = '2px';
-          subtitle.textContent = item.subtitle || 'Результат поиска';
-
-          row.appendChild(title);
-          row.appendChild(subtitle);
-          row.addEventListener('click', () => {
-            state.map.update({
-              location: { center: item.coords, zoom: 14, duration: 220 },
-            });
-          });
-          state.searchPanel.appendChild(row);
+        const searchText =
+          city && !text.toLowerCase().includes(city.toLowerCase())
+            ? `${text}, ${city}`
+            : text;
+        const coords = await geocodeCity(searchText);
+        if (!coords) {
+          hideAddRouteButton(state);
+          return;
+        }
+        const marker = new window.ymaps3.YMapMarker(
+          { coordinates: coords },
+          createSelectedSuggestionMarkerElement(),
+        );
+        state.map.addChild(marker);
+        state.selectedSuggestionMarker = marker;
+        showAddRouteButton(state, searchText);
+        state.map.update({
+          location: { center: coords, zoom: 15, duration: 220 },
         });
       }
 
-      async function renderSearchResults(state, query) {
-        if (!state || !state.map) return;
-        clearSearchMarkers(state);
-        state.searchResults = [];
-        state.searchError = '';
-        const q = String(query || '').trim();
-        if (!q) {
-          updateSearchPanel(state, '', []);
-          return;
-        }
-        try {
-          const suggestions = await geocodeSuggestions(q, 6);
-          state.searchResults = suggestions;
-          if (!suggestions.length) {
-            updateSearchPanel(state, q, []);
-            return;
-          }
-          suggestions.forEach((item, idx) => {
-            const el = createSearchMarkerElement(idx);
-            el.style.cursor = 'pointer';
-            el.title = item.title || '';
-            el.addEventListener('click', (event) => {
-              event.stopPropagation();
-              state.map.update({
-                location: { center: item.coords, zoom: 14, duration: 220 },
-              });
-            });
-            const marker = new window.ymaps3.YMapMarker(
-              { coordinates: item.coords },
-              el,
-            );
-            state.map.addChild(marker);
-            state.searchMarkers.push(marker);
-          });
-          updateSearchPanel(state, q, suggestions);
-        } catch (error) {
-          if (error && error.code === 'DAILY_LIMIT') {
-            state.searchError = 'Лимит поиска на сегодня исчерпан';
-          } else {
-            state.searchError = 'Поиск сейчас недоступен';
-          }
-          updateSearchPanel(state, '', []);
-        }
-      }
 
       function getDistanceMeters(route) {
         const p = (route && route.properties) || {};
@@ -689,7 +591,7 @@
         const delay = RETRY_DELAYS_MS[attempt];
         retryState.set(container, attempt + 1);
         window.setTimeout(() => {
-          syncContainer(container);
+          enqueueSync(container);
         }, delay);
         return true;
       }
@@ -708,16 +610,23 @@
           if (button) {
             button.addEventListener('click', () => {
               resetRetry(container);
-              syncContainer(container);
+              enqueueSync(container);
             });
           }
         }
       }
 
-      async function renderCityMap(container, city, stagePoints) {
+      async function renderCityMap(container, city, searchQuery, stagePoints) {
         if (!container) return;
+        if (!container.isConnected) {
+          throw new Error('Map container is not connected to DOM');
+        }
+        if (container.clientWidth <= 0 || container.clientHeight <= 0) {
+          throw new Error('Map container has zero size');
+        }
         const ymaps3 = await ensureYmaps();
         const focusQuery = String(city || '').trim();
+        const searchText = String(searchQuery || '').trim();
         const points = [];
         let orderCounter = 1;
 
@@ -769,7 +678,6 @@
             map: map,
             container: container,
             markers: [],
-            searchMarkers: [],
             markersMeta: [],
             points: [],
             selectedPoints: [],
@@ -778,18 +686,17 @@
             routeInfo: null,
             routeError: '',
             routePanel: null,
-            searchPanel: null,
-            searchResults: [],
-            searchError: '',
+            selectedSuggestionMarker: null,
+            addRouteButton: null,
           };
           mapState.set(container, state);
           ensureRoutePanel(state);
-          ensureSearchPanel(state);
+          ensureAddRouteButton(state);
         }
 
         clearMarkers(state);
         clearRoute(state);
-        clearSearchMarkers(state);
+        clearSelectedSuggestionMarker(state);
         state.points = points;
         state.markersMeta = [];
         state.selectedPoints = [];
@@ -825,7 +732,7 @@
             element: markerElement,
           });
         });
-        await renderSearchResults(state, focusQuery);
+        await renderAddressSearchMarker(state, searchText, city);
         refreshRoutePanel(state);
       }
 
@@ -833,7 +740,18 @@
         if (!container || !container.classList || !container.classList.contains('t2t-yandex-city-map')) {
           return;
         }
+        if (!container.isConnected) {
+          return;
+        }
+        if (container.clientWidth <= 0 || container.clientHeight <= 0) {
+          const willRetry = scheduleRetry(container);
+          if (!willRetry) {
+            renderPlaceholder(container, 'Карта временно недоступна', true);
+          }
+          return;
+        }
         const city = (container.getAttribute('data-city') || '').trim();
+        const searchQuery = (container.getAttribute('data-search-query') || '').trim();
         const stagePoints = parseStagePoints(container);
         if (!city && !stagePoints.length) {
           resetRetry(container);
@@ -842,10 +760,14 @@
           return;
         }
         try {
-          await renderCityMap(container, city, stagePoints);
+          await renderCityMap(container, city, searchQuery, stagePoints);
           resetRetry(container);
         } catch (error) {
-          console.error('Yandex map render failed:', error);
+          const errMessage =
+            (error && error.message) ||
+            (typeof error === 'string' ? error : null) ||
+            'unknown error';
+          console.error('Yandex map render failed:', errMessage, error);
           mapState.delete(container);
           if (error && error.code === 'DAILY_LIMIT') {
             resetRetry(container);
@@ -861,6 +783,13 @@
             renderPlaceholder(container, 'Адрес не найден', true);
             return;
           }
+          if (error && error.message === 'Map container has zero size') {
+            const willRetryOnSize = scheduleRetry(container);
+            if (!willRetryOnSize) {
+              renderPlaceholder(container, 'Карта временно недоступна', true);
+            }
+            return;
+          }
           const willRetry = scheduleRetry(container);
           renderPlaceholder(
             container,
@@ -870,22 +799,32 @@
         }
       }
 
+      function enqueueSync(container) {
+        if (!container) return;
+        const previous = syncQueue.get(container) || Promise.resolve();
+        const next = previous
+          .catch(() => {})
+          .then(() => syncContainer(container))
+          .catch(() => {});
+        syncQueue.set(container, next);
+      }
+
       const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
           if (mutation.type === 'attributes') {
-            syncContainer(mutation.target);
+            enqueueSync(mutation.target);
             continue;
           }
           if (mutation.type === 'childList') {
             mutation.addedNodes.forEach((node) => {
               if (!(node instanceof HTMLElement)) return;
               if (node.classList && node.classList.contains('t2t-yandex-city-map')) {
-                syncContainer(node);
+                enqueueSync(node);
               }
               if (node.querySelectorAll) {
                 node
                   .querySelectorAll('.t2t-yandex-city-map')
-                  .forEach((el) => syncContainer(el));
+                  .forEach((el) => enqueueSync(el));
               }
             });
           }
@@ -895,18 +834,18 @@
       document.addEventListener('DOMContentLoaded', () => {
         document
           .querySelectorAll('.t2t-yandex-city-map')
-          .forEach((el) => syncContainer(el));
+          .forEach((el) => enqueueSync(el));
       });
 
       document.addEventListener('t2t-city-change', (event) => {
-        syncContainer(event.target);
+        enqueueSync(event.target);
       });
 
       observer.observe(document.documentElement, {
         subtree: true,
         childList: true,
         attributes: true,
-        attributeFilter: ['data-city', 'data-stage-points'],
+        attributeFilter: ['data-city', 'data-search-query', 'data-stage-points'],
       });
 
       window.t2tMap = { renderCityMap };

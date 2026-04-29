@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:ui_web' as ui_web;
 
@@ -8,15 +8,11 @@ int _mapViewCounter = 0;
 
 class YandexCityMap extends StatefulWidget {
   final String? city;
-  final String? searchQuery;
-  final ValueChanged<String>? onAddRouteFromSearch;
   final List<Map<String, String>> stagePoints;
 
   const YandexCityMap({
     super.key,
     required this.city,
-    this.searchQuery,
-    this.onAddRouteFromSearch,
     this.stagePoints = const [],
   });
 
@@ -28,9 +24,7 @@ class _YandexCityMapState extends State<YandexCityMap> {
   late final String _viewType;
   late final html.DivElement _container;
   String? _lastCity;
-  String? _lastSearchQuery;
   String? _lastPointsJson;
-  html.EventListener? _addRouteListener;
 
   @override
   void initState() {
@@ -44,24 +38,6 @@ class _YandexCityMapState extends State<YandexCityMap> {
       ..style.overflow = 'hidden'
       ..style.backgroundColor = '#131a2d';
     _container.classes.add('t2t-yandex-city-map');
-    _addRouteListener = (event) {
-      if (widget.onAddRouteFromSearch == null) return;
-      if (event is! html.CustomEvent) return;
-      final detail = event.detail;
-      String? address;
-      if (detail is Map) {
-        final raw = detail['address'];
-        if (raw is String) address = raw.trim();
-      } else if (detail is String) {
-        address = detail.trim();
-      }
-      if (address == null || address.isEmpty) return;
-      widget.onAddRouteFromSearch!(address);
-    };
-    _container.addEventListener(
-      't2t-add-route-from-search',
-      _addRouteListener,
-    );
 
     ui_web.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
       return _container;
@@ -75,11 +51,9 @@ class _YandexCityMapState extends State<YandexCityMap> {
     super.didUpdateWidget(oldWidget);
     final oldCity = (oldWidget.city ?? '').trim();
     final newCity = (widget.city ?? '').trim();
-    final oldSearch = (oldWidget.searchQuery ?? '').trim();
-    final newSearch = (widget.searchQuery ?? '').trim();
     final oldPoints = jsonEncode(oldWidget.stagePoints);
     final newPoints = jsonEncode(widget.stagePoints);
-    if (oldCity != newCity || oldSearch != newSearch || oldPoints != newPoints) {
+    if (oldCity != newCity || oldPoints != newPoints) {
       _syncCityAttribute();
     }
   }
@@ -91,13 +65,6 @@ class _YandexCityMapState extends State<YandexCityMap> {
     } else {
       _lastCity = city;
       _container.setAttribute('data-city', city);
-    }
-    final searchQuery = (widget.searchQuery ?? '').trim();
-    if (searchQuery.isEmpty) {
-      _container.attributes.remove('data-search-query');
-    } else if (_lastSearchQuery != searchQuery) {
-      _lastSearchQuery = searchQuery;
-      _container.setAttribute('data-search-query', searchQuery);
     }
     final points = widget.stagePoints
         .map((point) => {
@@ -113,17 +80,6 @@ class _YandexCityMapState extends State<YandexCityMap> {
       _container.setAttribute('data-stage-points', pointsJson);
     }
     _container.dispatchEvent(html.CustomEvent('t2t-city-change'));
-  }
-
-  @override
-  void dispose() {
-    if (_addRouteListener != null) {
-      _container.removeEventListener(
-        't2t-add-route-from-search',
-        _addRouteListener,
-      );
-    }
-    super.dispose();
   }
 
   @override

@@ -1,0 +1,434 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+  <script src="https://api-maps.yandex.ru/v3/?apikey=acf6e354-8f9c-4163-9d37-54bf33ee956b&lang=ru_RU"></script>
+  <script>
+    (function () {
+      const API_KEY = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
+      const CACHE_KEY = 't2t_yandex_geocode_cache_v1';
+      const BUDGET_KEY = 't2t_yandex_geocode_budget_v1';
+      const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+      const GEOCODER_DAILY_LIMIT = 1000;
+      const RETRY_DELAYS_MS = [500, 1200, 2500];
+      const fallbackCenter = [37.617635, 55.755814]; // Moscow fallback
+      const mapState = new WeakMap();
+      const retryState = new WeakMap();
+
+      async function ensureYmaps() {
+        const maxAttempts = 60;
+        let attempt = 0;
+        while (!window.ymaps3 && attempt < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          attempt += 1;
+        }
+        if (!window.ymaps3) {
+          throw new Error('ymaps3 is not loaded after waiting');
+        }
+        await window.ymaps3.ready;
+        return window.ymaps3;
+      }
+
+      function readJson(key, fallbackValue) {
+        try {
+          const raw = window.localStorage.getItem(key);
+          if (!raw) return fallbackValue;
+          return JSON.parse(raw);
+        } catch (_) {
+          return fallbackValue;
+        }
+      }
+
+      function writeJson(key, value) {
+        try {
+          window.localStorage.setItem(key, JSON.stringify(value));
+        } catch (_) {}
+      }
+
+      function todayKey() {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+
+      function makeDailyLimitError() {
+        const err = new Error('Daily geocoder limit reached');
+        err.code = 'DAILY_LIMIT';
+        return err;
+      }
+
+      function consumeGeocoderBudget() {
+        const key = todayKey();
+        const budget = readJson(BUDGET_KEY, { date: key, count: 0 });
+        const current = budget && budget.date === key ? budget : { date: key, count: 0 };
+        if ((current.count || 0) >= GEOCODER_DAILY_LIMIT) {
+          throw makeDailyLimitError();
+        }
+        current.count = (current.count || 0) + 1;
+        writeJson(BUDGET_KEY, current);
+      }
+
+      function normalizeQuery(value) {
+        return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      }
+
+      function getCachedCoordinates(query) {
+        const norm = normalizeQuery(query);
+        if (!norm) return null;
+        const cache = readJson(CACHE_KEY, {});
+        const row = cache[norm];
+        if (!row || !Array.isArray(row.coords) || row.coords.length !== 2) {
+          return null;
+        }
+        if (!row.ts || Date.now() - Number(row.ts) > CACHE_TTL_MS) {
+          delete cache[norm];
+          writeJson(CACHE_KEY, cache);
+          return null;
+        }
+        return row.coords;
+      }
+
+      function setCachedCoordinates(query, coords) {
+        const norm = normalizeQuery(query);
+        if (!norm || !Array.isArray(coords) || coords.length !== 2) return;
+        const cache = readJson(CACHE_KEY, {});
+        cache[norm] = { coords: coords, ts: Date.now() };
+        writeJson(CACHE_KEY, cache);
+      }
+
+      async function geocodeCity(city) {
+        const query = String(city || '').trim();
+        if (!query) return null;
+        const cached = getCachedCoordinates(query);
+        if (cached) return cached;
+
+        consumeGeocoderBudget();
+        const url =
+          'https://geocode-maps.yandex.ru/v1/?apikey=' +
+          encodeURIComponent(API_KEY) +
+          '&format=json&results=1&lang=ru_RU&geocode=' +
+          encodeURIComponent(query);
+
+        const resp = await fetch(url);
+        if (resp.status === 429) {
+          throw makeDailyLimitError();
+        }
+        if (!resp.ok) {
+          throw new Error('Geocoder request failed');
+        }
+        const data = await resp.json();
+        const pos =
+          data &&
+          data.response &&
+          data.response.GeoObjectCollection &&
+          data.response.GeoObjectCollection.featureMember &&
+          data.response.GeoObjectCollection.featureMember[0] &&
+          data.response.GeoObjectCollection.featureMember[0].GeoObject &&
+          data.response.GeoObjectCollection.featureMember[0].GeoObject.Point &&
+          data.response.GeoObjectCollection.featureMember[0].GeoObject.Point.pos;
+
+        if (!pos) return null;
+        const parts = pos.split(' ');
+        if (parts.length !== 2) return null;
+        const lon = Number(parts[0]);
+        const lat = Number(parts[1]);
+        if (Number.isNaN(lon) || Number.isNaN(lat)) return null;
+        const result = [lon, lat];
+        setCachedCoordinates(query, result);
+        return result;
+      }
+
+      function parseStagePoints(container) {
+        try {
+          const raw = container.getAttribute('data-stage-points') || '[]';
+          const points = JSON.parse(raw);
+          if (!Array.isArray(points)) return [];
+          return points
+            .map((point) => ({
+              title: String((point && point.title) || '').trim(),
+              address: String((point && point.address) || '').trim(),
+              order: String((point && point.order) || '').trim(),
+            }))
+            .filter((point) => normalizeQuery(point.address).length > 0);
+        } catch (_) {
+          return [];
+        }
+      }
+
+      function clearMarkers(state) {
+        if (!state || !state.map || !Array.isArray(state.markers)) return;
+        state.markers.forEach((marker) => {
+          try {
+            state.map.removeChild(marker);
+          } catch (_) {}
+        });
+        state.markers = [];
+      }
+
+      function createMarkerElement(options) {
+        const isPrimary = Boolean(options && options.isPrimary);
+        const label = String((options && options.label) || '').trim();
+        const markerElement = document.createElement('div');
+        markerElement.style.width = isPrimary ? '18px' : '24px';
+        markerElement.style.height = isPrimary ? '18px' : '24px';
+        markerElement.style.borderRadius = '50%';
+        markerElement.style.background = isPrimary ? '#D7E37A' : '#7EA6FF';
+        markerElement.style.border = '2px solid #151515';
+        markerElement.style.boxShadow = isPrimary
+          ? '0 0 0 4px rgba(215,227,122,.24)'
+          : '0 0 0 3px rgba(126,166,255,.22)';
+        markerElement.style.display = 'flex';
+        markerElement.style.alignItems = 'center';
+        markerElement.style.justifyContent = 'center';
+        markerElement.style.fontSize = '12px';
+        markerElement.style.fontWeight = '700';
+        markerElement.style.color = '#0E1220';
+        markerElement.style.fontFamily =
+          '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        if (label && !isPrimary) {
+          markerElement.textContent = label;
+        }
+        return markerElement;
+      }
+
+      function averageCenter(points) {
+        if (!points.length) return fallbackCenter;
+        const sums = points.reduce(
+          (acc, point) => {
+            acc.lon += point.coords[0];
+            acc.lat += point.coords[1];
+            return acc;
+          },
+          { lon: 0, lat: 0 },
+        );
+        return [sums.lon / points.length, sums.lat / points.length];
+      }
+
+      function resetRetry(container) {
+        retryState.delete(container);
+      }
+
+      function scheduleRetry(container) {
+        const attempt = retryState.get(container) || 0;
+        if (attempt >= RETRY_DELAYS_MS.length) return false;
+        const delay = RETRY_DELAYS_MS[attempt];
+        retryState.set(container, attempt + 1);
+        window.setTimeout(() => {
+          syncContainer(container);
+        }, delay);
+        return true;
+      }
+
+      function renderPlaceholder(container, message, showRetryButton) {
+        container.innerHTML =
+          '<div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#cfd7ef;font-size:14px;padding:0 12px;text-align:center;">' +
+          `<div>${message}</div>` +
+          (showRetryButton
+            ? '<button data-map-retry style="border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);color:#e7ebf5;border-radius:10px;padding:8px 12px;font-size:13px;cursor:pointer;">Повторить</button>'
+            : '') +
+          '</div>';
+
+        if (showRetryButton) {
+          const button = container.querySelector('button[data-map-retry]');
+          if (button) {
+            button.addEventListener('click', () => {
+              resetRetry(container);
+              syncContainer(container);
+            });
+          }
+        }
+      }
+
+      async function renderCityMap(container, city, stagePoints) {
+        if (!container) return;
+        const ymaps3 = await ensureYmaps();
+        const focusQuery = String(city || '').trim();
+        const points = [];
+        let orderCounter = 1;
+
+        for (const point of stagePoints) {
+          const coords = await geocodeCity(point.address);
+          if (coords) {
+            points.push({
+              coords: coords,
+              title: point.title || point.address,
+              markerOrder: orderCounter,
+              isPrimary: false,
+            });
+            orderCounter += 1;
+          }
+        }
+
+        if (focusQuery) {
+          const focusCoords = await geocodeCity(focusQuery);
+          if (focusCoords) {
+            points.push({
+              coords: focusCoords,
+              title: focusQuery,
+              isPrimary: true,
+            });
+          }
+        }
+
+        const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker } = ymaps3;
+
+        if (!points.length) {
+          throw new Error('Address not found');
+        }
+
+        if (!YMap || !YMapDefaultSchemeLayer || !YMapDefaultFeaturesLayer || !YMapMarker) {
+          throw new Error('Core Yandex Maps classes are unavailable');
+        }
+        let state = mapState.get(container);
+
+        if (!state) {
+          container.innerHTML = '';
+          const center = averageCenter(points);
+          const map = new YMap(container, {
+            location: { center: center, zoom: 11 },
+          });
+          map.addChild(new YMapDefaultSchemeLayer());
+          map.addChild(new YMapDefaultFeaturesLayer());
+          state = { map: map, markers: [] };
+          mapState.set(container, state);
+        }
+
+        clearMarkers(state);
+        const center = averageCenter(points);
+        const zoom = points.length > 1 ? 10 : 12;
+        state.map.update({
+          location: { center: center, zoom: zoom, duration: 300 },
+        });
+
+        points.forEach((point) => {
+          const marker = new YMapMarker(
+            { coordinates: point.coords },
+            createMarkerElement({
+              isPrimary: point.isPrimary,
+              label: point.isPrimary ? '' : String(point.markerOrder || ''),
+            }),
+          );
+          state.map.addChild(marker);
+          state.markers.push(marker);
+        });
+      }
+
+      async function syncContainer(container) {
+        if (!container || !container.classList || !container.classList.contains('t2t-yandex-city-map')) {
+          return;
+        }
+        const city = (container.getAttribute('data-city') || '').trim();
+        const stagePoints = parseStagePoints(container);
+        if (!city && !stagePoints.length) {
+          resetRetry(container);
+          mapState.delete(container);
+          renderPlaceholder(container, 'Нет адресов этапов для отображения', false);
+          return;
+        }
+        try {
+          await renderCityMap(container, city, stagePoints);
+          resetRetry(container);
+        } catch (error) {
+          console.error('Yandex map render failed:', error);
+          mapState.delete(container);
+          if (error && error.code === 'DAILY_LIMIT') {
+            resetRetry(container);
+            renderPlaceholder(
+              container,
+              'Данный функционал пока недоступен, попробуйте завтра',
+              false,
+            );
+            return;
+          }
+          if (error && error.message === 'Address not found') {
+            resetRetry(container);
+            renderPlaceholder(container, 'Адрес не найден', true);
+            return;
+          }
+          const willRetry = scheduleRetry(container);
+          renderPlaceholder(
+            container,
+            willRetry ? 'Пробуем подключить карту...' : 'Карта временно недоступна',
+            true,
+          );
+        }
+      }
+
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type === 'attributes') {
+            syncContainer(mutation.target);
+            continue;
+          }
+          if (mutation.type === 'childList') {
+            mutation.addedNodes.forEach((node) => {
+              if (!(node instanceof HTMLElement)) return;
+              if (node.classList && node.classList.contains('t2t-yandex-city-map')) {
+                syncContainer(node);
+              }
+              if (node.querySelectorAll) {
+                node
+                  .querySelectorAll('.t2t-yandex-city-map')
+                  .forEach((el) => syncContainer(el));
+              }
+            });
+          }
+        }
+      });
+
+      document.addEventListener('DOMContentLoaded', () => {
+        document
+          .querySelectorAll('.t2t-yandex-city-map')
+          .forEach((el) => syncContainer(el));
+      });
+
+      document.addEventListener('t2t-city-change', (event) => {
+        syncContainer(event.target);
+      });
+
+      observer.observe(document.documentElement, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['data-city', 'data-stage-points'],
+      });
+
+      window.t2tMap = { renderCityMap };
+    })();
+  </script>
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="tour2tour_app">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>tour2tour_app</title>
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
