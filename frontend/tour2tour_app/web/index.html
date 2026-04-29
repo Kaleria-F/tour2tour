@@ -35,14 +35,6 @@
       const syncQueue = new WeakMap();
       let routerConfigured = false;
 
-      const routeLineStyle = {
-        simplificationRate: 0,
-        stroke: [
-          { width: 6, color: '#D7E37A' },
-          { width: 9, color: '#000000', opacity: 0.28 },
-        ],
-      };
-
       async function ensureYmaps() {
         const maxAttempts = 60;
         let attempt = 0;
@@ -223,7 +215,7 @@
         button.textContent = 'Добавить в маршрут';
         button.style.position = 'absolute';
         button.style.right = '12px';
-        button.style.bottom = '78px';
+        button.style.bottom = '40px';
         button.style.zIndex = '7';
         button.style.display = 'none';
         button.style.pointerEvents = 'auto';
@@ -334,240 +326,6 @@
       }
 
 
-      function getDistanceMeters(route) {
-        const p = (route && route.properties) || {};
-        return (
-          p.distance?.value ??
-          p.distance?.meters ??
-          p.distance ??
-          p.length?.value ??
-          p.length ??
-          p.weight?.distance ??
-          null
-        );
-      }
-
-      function getDurationSeconds(route) {
-        const p = (route && route.properties) || {};
-        return (
-          p.duration?.value ??
-          p.duration?.seconds ??
-          p.time?.value ??
-          p.time ??
-          p.duration ??
-          p.weight?.time ??
-          null
-        );
-      }
-
-      function formatDistance(meters) {
-        const value = Number(meters);
-        if (!Number.isFinite(value) || value <= 0) return '—';
-        if (value >= 1000) return `${(value / 1000).toFixed(1)} км`;
-        return `${Math.round(value)} м`;
-      }
-
-      function formatDuration(seconds) {
-        const value = Number(seconds);
-        if (!Number.isFinite(value) || value <= 0) return '—';
-        const totalMinutes = Math.round(value / 60);
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
-        if (hours <= 0) return `${minutes} мин`;
-        if (minutes === 0) return `${hours} ч`;
-        return `${hours} ч ${minutes} мин`;
-      }
-
-      function clearRoute(state) {
-        if (!state || !state.map) return;
-        if (state.routeFeature) {
-          try {
-            state.map.removeChild(state.routeFeature);
-          } catch (_) {}
-          state.routeFeature = null;
-        }
-        state.routeInfo = null;
-      }
-
-      function ensureRoutePanel(state) {
-        if (!state || !state.container) return;
-        if (state.routePanel) return;
-        const panel = document.createElement('div');
-        panel.style.position = 'absolute';
-        panel.style.left = '10px';
-        panel.style.right = '10px';
-        panel.style.bottom = '10px';
-        panel.style.zIndex = '6';
-        panel.style.pointerEvents = 'auto';
-        panel.style.border = '1px solid rgba(255,255,255,.18)';
-        panel.style.background = 'rgba(19,24,41,.88)';
-        panel.style.backdropFilter = 'blur(3px)';
-        panel.style.borderRadius = '12px';
-        panel.style.padding = '8px';
-        panel.style.color = '#dfe7fb';
-        panel.style.fontFamily =
-          '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-        panel.style.fontSize = '12px';
-
-        const controls = document.createElement('div');
-        controls.style.display = 'flex';
-        controls.style.flexWrap = 'wrap';
-        controls.style.gap = '6px';
-        controls.style.marginBottom = '8px';
-
-        const modes = [
-          { key: 'driving', title: 'Авто' },
-          { key: 'pedestrian', title: 'Пешком' },
-          { key: 'transit', title: 'ОТ' },
-          { key: 'bicycle', title: 'Вело' },
-        ];
-
-        modes.forEach((mode) => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.dataset.routeMode = mode.key;
-          btn.textContent = mode.title;
-          btn.style.border = '1px solid rgba(255,255,255,.2)';
-          btn.style.borderRadius = '999px';
-          btn.style.padding = '5px 10px';
-          btn.style.cursor = 'pointer';
-          btn.style.fontSize = '12px';
-          btn.style.color = '#dfe7fb';
-          btn.style.background = 'rgba(255,255,255,.08)';
-          btn.addEventListener('click', () => {
-            state.routeType = mode.key;
-            refreshRoutePanel(state);
-            if (state.selectedPoints.length === 2) {
-              buildRoute(state);
-            }
-          });
-          controls.appendChild(btn);
-        });
-
-        const info = document.createElement('div');
-        info.dataset.routeInfo = '1';
-        info.style.fontSize = '12px';
-        info.style.lineHeight = '1.35';
-        info.style.color = '#c9d3eb';
-        info.textContent = 'Выберите 2 точки на карте для маршрута';
-
-        panel.appendChild(controls);
-        panel.appendChild(info);
-        state.container.appendChild(panel);
-        state.routePanel = panel;
-      }
-
-      function refreshRoutePanel(state) {
-        if (!state || !state.routePanel) return;
-        const buttons = state.routePanel.querySelectorAll('button[data-route-mode]');
-        buttons.forEach((button) => {
-          const active = button.dataset.routeMode === state.routeType;
-          button.style.background = active ? 'rgba(215,227,122,.22)' : 'rgba(255,255,255,.08)';
-          button.style.borderColor = active ? 'rgba(215,227,122,.62)' : 'rgba(255,255,255,.2)';
-          button.style.color = active ? '#e8f2b5' : '#dfe7fb';
-        });
-        const info = state.routePanel.querySelector('div[data-route-info]');
-        if (!info) return;
-        if (state.routeError) {
-          info.textContent = state.routeError;
-          info.style.color = '#f2b0a3';
-          return;
-        }
-        if (state.routeInfo) {
-          const d = formatDistance(state.routeInfo.distanceMeters);
-          const t = formatDuration(state.routeInfo.durationSeconds);
-          info.textContent = `Маршрут: ${t} • ${d}`;
-          info.style.color = '#cfe3b5';
-          return;
-        }
-        if (state.selectedPoints.length === 0) {
-          info.textContent = 'Выберите 2 точки на карте для маршрута';
-        } else if (state.selectedPoints.length === 1) {
-          info.textContent = 'Выберите вторую точку';
-        } else {
-          info.textContent = 'Строим маршрут...';
-        }
-        info.style.color = '#c9d3eb';
-      }
-
-      function updateMarkerSelections(state) {
-        if (!state || !Array.isArray(state.markersMeta)) return;
-        state.markersMeta.forEach((meta, index) => {
-          const selected = state.selectedPoints.includes(index);
-          if (meta && meta.element) {
-            meta.element.style.border = selected ? '2px solid #ffffff' : '2px solid #151515';
-          }
-        });
-      }
-
-      async function buildRoute(state) {
-        if (!state || state.selectedPoints.length !== 2) return;
-        const [firstIdx, secondIdx] = state.selectedPoints;
-        const first = state.points[firstIdx];
-        const second = state.points[secondIdx];
-        if (!first || !second) return;
-        clearRoute(state);
-        state.routeError = '';
-        refreshRoutePanel(state);
-        try {
-          const ymaps3 = await ensureYmaps();
-          const routes = await ymaps3.route({
-            points: [first.coords, second.coords],
-            type: state.routeType || 'driving',
-            bounds: true,
-          });
-          if (!routes || !routes[0]) {
-            throw new Error('ROUTE_NOT_FOUND');
-          }
-          const route = routes[0].toRoute();
-          if (!route || !route.geometry || !route.geometry.coordinates?.length) {
-            throw new Error('ROUTE_NOT_FOUND');
-          }
-          const featureData = { ...route, style: routeLineStyle };
-          const routeFeature = new ymaps3.YMapFeature(featureData);
-          state.map.addChild(routeFeature);
-          state.routeFeature = routeFeature;
-          state.routeInfo = {
-            distanceMeters: getDistanceMeters(route),
-            durationSeconds: getDurationSeconds(route),
-          };
-          state.map.update({
-            location: { bounds: routes[0].bounds, duration: 300 },
-          });
-        } catch (error) {
-          const message =
-            String(error && error.message || '').includes('apikey') ||
-            String(error && error.message || '').includes('router')
-              ? 'Нужен активный Router API ключ Яндекс Карт'
-              : 'Маршрут построить не удалось';
-          state.routeError = message;
-          state.routeInfo = null;
-        }
-        refreshRoutePanel(state);
-      }
-
-      function onMarkerClick(state, markerIndex) {
-        if (!state) return;
-        const alreadySelected = state.selectedPoints.indexOf(markerIndex);
-        if (alreadySelected >= 0) {
-          state.selectedPoints.splice(alreadySelected, 1);
-          clearRoute(state);
-        } else if (state.selectedPoints.length < 2) {
-          state.selectedPoints.push(markerIndex);
-        } else {
-          state.selectedPoints = [markerIndex];
-          clearRoute(state);
-        }
-        state.routeError = '';
-        updateMarkerSelections(state);
-        if (state.selectedPoints.length === 2) {
-          buildRoute(state);
-        } else {
-          state.routeInfo = null;
-          refreshRoutePanel(state);
-        }
-      }
-
       function averageCenter(points) {
         if (!points.length) return fallbackCenter;
         const sums = points.reduce(
@@ -628,6 +386,7 @@
         const focusQuery = String(city || '').trim();
         const searchText = String(searchQuery || '').trim();
         const points = [];
+        let focusCoords = null;
         let orderCounter = 1;
 
         for (const point of stagePoints) {
@@ -644,19 +403,12 @@
         }
 
         if (focusQuery) {
-          const focusCoords = await geocodeCity(focusQuery);
-          if (focusCoords) {
-            points.push({
-              coords: focusCoords,
-              title: focusQuery,
-              isPrimary: true,
-            });
-          }
+          focusCoords = await geocodeCity(focusQuery);
         }
 
         const { YMap, YMapDefaultSchemeLayer, YMapDefaultFeaturesLayer, YMapMarker } = ymaps3;
 
-        if (!points.length) {
+        if (!points.length && !focusCoords) {
           throw new Error('Address not found');
         }
 
@@ -668,7 +420,7 @@
         if (!state) {
           container.innerHTML = '';
           container.style.position = 'relative';
-          const center = averageCenter(points);
+          const center = points.length ? averageCenter(points) : focusCoords;
           const map = new YMap(container, {
             location: { center: center, zoom: 11 },
           });
@@ -679,32 +431,17 @@
             container: container,
             markers: [],
             markersMeta: [],
-            points: [],
-            selectedPoints: [],
-            routeType: 'driving',
-            routeFeature: null,
-            routeInfo: null,
-            routeError: '',
-            routePanel: null,
             selectedSuggestionMarker: null,
             addRouteButton: null,
           };
           mapState.set(container, state);
-          ensureRoutePanel(state);
           ensureAddRouteButton(state);
         }
 
         clearMarkers(state);
-        clearRoute(state);
         clearSelectedSuggestionMarker(state);
-        state.points = points;
-        state.markersMeta = [];
-        state.selectedPoints = [];
-        state.routeError = '';
-        state.routeInfo = null;
-        ensureRoutePanel(state);
-        const center = averageCenter(points);
-        const zoom = points.length > 1 ? 10 : 12;
+        const center = points.length ? averageCenter(points) : focusCoords;
+        const zoom = points.length > 1 ? 10 : 11;
         state.map.update({
           location: { center: center, zoom: zoom, duration: 300 },
         });
@@ -713,14 +450,8 @@
           const markerElement = createMarkerElement({
             isPrimary: point.isPrimary,
             label: point.isPrimary ? '' : String(point.markerOrder || ''),
-            isSelected: false,
           });
-          markerElement.style.cursor = 'pointer';
           markerElement.title = point.title || '';
-          markerElement.addEventListener('click', (event) => {
-            event.stopPropagation();
-            onMarkerClick(state, pointIndex);
-          });
           const marker = new YMapMarker(
             { coordinates: point.coords },
             markerElement,
@@ -733,7 +464,6 @@
           });
         });
         await renderAddressSearchMarker(state, searchText, city);
-        refreshRoutePanel(state);
       }
 
       async function syncContainer(container) {
