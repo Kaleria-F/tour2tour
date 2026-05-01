@@ -23,7 +23,6 @@
   <script>
     (function () {
       const API_KEY = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
-      const ROUTER_API_KEY = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
       const CACHE_KEY = 't2t_yandex_geocode_cache_v1';
       const BUDGET_KEY = 't2t_yandex_geocode_budget_v1';
       const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -33,7 +32,6 @@
       const mapState = new WeakMap();
       const retryState = new WeakMap();
       const syncQueue = new WeakMap();
-      let routerConfigured = false;
 
       async function ensureYmaps() {
         const maxAttempts = 60;
@@ -46,12 +44,6 @@
           throw new Error('ymaps3 is not loaded after waiting');
         }
         await window.ymaps3.ready;
-        if (!routerConfigured && ROUTER_API_KEY) {
-          try {
-            window.ymaps3.getDefaultConfig().setApikeys({ router: ROUTER_API_KEY });
-            routerConfigured = true;
-          } catch (_) {}
-        }
         return window.ymaps3;
       }
 
@@ -326,6 +318,7 @@
       }
 
 
+
       function averageCenter(points) {
         if (!points.length) return fallbackCenter;
         const sums = points.reduce(
@@ -440,6 +433,7 @@
 
         clearMarkers(state);
         clearSelectedSuggestionMarker(state);
+        state.markersMeta = [];
         const center = points.length ? averageCenter(points) : focusCoords;
         const zoom = points.length > 1 ? 10 : 11;
         state.map.update({

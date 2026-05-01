@@ -15,11 +15,12 @@ class CreateTripPage extends StatefulWidget {
 
 class _CreateTripPageState extends State<CreateTripPage> {
   final _titleController = TextEditingController();
-  final _descriptionController = TextEditingController();
   final _destinationCityController = TextEditingController();
+  final _plannedDaysController = TextEditingController();
 
   DateTime? _startDate;
   DateTime? _endDate;
+  bool _usePlannedDays = false;
   bool _saving = false;
   List<CitySuggestion> _citySuggestions = const [];
   List<CitySuggestion> _lastNonEmptyCitySuggestions = const [];
@@ -28,8 +29,8 @@ class _CreateTripPageState extends State<CreateTripPage> {
   @override
   void dispose() {
     _titleController.dispose();
-    _descriptionController.dispose();
     _destinationCityController.dispose();
+    _plannedDaysController.dispose();
     super.dispose();
   }
 
@@ -219,32 +220,47 @@ class _CreateTripPageState extends State<CreateTripPage> {
   Future<void> _saveTrip() async {
     final title = _titleController.text.trim();
     final destinationCity = _destinationCityController.text.trim();
+    final resolvedTitle = title.isEmpty ? destinationCity : title;
 
-    if (title.isEmpty) {
-      _showHint('Введите название путешествия');
-      return;
-    }
     if (destinationCity.isEmpty) {
       _showHint('Укажите город поездки');
       return;
     }
-    if (_startDate == null || _endDate == null) {
-      _showHint('Выберите даты поездки');
-      return;
-    }
-    if (_startDate!.isAfter(_endDate!)) {
-      _showHint('Дата начала не может быть позже даты окончания');
-      return;
+    DateTime startDate;
+    DateTime endDate;
+    int? plannedDays;
+    if (_usePlannedDays) {
+      final parsedDays = int.tryParse(_plannedDaysController.text.trim());
+      if (parsedDays == null || parsedDays <= 0) {
+        _showHint('Укажите корректное количество дней');
+        return;
+      }
+      plannedDays = parsedDays;
+      final now = DateTime.now();
+      startDate = DateTime(now.year, now.month, now.day);
+      endDate = startDate.add(Duration(days: parsedDays - 1));
+    } else {
+      if (_startDate == null || _endDate == null) {
+        _showHint('Выберите даты поездки');
+        return;
+      }
+      if (_startDate!.isAfter(_endDate!)) {
+        _showHint('Дата начала не может быть позже даты окончания');
+        return;
+      }
+      startDate = _startDate!;
+      endDate = _endDate!;
     }
 
     setState(() => _saving = true);
     try {
       final trip = await widget.tripsRepo.createTrip(
-        title: title,
-        description: _descriptionController.text.trim(),
+        title: resolvedTitle,
+        description: null,
         destinationCity: destinationCity,
-        startDate: _startDate!,
-        endDate: _endDate!,
+        startDate: startDate,
+        endDate: endDate,
+        plannedDays: plannedDays,
       );
 
       if (!mounted) return;
@@ -261,6 +277,7 @@ class _CreateTripPageState extends State<CreateTripPage> {
           'destination_city': trip.destinationCity,
           'start_date': trip.startDate,
           'end_date': trip.endDate,
+          'planned_days': trip.plannedDays,
         },
       );
     } finally {
@@ -351,6 +368,7 @@ class _CreateTripPageState extends State<CreateTripPage> {
                                 controller: controller,
                                 focusNode: focusNode,
                                 label: 'Город поездки',
+                                isRequired: true,
                                 hintText: 'Начните вводить город',
                                 onChanged: (value) {
                                   _destinationCityController.value =
@@ -435,33 +453,57 @@ class _CreateTripPageState extends State<CreateTripPage> {
                             },
                           ),
                           const SizedBox(height: 10),
-                          Text(
-                            'Выбрав город, вы поможете системе точнее подобрать маршрут и персональные рекомендации.',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.68),
-                              fontSize: 14,
-                              height: 1.35,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 4),
                           _TripField(
                             controller: _titleController,
                             label: 'Название',
                             icon: Icons.luggage_rounded,
                           ),
                           const SizedBox(height: 12),
-                          _TripField(
-                            controller: _descriptionController,
-                            label: 'Описание',
-                            icon: Icons.notes_rounded,
-                            minLines: 3,
-                            maxLines: 4,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _ModeChip(
+                                  label: 'Точные даты',
+                                  selected: !_usePlannedDays,
+                                  onTap: () {
+                                    setState(() {
+                                      _usePlannedDays = false;
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _ModeChip(
+                                  label: 'Количество дней',
+                                  selected: _usePlannedDays,
+                                  onTap: () {
+                                    setState(() {
+                                      _usePlannedDays = true;
+                                      _startDate = null;
+                                      _endDate = null;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 12),
-                          _DateChip(
-                            label: _tripPeriodLabel(),
-                            onTap: _pickTripPeriod,
-                          ),
+                          if (_usePlannedDays)
+                            _TripField(
+                              controller: _plannedDaysController,
+                              label: 'Количество дней',
+                              isRequired: true,
+                              icon: Icons.timelapse_rounded,
+                              keyboardType: TextInputType.number,
+                            )
+                          else
+                            _DateChip(
+                              label: _tripPeriodLabel(),
+                              isRequired: true,
+                              onTap: _pickTripPeriod,
+                            ),
                         ],
                       ),
                     ),
@@ -529,22 +571,26 @@ class _CityTripField extends StatelessWidget {
   const _CityTripField({
     required this.controller,
     required this.label,
+    this.isRequired = false,
     this.icon = Icons.location_on_outlined,
     this.focusNode,
     this.hintText,
     this.onChanged,
     this.minLines = 1,
     this.maxLines = 1,
+    this.keyboardType,
   });
 
   final TextEditingController controller;
   final FocusNode? focusNode;
   final String label;
+  final bool isRequired;
   final IconData icon;
   final String? hintText;
   final ValueChanged<String>? onChanged;
   final int minLines;
   final int maxLines;
+  final TextInputType? keyboardType;
 
   @override
   Widget build(BuildContext context) {
@@ -566,7 +612,7 @@ class _CityTripField extends StatelessWidget {
             color: const Color(0xFFD7E37A),
             size: 20,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 6),
           Expanded(
             child: TextField(
               controller: controller,
@@ -574,14 +620,35 @@ class _CityTripField extends StatelessWidget {
               onChanged: onChanged,
               minLines: minLines,
               maxLines: maxLines,
+              keyboardType: keyboardType,
               style: const TextStyle(color: Colors.white, fontSize: 15),
               decoration: InputDecoration(
-                labelText: label,
-                hintText: hintText,
-                labelStyle: TextStyle(
-                  color: Colors.white.withOpacity(0.72),
-                  fontWeight: FontWeight.w500,
+                label: RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: label,
+                        style: TextStyle(
+                          fontFamily: 'Geologica',
+                          color: Colors.white.withOpacity(0.78),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (isRequired)
+                        const TextSpan(
+                          text: ' *',
+                          style: TextStyle(
+                            fontFamily: 'Geologica',
+                            color: Color(0xFFD7E37A),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
+                hintText: hintText,
                 hintStyle: TextStyle(
                   color: Colors.white.withOpacity(0.38),
                 ),
@@ -600,11 +667,13 @@ class _TripField extends StatelessWidget {
     required this.controller,
     required this.label,
     required this.icon,
+    this.isRequired = false,
     this.focusNode,
     this.hintText,
     this.onChanged,
     this.minLines = 1,
     this.maxLines = 1,
+    this.keyboardType,
   });
 
   final TextEditingController controller;
@@ -612,9 +681,11 @@ class _TripField extends StatelessWidget {
   final String label;
   final String? hintText;
   final IconData icon;
+  final bool isRequired;
   final ValueChanged<String>? onChanged;
   final int minLines;
   final int maxLines;
+  final TextInputType? keyboardType;
 
   @override
   Widget build(BuildContext context) {
@@ -624,18 +695,25 @@ class _TripField extends StatelessWidget {
       label: label,
       hintText: hintText,
       icon: icon,
+      isRequired: isRequired,
       onChanged: onChanged,
       minLines: minLines,
       maxLines: maxLines,
+      keyboardType: keyboardType,
     );
   }
 }
 
 class _DateChip extends StatelessWidget {
-  const _DateChip({required this.label, required this.onTap});
+  const _DateChip({
+    required this.label,
+    required this.onTap,
+    this.isRequired = false,
+  });
 
   final String label;
   final VoidCallback onTap;
+  final bool isRequired;
 
   @override
   Widget build(BuildContext context) {
@@ -654,20 +732,84 @@ class _DateChip extends StatelessWidget {
             const Icon(
               Icons.calendar_month_rounded,
               color: Color(0xFFD7E37A),
-              size: 18,
+              size: 20,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 26),
             Expanded(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.78),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
+              child: RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: label,
+                      style: TextStyle(
+                        fontFamily: 'Geologica',
+                        color: Colors.white.withOpacity(0.78),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    if (isRequired)
+                      const TextSpan(
+                        text: ' *',
+                        style: TextStyle(
+                          fontFamily: 'Geologica',
+                          color: Color(0xFFD7E37A),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeChip extends StatelessWidget {
+  const _ModeChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFF222715)
+              : Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? const Color(0xFFD7E37A).withOpacity(0.75)
+                : Colors.white.withOpacity(0.12),
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'Geologica',
+            color: selected
+                ? const Color(0xFFD7E37A)
+                : Colors.white.withOpacity(0.86),
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );

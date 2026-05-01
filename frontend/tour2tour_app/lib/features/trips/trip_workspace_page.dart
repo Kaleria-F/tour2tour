@@ -21,6 +21,7 @@ class TripWorkspacePage extends StatefulWidget {
   final String? destinationCity;
   final DateTime? startDate;
   final DateTime? endDate;
+  final int? plannedDays;
   final TripsRepo tripsRepo;
   final DocumentsRepo documentsRepo;
   final PreferencesRepo preferencesRepo;
@@ -41,6 +42,7 @@ class TripWorkspacePage extends StatefulWidget {
     this.destinationCity,
     this.startDate,
     this.endDate,
+    this.plannedDays,
   });
 
   @override
@@ -49,6 +51,11 @@ class TripWorkspacePage extends StatefulWidget {
 
 class _TripWorkspacePageState extends State<TripWorkspacePage> {
   static const _accent = Color(0xFFD7E37A);
+
+  late String _tripTitle;
+  late DateTime? _tripStartDate;
+  late DateTime? _tripEndDate;
+  late int? _tripPlannedDays;
 
   int _currentIndex = 1;
   bool _showTripFavorites = false;
@@ -137,9 +144,151 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   @override
   void initState() {
     super.initState();
+    _tripTitle = widget.tripTitle;
+    _tripStartDate = widget.startDate;
+    _tripEndDate = widget.endDate;
+    _tripPlannedDays = widget.plannedDays;
     if (widget.tripId != null) {
       _loadExpenses();
       _loadStages();
+    }
+  }
+
+  int _totalTripDays({
+    required DateTime startDate,
+    required DateTime endDate,
+    required int? plannedDays,
+  }) {
+    if (plannedDays != null && plannedDays > 0) return plannedDays;
+    return endDate.difference(startDate).inDays + 1;
+  }
+
+  Future<void> _openTripSettingsDialog() async {
+    if (widget.tripId == null) return;
+    final result = await showDialog<_TripSettingsResult>(
+      context: context,
+      builder: (_) => _TripSettingsDialog(
+        initialTitle: _tripTitle,
+        city: widget.destinationCity ?? '',
+        initialStartDate: _tripStartDate,
+        initialEndDate: _tripEndDate,
+        initialPlannedDays: _tripPlannedDays,
+      ),
+    );
+    if (result == null) return;
+
+    final currentStart = _tripStartDate ?? DateTime.now();
+    final currentEnd = _tripEndDate ?? currentStart;
+    final oldDays = _totalTripDays(
+      startDate: currentStart,
+      endDate: currentEnd,
+      plannedDays: _tripPlannedDays,
+    );
+    final newDays = _totalTripDays(
+      startDate: result.startDate,
+      endDate: result.endDate,
+      plannedDays: result.plannedDays,
+    );
+
+    var confirmTrim = false;
+    if (newDays < oldDays) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => Dialog(
+          backgroundColor: const Color(0xFF1E1F24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.white.withOpacity(0.10)),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Подтвердите изменение',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Новый выбранный период меньше предыдущего. Если продолжить, последние дни, не входящие в новый период, будут удалены вместе с маршрутами и данными этих дней.',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFFB16E4B),
+                        ),
+                        child: const Text('Отмена'),
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFFB16E4B),
+                        ),
+                        child: const Text('ОК'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      if (ok != true) return;
+      confirmTrim = true;
+    }
+
+    try {
+      final updated = await widget.tripsRepo.updateTrip(
+        tripId: widget.tripId!,
+        title: result.title,
+        startDate: result.startDate,
+        endDate: result.endDate,
+        plannedDays: result.plannedDays,
+        includePlannedDays: true,
+        confirmTrim: confirmTrim,
+      );
+      if (!mounted) return;
+      if (updated == null) return;
+      setState(() {
+        _tripTitle = updated.title;
+        _tripStartDate = updated.startDate;
+        _tripEndDate = updated.endDate;
+        _tripPlannedDays = updated.plannedDays;
+        _selectedRouteDay = _ensureSelectedRouteDay(
+          _selectedRouteDay,
+          stages: [..._stages]..sort((a, b) => a.position.compareTo(b.position)),
+        );
+      });
+      await _loadStages();
+      await _loadExpenses();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Параметры маршрута обновлены')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось обновить параметры маршрута')),
+      );
     }
   }
 
@@ -372,6 +521,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         },
       );
       await _loadStages();
+      await _loadExpenses();
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1060,11 +1210,11 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     final result = await Navigator.of(context).push<String>(
       MaterialPageRoute(
         builder: (_) => _TripRouteMapPage(
-          tripTitle: widget.tripTitle,
+          tripTitle: _tripTitle,
           destinationCity: city,
           stagePoints: stagePoints,
-          startDate: widget.startDate,
-          endDate: widget.endDate,
+          startDate: _tripStartDate,
+          endDate: _tripEndDate,
         ),
       ),
     );
@@ -1119,7 +1269,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                     children: [
                       const SizedBox(height: 6),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+                        mainAxisAlignment: MainAxisAlignment.start,
                         children: [
                           TextButton.icon(
                             onPressed: () => context.go('/profile'),
@@ -1134,9 +1284,18 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                     color: Colors.white.withOpacity(0.14)),
                               ),
                             ),
-                            icon: const Icon(Icons.exit_to_app_rounded,
+                            icon: const Icon(Icons.arrow_back_rounded,
                                 size: 18),
                             label: const Text('К поездкам'),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            tooltip: 'Редактировать маршрут',
+                            onPressed: _openTripSettingsDialog,
+                            icon: const Icon(
+                              Icons.settings_rounded,
+                              color: Colors.white,
+                            ),
                           ),
                         ],
                       ),
@@ -1146,7 +1305,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         children: [
                           Expanded(
                             child: Text(
-                              widget.tripTitle,
+                              _tripTitle,
                               style: const TextStyle(
                                 fontSize: 30,
                                 fontWeight: FontWeight.w800,
@@ -1162,6 +1321,8 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         _RouteDayStrip(
                           days: routeDays,
                           selectedDay: routeSelectedDay,
+                          numberedOnly:
+                              _tripPlannedDays != null && _tripPlannedDays! > 0,
                           compact: true,
                           onDayTap: (day) {
                             setState(() {
@@ -1205,7 +1366,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                             tripId: widget.tripId,
                                             destinationCity:
                                                 widget.destinationCity,
-                                            tripTitle: widget.tripTitle,
+                                            tripTitle: _tripTitle,
                                             stages: _stages,
                                             onStagesChanged: _loadStages,
                                             onOpenTripFavorites:
@@ -1490,9 +1651,18 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
   List<DateTime> _tripDays({required List<TripStage> stages}) {
     DateTime toDay(DateTime date) => DateTime(date.year, date.month, date.day);
-    if (widget.startDate != null && widget.endDate != null) {
-      final start = toDay(widget.startDate!);
-      final end = toDay(widget.endDate!);
+    if (_tripPlannedDays != null && _tripPlannedDays! > 0) {
+      final anchor = _tripStartDate != null
+          ? toDay(_tripStartDate!)
+          : DateTime.now();
+      return List<DateTime>.generate(
+        _tripPlannedDays!,
+        (index) => anchor.add(Duration(days: index)),
+      );
+    }
+    if (_tripStartDate != null && _tripEndDate != null) {
+      final start = toDay(_tripStartDate!);
+      final end = toDay(_tripEndDate!);
       if (!end.isBefore(start)) {
         final days = <DateTime>[];
         var cursor = start;
@@ -3303,7 +3473,11 @@ class _StageFormPageState extends State<_StageFormPage> {
                                           ),
                                           durationMinutes: widget.initial?.durationMinutes,
                                           costRub: double.tryParse(
-                                            _costCtrl.text.trim().replaceAll(',', '.'),
+                                            _costCtrl.text
+                                                .trim()
+                                                .replaceAll(' ', '')
+                                                .replaceAll('\u00A0', '')
+                                                .replaceAll(',', '.'),
                                           ),
                                           referenceNumber: _refCtrl.text.trim().isEmpty
                                               ? null
@@ -3567,7 +3741,13 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         startTime: _parseTime(_startTimeCtrl.text, widget.initial?.startTime),
                                         endTime: _parseTime(_endTimeCtrl.text, widget.initial?.endTime),
                                         durationMinutes: widget.initial?.durationMinutes,
-                                        costRub: double.tryParse(_costCtrl.text.trim().replaceAll(',', '.')),
+                                        costRub: double.tryParse(
+                                          _costCtrl.text
+                                              .trim()
+                                              .replaceAll(' ', '')
+                                              .replaceAll('\u00A0', '')
+                                              .replaceAll(',', '.'),
+                                        ),
                                         referenceNumber: _refCtrl.text.trim().isEmpty ? null : _refCtrl.text.trim(),
                                         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
                                         websiteUrl: _websiteCtrl.text.trim().isEmpty ? null : _websiteCtrl.text.trim(),
@@ -3713,8 +3893,8 @@ class _RouteTimeline extends StatelessWidget {
     required this.onLongPressStage,
   });
 
-  static const int _startHour = 8;
-  static const int _endHour = 22;
+  static const int _startHour = 0;
+  static const int _endHour = 24;
   static const double _pxPerHour = 56;
   static const double _timeColumnWidth = 52;
 
@@ -3728,6 +3908,7 @@ class _RouteTimeline extends StatelessWidget {
   Widget build(BuildContext context) {
     final dayStart = _startHour * 60;
     final dayEnd = _endHour * 60;
+    const verticalInset = 8.0;
 
     final visible = items.where((item) {
       return item.endMin > dayStart && item.startMin < dayEnd;
@@ -3735,28 +3916,39 @@ class _RouteTimeline extends StatelessWidget {
       ..sort((a, b) => a.startMin.compareTo(b.startMin));
 
     final layout = <_TimelineStageItem, int>{};
-    final colEnd = <int>[];
-    var maxColumns = 1;
+    final clusterByItem = <_TimelineStageItem, int>{};
+    final clusterMaxColumns = <int, int>{};
+    final active = <_TimelineStageItem>[];
+    var clusterId = -1;
+
     for (final item in visible) {
-      var col = -1;
-      for (var i = 0; i < colEnd.length; i++) {
-        if (item.startMin >= colEnd[i] + 2) {
-          col = i;
-          break;
-        }
+      active.removeWhere((a) => a.endMin <= item.startMin);
+
+      if (active.isEmpty) {
+        clusterId += 1;
       }
-      if (col == -1) {
-        col = colEnd.length;
-        colEnd.add(item.endMin);
-      } else {
-        colEnd[col] = item.endMin;
+
+      final usedCols = active.map((a) => layout[a]!).toSet();
+      var col = 0;
+      while (usedCols.contains(col)) {
+        col += 1;
       }
+
       layout[item] = col;
-      if (col + 1 > maxColumns) maxColumns = col + 1;
+      clusterByItem[item] = clusterId;
+      active.add(item);
+
+      final currentMax = clusterMaxColumns[clusterId] ?? 1;
+      if (col + 1 > currentMax) {
+        clusterMaxColumns[clusterId] = col + 1;
+      } else {
+        clusterMaxColumns[clusterId] = currentMax;
+      }
     }
 
     final totalHours = _endHour - _startHour;
     final timelineHeight = totalHours * _pxPerHour;
+    final canvasHeight = timelineHeight + verticalInset * 2;
 
     return Container(
       decoration: BoxDecoration(
@@ -3766,20 +3958,19 @@ class _RouteTimeline extends StatelessWidget {
       ),
       child: SingleChildScrollView(
         child: SizedBox(
-          height: timelineHeight,
+          height: canvasHeight,
           child: LayoutBuilder(
             builder: (context, constraints) {
               final contentLeft = _timeColumnWidth + 6;
               final contentWidth =
                   (constraints.maxWidth - contentLeft - 8).clamp(120, 1200).toDouble();
-              final gap = 6.0;
-              final blockWidth = (contentWidth - gap * (maxColumns - 1)) / maxColumns;
+              const gap = 6.0;
 
               return Stack(
                 children: [
                   for (var hour = _startHour; hour <= _endHour; hour++) ...[
                     Positioned(
-                      top: (hour - _startHour) * _pxPerHour - 8,
+                      top: verticalInset + (hour - _startHour) * _pxPerHour - 8,
                       left: 0,
                       width: _timeColumnWidth,
                       child: Text(
@@ -3793,7 +3984,7 @@ class _RouteTimeline extends StatelessWidget {
                       ),
                     ),
                     Positioned(
-                      top: (hour - _startHour) * _pxPerHour,
+                      top: verticalInset + (hour - _startHour) * _pxPerHour,
                       left: _timeColumnWidth + 8,
                       right: 0,
                       child: Container(
@@ -3803,13 +3994,22 @@ class _RouteTimeline extends StatelessWidget {
                     ),
                   ],
                   for (final item in visible)
-                    Positioned(
-                      top: ((item.startMin - dayStart) / 60) * _pxPerHour + 2,
-                      left: contentLeft + (layout[item]! * (blockWidth + gap)),
-                      width: blockWidth,
-                      height: (((item.endMin - item.startMin) / 60) * _pxPerHour)
-                          .clamp(34, 170),
-                      child: InkWell(
+                    Builder(
+                      builder: (_) {
+                        final clusterId = clusterByItem[item] ?? 0;
+                        final columnsInCluster = clusterMaxColumns[clusterId] ?? 1;
+                        final blockWidth =
+                            (contentWidth - gap * (columnsInCluster - 1)) /
+                                columnsInCluster;
+                        return Positioned(
+                          top: verticalInset +
+                              ((item.startMin - dayStart) / 60) * _pxPerHour +
+                              2,
+                          left: contentLeft + (layout[item]! * (blockWidth + gap)),
+                          width: blockWidth,
+                          height: (((item.endMin - item.startMin) / 60) * _pxPerHour)
+                              .clamp(34, timelineHeight),
+                          child: InkWell(
                         borderRadius: BorderRadius.circular(10),
                         onTap: () => onTapStage(item.stage),
                         onLongPress: () => onLongPressStage(item.stage),
@@ -3864,7 +4064,9 @@ class _RouteTimeline extends StatelessWidget {
                             },
                           ),
                         ),
-                      ),
+                          ),
+                        );
+                      },
                     ),
                 ],
               );
@@ -3881,12 +4083,14 @@ class _RouteDayStrip extends StatelessWidget {
   final DateTime selectedDay;
   final ValueChanged<DateTime> onDayTap;
   final bool compact;
+  final bool numberedOnly;
 
   const _RouteDayStrip({
     required this.days,
     required this.selectedDay,
     required this.onDayTap,
     this.compact = false,
+    this.numberedOnly = false,
   });
 
   String _weekday(DateTime day) {
@@ -3900,6 +4104,24 @@ class _RouteDayStrip extends StatelessWidget {
       DateTime.sunday: 'ВС',
     };
     return map[day.weekday] ?? '';
+  }
+
+  String _month(DateTime day) {
+    const map = <int, String>{
+      1: 'ЯНВ',
+      2: 'ФЕВ',
+      3: 'МАР',
+      4: 'АПР',
+      5: 'МАЙ',
+      6: 'ИЮН',
+      7: 'ИЮЛ',
+      8: 'АВГ',
+      9: 'СЕН',
+      10: 'ОКТ',
+      11: 'НОЯ',
+      12: 'ДЕК',
+    };
+    return map[day.month] ?? '';
   }
 
   bool _sameDay(DateTime a, DateTime b) {
@@ -3946,7 +4168,7 @@ class _RouteDayStrip extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    day.day.toString(),
+                    numberedOnly ? '${index + 1}' : day.day.toString(),
                     style: TextStyle(
                       color: selected
                           ? const Color(0xFFD7E37A)
@@ -3956,23 +4178,269 @@ class _RouteDayStrip extends StatelessWidget {
                       height: 1,
                     ),
                   ),
-                  SizedBox(height: compact ? 3 : 4),
-                  Text(
-                    _weekday(day),
-                    style: TextStyle(
-                      color: selected
-                          ? const Color(0xFFD7E37A).withOpacity(0.9)
-                          : Colors.white.withOpacity(0.62),
-                      fontSize: weekFont,
-                      fontWeight: FontWeight.w600,
-                      height: 1,
+                  if (!numberedOnly) ...[
+                    SizedBox(height: compact ? 2 : 3),
+                    Text(
+                      _month(day),
+                      style: TextStyle(
+                        color: selected
+                            ? const Color(0xFFD7E37A).withOpacity(0.9)
+                            : Colors.white.withOpacity(0.62),
+                        fontSize: weekFont,
+                        fontWeight: FontWeight.w600,
+                        height: 1,
+                      ),
                     ),
-                  ),
+                    SizedBox(height: compact ? 2 : 3),
+                    Text(
+                      _weekday(day),
+                      style: TextStyle(
+                        color: selected
+                            ? const Color(0xFFD7E37A).withOpacity(0.9)
+                            : Colors.white.withOpacity(0.62),
+                        fontSize: weekFont,
+                        fontWeight: FontWeight.w600,
+                        height: 1,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _TripSettingsResult {
+  final String title;
+  final DateTime startDate;
+  final DateTime endDate;
+  final int? plannedDays;
+
+  const _TripSettingsResult({
+    required this.title,
+    required this.startDate,
+    required this.endDate,
+    required this.plannedDays,
+  });
+}
+
+class _TripSettingsDialog extends StatefulWidget {
+  final String initialTitle;
+  final String city;
+  final DateTime? initialStartDate;
+  final DateTime? initialEndDate;
+  final int? initialPlannedDays;
+
+  const _TripSettingsDialog({
+    required this.initialTitle,
+    required this.city,
+    required this.initialStartDate,
+    required this.initialEndDate,
+    required this.initialPlannedDays,
+  });
+
+  @override
+  State<_TripSettingsDialog> createState() => _TripSettingsDialogState();
+}
+
+class _TripSettingsDialogState extends State<_TripSettingsDialog> {
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _daysCtrl;
+  late bool _usePlannedDays;
+  late DateTime _startDate;
+  late DateTime _endDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: widget.initialTitle);
+    _daysCtrl = TextEditingController(
+      text: (widget.initialPlannedDays ?? '').toString(),
+    );
+    _usePlannedDays =
+        widget.initialPlannedDays != null && widget.initialPlannedDays! > 0;
+    final now = DateTime.now();
+    _startDate = widget.initialStartDate ?? DateTime(now.year, now.month, now.day);
+    _endDate = widget.initialEndDate ?? _startDate;
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _daysCtrl.dispose();
+    super.dispose();
+  }
+
+  String _fmtDate(DateTime value) =>
+      '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')}.${value.year}';
+
+  Future<void> _pickRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      initialDateRange: DateTimeRange(start: _startDate, end: _endDate),
+      locale: const Locale('ru', 'RU'),
+      helpText: 'Выберите период поездки',
+      cancelText: 'Отмена',
+      saveText: 'ОК',
+    );
+    if (picked == null) return;
+    setState(() {
+      _startDate = picked.start;
+      _endDate = picked.end;
+    });
+  }
+
+  void _submit() {
+    final title = _titleCtrl.text.trim();
+    if (title.isEmpty) return;
+
+    int? plannedDays;
+    DateTime start = _startDate;
+    DateTime end = _endDate;
+    if (_usePlannedDays) {
+      final parsed = int.tryParse(_daysCtrl.text.trim());
+      if (parsed == null || parsed <= 0) return;
+      plannedDays = parsed;
+      end = start.add(Duration(days: parsed - 1));
+    }
+    if (end.isBefore(start)) return;
+
+    Navigator.of(context).pop(
+      _TripSettingsResult(
+        title: title,
+        startDate: start,
+        endDate: end,
+        plannedDays: plannedDays,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF1E1F24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          maxWidth: 520,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Редактировать маршрут',
+                textAlign: TextAlign.left,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _titleCtrl,
+                textAlign: TextAlign.left,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Название',
+                  alignLabelWithHint: true,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  labelStyle: TextStyle(color: Colors.white.withOpacity(0.75)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Город: ${widget.city}',
+                textAlign: TextAlign.left,
+                style: TextStyle(color: Colors.white.withOpacity(0.75)),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.start,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Точные даты'),
+                    selected: !_usePlannedDays,
+                    onSelected: (_) => setState(() => _usePlannedDays = false),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Количество дней'),
+                    selected: _usePlannedDays,
+                    onSelected: (_) => setState(() => _usePlannedDays = true),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              if (_usePlannedDays)
+                TextField(
+                  controller: _daysCtrl,
+                  keyboardType: TextInputType.number,
+                  textAlign: TextAlign.left,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    labelText: 'Количество дней',
+                    alignLabelWithHint: true,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    labelStyle: TextStyle(color: Colors.white.withOpacity(0.75)),
+                  ),
+                )
+              else
+                InkWell(
+                  onTap: _pickRange,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.06),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    ),
+                    child: Text(
+                      '${_fmtDate(_startDate)} — ${_fmtDate(_endDate)}',
+                      textAlign: TextAlign.left,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Отмена'),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: _submit,
+                    child: const Text('Сохранить'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

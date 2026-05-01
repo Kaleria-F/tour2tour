@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -135,7 +135,7 @@ class TravelSearchBar extends StatelessWidget {
                   Expanded(
                     child: Text(
                       label,
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.74),
@@ -237,7 +237,7 @@ class _TravelShellHeader extends StatelessWidget {
                 title,
                 style: const TextStyle(
                   fontSize: 28,
-                  height: 1,
+                  height: 1.05,
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
                 ),
@@ -280,13 +280,13 @@ class TravelBottomNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     const items = [
       (TravelNavTab.home, Icons.home_outlined, 'Главная'),
-      (TravelNavTab.planner, Icons.explore_outlined, 'Маршрут'),
+      (TravelNavTab.planner, Icons.add_rounded, 'Новое путешествие'),
       (TravelNavTab.taste, Icons.bookmark_border_rounded, 'Избранное'),
       (TravelNavTab.profile, Icons.person_outline_rounded, 'Профиль'),
     ];
 
     return Container(
-      height: 74,
+      height: 82,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
         color: const Color(0xFF1B1B1B),
@@ -321,17 +321,18 @@ class TravelBottomNavBar extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     SizedBox(
-                      height: 12,
+                      height: 24,
                       child: Center(
                         child: Text(
                           item.$3,
-                          maxLines: 1,
-                          softWrap: false,
+                          maxLines: 2,
+                          softWrap: true,
                           overflow: TextOverflow.ellipsis,
                           textScaler: TextScaler.noScaling,
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 10,
-                            height: 1,
+                            height: 1.05,
                             fontWeight: selected
                                 ? FontWeight.w600
                                 : FontWeight.w500,
@@ -421,3 +422,4 @@ class _TravelShellPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+

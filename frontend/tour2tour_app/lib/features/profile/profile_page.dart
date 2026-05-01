@@ -350,6 +350,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                               trip.destinationCity,
                                           'start_date': trip.startDate,
                                           'end_date': trip.endDate,
+                                          'planned_days': trip.plannedDays,
                                         },
                                       );
                                     },
@@ -534,10 +535,13 @@ class _TripCarouselCard extends StatelessWidget {
         '${_twoDigits(trip.startDate.day)}.${_twoDigits(trip.startDate.month)}';
     final endLabel =
         '${_twoDigits(trip.endDate.day)}.${_twoDigits(trip.endDate.month)}';
-    final isSameDay = trip.startDate.year == trip.endDate.year &&
-        trip.startDate.month == trip.endDate.month &&
-        trip.startDate.day == trip.endDate.day;
-    final tripPeriodLabel = isSameDay ? startLabel : '$startLabel - $endLabel';
+    final tripPeriodLabel = (trip.plannedDays != null && trip.plannedDays! > 0)
+        ? '${trip.plannedDays} дн.'
+        : ((trip.startDate.year == trip.endDate.year &&
+                trip.startDate.month == trip.endDate.month &&
+                trip.startDate.day == trip.endDate.day)
+            ? startLabel
+            : '$startLabel - $endLabel');
     final cityLabel = city == null || city.isEmpty ? 'Маршрут' : city;
     return InkWell(
       borderRadius: BorderRadius.circular(30),

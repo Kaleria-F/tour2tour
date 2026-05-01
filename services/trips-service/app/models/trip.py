@@ -12,4 +12,5 @@ class Trip(Base):
     destination_city = Column(String(128), nullable=True)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
+    planned_days = Column(Integer, nullable=True)
     user_id = Column(Integer, nullable=False)

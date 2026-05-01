@@ -2,6 +2,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,7 +21,7 @@ from app.schemas.stage import (
     StageSuggestionOut,
     StageUpdate,
 )
-from app.schemas.trip import TripCreate, TripOut
+from app.schemas.trip import TripCreate, TripOut, TripUpdate
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -109,20 +110,70 @@ def _validate_stage_type_and_subtype(stage_type: str, subtype: str) -> tuple[str
 
 
 def _create_expense_from_stage_if_needed(stage: Stage, db: Session) -> None:
-    if stage.cost_rub is None or stage.cost_rub <= 0:
+    _sync_stage_expense(stage=stage, db=db)
+
+
+def _sync_stage_expense(
+    stage: Stage,
+    db: Session,
+    *,
+    legacy_title: str | None = None,
+    legacy_category: str | None = None,
+    legacy_amount=None,
+) -> None:
+    existing = db.execute(
+        select(Expense).where(
+            Expense.trip_id == stage.trip_id,
+            Expense.stage_id == stage.id,
+        )
+    ).scalars().first()
+
+    category = STAGE_TYPE_TO_EXPENSE_CATEGORY.get(stage.stage_type, "other")
+    has_cost = stage.cost_rub is not None and stage.cost_rub > 0
+
+    if not has_cost:
+        if existing is not None:
+            db.delete(existing)
         return
 
-    category = STAGE_TYPE_TO_EXPENSE_CATEGORY.get(stage.stage_type)
-    if not category:
+    if existing is None:
+        # Backward-compatibility: bind legacy auto-expense rows created before stage_id existed.
+        legacy = db.execute(
+            select(Expense).where(
+                Expense.trip_id == stage.trip_id,
+                Expense.stage_id.is_(None),
+                Expense.description == stage.title.strip(),
+            ).order_by(Expense.id.desc())
+        ).scalars().first()
+        if legacy is None and legacy_title and legacy_amount is not None:
+            legacy = db.execute(
+                select(Expense).where(
+                    Expense.trip_id == stage.trip_id,
+                    Expense.stage_id.is_(None),
+                    Expense.description == legacy_title,
+                    Expense.amount_rub == legacy_amount,
+                ).order_by(Expense.id.desc())
+            ).scalars().first()
+        if legacy is not None:
+            legacy.stage_id = stage.id
+            legacy.description = stage.title.strip()
+            legacy.amount_rub = stage.cost_rub
+            legacy.category = category
+            return
+
+        existing = Expense(
+            trip_id=stage.trip_id,
+            stage_id=stage.id,
+            description=stage.title.strip(),
+            amount_rub=stage.cost_rub,
+            category=category,
+        )
+        db.add(existing)
         return
 
-    expense = Expense(
-        trip_id=stage.trip_id,
-        description=stage.title.strip(),
-        amount_rub=stage.cost_rub,
-        category=category,
-    )
-    db.add(expense)
+    existing.description = stage.title.strip()
+    existing.amount_rub = stage.cost_rub
+    existing.category = category
 
 
 @router.post("/", response_model=TripOut)
@@ -143,12 +194,104 @@ def create_trip(
         destination_city=trip.destination_city.strip() if trip.destination_city else None,
         start_date=trip.start_date,
         end_date=trip.end_date,
+        planned_days=trip.planned_days,
         user_id=user_id,
     )
     db.add(new_trip)
     db.commit()
     db.refresh(new_trip)
     return new_trip
+
+
+def _trip_total_days(start_date, end_date, planned_days) -> int:
+    if planned_days and planned_days > 0:
+        return int(planned_days)
+    return int((end_date - start_date).days + 1)
+
+
+def _stage_day_index(stage: Stage, trip_start_date) -> int:
+    source = stage.start_time or stage.end_time
+    if source is None:
+        return 0
+    stage_day = source.date()
+    return max((stage_day - trip_start_date).days, 0)
+
+
+@router.patch("/{trip_id}", response_model=TripOut)
+def update_trip(
+    trip_id: int,
+    payload: TripUpdate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    trip = _get_user_trip_or_404(db=db, trip_id=trip_id, user_id=user_id)
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    next_title = updates.get("title", trip.title)
+    next_start = updates.get("start_date", trip.start_date)
+    next_end = updates.get("end_date", trip.end_date)
+    next_planned_days = updates.get("planned_days", trip.planned_days)
+
+    if next_end < next_start:
+        raise HTTPException(
+            status_code=400,
+            detail="End date cannot be earlier than start date",
+        )
+
+    old_total = _trip_total_days(trip.start_date, trip.end_date, trip.planned_days)
+    new_total = _trip_total_days(next_start, next_end, next_planned_days)
+
+    if new_total < old_total and not payload.confirm_trim:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "New period is shorter than previous one. "
+                "Tail days and their route data will be deleted. "
+                "Resubmit with confirm_trim=true."
+            ),
+        )
+
+    if new_total < old_total:
+        stages = db.execute(
+            select(Stage).where(Stage.trip_id == trip_id).order_by(Stage.position.asc(), Stage.id.asc())
+        ).scalars().all()
+        to_delete = [
+            stage for stage in stages if _stage_day_index(stage, trip.start_date) >= new_total
+        ]
+        for stage in to_delete:
+            db.delete(stage)
+        db.flush()
+        remaining = db.execute(
+            select(Stage).where(Stage.trip_id == trip_id).order_by(Stage.position.asc(), Stage.id.asc())
+        ).scalars().all()
+        for index, stage in enumerate(remaining):
+            stage.position = index
+
+    day_shift = (next_start - trip.start_date).days
+    if day_shift != 0:
+        stages_to_shift = db.execute(
+            select(Stage).where(Stage.trip_id == trip_id).order_by(Stage.position.asc(), Stage.id.asc())
+        ).scalars().all()
+        for stage in stages_to_shift:
+            if stage.start_time is not None:
+                stage.start_time = stage.start_time + timedelta(days=day_shift)
+            if stage.end_time is not None:
+                stage.end_time = stage.end_time + timedelta(days=day_shift)
+
+    trip.title = next_title.strip() if isinstance(next_title, str) else trip.title
+    trip.start_date = next_start
+    trip.end_date = next_end
+    trip.planned_days = next_planned_days
+
+    # Keep date range consistent with mode by days.
+    if trip.planned_days and trip.planned_days > 0:
+        trip.end_date = trip.start_date + timedelta(days=int(trip.planned_days) - 1)
+
+    db.commit()
+    db.refresh(trip)
+    return trip
 
 
 @router.get("/{trip_id}/expenses", response_model=list[ExpenseOut])
@@ -291,6 +434,7 @@ def create_stage(
         document_key=payload.document_key,
     )
     db.add(stage)
+    db.flush()
     _create_expense_from_stage_if_needed(stage=stage, db=db)
     db.commit()
     db.refresh(stage)
@@ -309,6 +453,9 @@ def update_stage(
     stage = _get_user_stage_or_404(db=db, trip_id=trip_id, stage_id=stage_id)
 
     updates = payload.model_dump(exclude_unset=True)
+    old_title = stage.title.strip() if stage.title else None
+    old_category = STAGE_TYPE_TO_EXPENSE_CATEGORY.get(stage.stage_type)
+    old_amount = stage.cost_rub
 
     stage_type = (
         updates.get("stage_type", stage.stage_type)
@@ -329,6 +476,13 @@ def update_stage(
             value = value.strip()
         setattr(stage, field_name, value)
 
+    _sync_stage_expense(
+        stage=stage,
+        db=db,
+        legacy_title=old_title,
+        legacy_category=old_category,
+        legacy_amount=old_amount,
+    )
     db.commit()
     db.refresh(stage)
     return stage
@@ -343,6 +497,27 @@ def delete_stage(
 ):
     _get_user_trip_or_404(db=db, trip_id=trip_id, user_id=user_id)
     stage = _get_user_stage_or_404(db=db, trip_id=trip_id, stage_id=stage_id)
+
+    linked_expense = db.execute(
+        select(Expense).where(
+            Expense.trip_id == trip_id,
+            Expense.stage_id == stage.id,
+        )
+    ).scalars().first()
+    if linked_expense is not None:
+        db.delete(linked_expense)
+    else:
+        if stage.cost_rub is not None:
+            legacy = db.execute(
+                select(Expense).where(
+                    Expense.trip_id == trip_id,
+                    Expense.stage_id.is_(None),
+                    Expense.description == stage.title.strip(),
+                    Expense.amount_rub == stage.cost_rub,
+                ).order_by(Expense.id.desc())
+            ).scalars().first()
+            if legacy is not None:
+                db.delete(legacy)
 
     deleted_position = stage.position
     db.delete(stage)

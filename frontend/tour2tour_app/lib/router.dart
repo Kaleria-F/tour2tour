@@ -146,12 +146,16 @@ GoRouter buildRouter() {
           final destinationCity = payload['destination_city']?.toString();
           final startDate = payload['start_date'] is DateTime ? payload['start_date'] as DateTime : null;
           final endDate = payload['end_date'] is DateTime ? payload['end_date'] as DateTime : null;
+          final plannedDays = payload['planned_days'] is int
+              ? payload['planned_days'] as int
+              : int.tryParse((payload['planned_days'] ?? '').toString());
           return TripWorkspacePage(
             tripTitle: title,
             tripId: tripId,
             destinationCity: destinationCity,
             startDate: startDate,
             endDate: endDate,
+            plannedDays: plannedDays,
             tripsRepo: trips,
             documentsRepo: documents,
             preferencesRepo: prefs,

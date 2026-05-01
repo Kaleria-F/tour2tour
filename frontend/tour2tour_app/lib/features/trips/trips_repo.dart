@@ -19,6 +19,7 @@ class TripSummary {
   final String? destinationCity;
   final DateTime startDate;
   final DateTime endDate;
+  final int? plannedDays;
 
   TripSummary({
     required this.id,
@@ -26,6 +27,7 @@ class TripSummary {
     required this.destinationCity,
     required this.startDate,
     required this.endDate,
+    this.plannedDays,
   });
 
   factory TripSummary.fromJson(Map<String, dynamic> json) {
@@ -35,6 +37,7 @@ class TripSummary {
       destinationCity: json['destination_city']?.toString(),
       startDate: _parseDateOrEpoch(json['start_date']),
       endDate: _parseDateOrEpoch(json['end_date']),
+      plannedDays: int.tryParse((json['planned_days'] ?? '').toString()),
     );
   }
 }
@@ -336,6 +339,7 @@ class TripsRepo {
     String? destinationCity,
     required DateTime startDate,
     required DateTime endDate,
+    int? plannedDays,
   }) async {
     final res = await api.dio.post(
       '/trips/',
@@ -345,8 +349,34 @@ class TripsRepo {
         'destination_city': destinationCity,
         'start_date': startDate.toIso8601String().split('T')[0],
         'end_date': endDate.toIso8601String().split('T')[0],
+        'planned_days': plannedDays,
       },
     );
+    final data = res.data;
+    if (data is! Map<String, dynamic>) return null;
+    return TripSummary.fromJson(data);
+  }
+
+  Future<TripSummary?> updateTrip({
+    required int tripId,
+    String? title,
+    DateTime? startDate,
+    DateTime? endDate,
+    int? plannedDays,
+    bool includePlannedDays = false,
+    bool confirmTrim = false,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (title != null) payload['title'] = title;
+    if (startDate != null) {
+      payload['start_date'] = startDate.toIso8601String().split('T')[0];
+    }
+    if (endDate != null) {
+      payload['end_date'] = endDate.toIso8601String().split('T')[0];
+    }
+    if (includePlannedDays) payload['planned_days'] = plannedDays;
+    if (confirmTrim) payload['confirm_trim'] = true;
+    final res = await api.dio.patch('/trips/$tripId', data: payload);
     final data = res.data;
     if (data is! Map<String, dynamic>) return null;
     return TripSummary.fromJson(data);

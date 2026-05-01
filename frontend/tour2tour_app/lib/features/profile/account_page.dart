@@ -298,6 +298,7 @@ class _AccountPageState extends State<AccountPage> {
                                                     trip.destinationCity,
                                                 'start_date': trip.startDate,
                                                 'end_date': trip.endDate,
+                                                'planned_days': trip.plannedDays,
                                               },
                                             );
                                           },
