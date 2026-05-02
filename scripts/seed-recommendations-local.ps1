@@ -163,6 +163,61 @@ INSERT INTO place_tags (id, place_id, tag, weight) VALUES
 "@
   $placesSql | docker compose exec -T places-db psql -U places -d places
 
+  $storiesSql = @"
+DELETE FROM place_stories
+WHERE id IN (
+  '50000000-0000-0000-0000-000000000001',
+  '50000000-0000-0000-0000-000000000002',
+  '50000000-0000-0000-0000-000000000003',
+  '50000000-0000-0000-0000-000000000004'
+);
+
+INSERT INTO place_stories (
+  id, title, cover_image_url, image_url, body_text, place_id, sort_order, is_active
+) VALUES
+  (
+    '50000000-0000-0000-0000-000000000001',
+    'Новая выставка в Третьяковке',
+    'https://images.unsplash.com/photo-1501612780327-45045538702b?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1501612780327-45045538702b?auto=format&fit=crop&w=1400&q=80',
+    'Большая экспозиция русского искусства в центре Москвы. История подходит для продвижения знакового музейного места и сохранения его в избранное прямо из просмотра.',
+    '11111111-1111-1111-1111-111111111111',
+    10,
+    true
+  ),
+  (
+    '50000000-0000-0000-0000-000000000002',
+    'Закат в Зарядье',
+    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80',
+    'Вечерняя прогулка по парку с видом на реку и центр города. Хорошая история для блока общих рекомендаций и city discovery.',
+    '11111111-1111-1111-1111-111111111112',
+    20,
+    true
+  ),
+  (
+    '50000000-0000-0000-0000-000000000003',
+    'Семейный день в Новой Голландии',
+    'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1400&q=80',
+    'История для семейной аудитории: открытые пространства, отдых с детьми и удобный формат городской прогулки в Петербурге.',
+    '22222222-2222-2222-2222-222222222222',
+    30,
+    true
+  ),
+  (
+    '50000000-0000-0000-0000-000000000004',
+    'Петергоф: идея на целый день',
+    'https://images.unsplash.com/photo-1467269204594-9661b134dd2b?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1467269204594-9661b134dd2b?auto=format&fit=crop&w=1400&q=80',
+    'Промо-история для яркой дневной поездки: дворцы, фонтаны и большой маршрут на полдня или целый день.',
+    '22222222-2222-2222-2222-222222222224',
+    40,
+    true
+  );
+"@
+  $storiesSql | docker compose exec -T places-db psql -U places -d places
+
   $tripsSql = @"
 ALTER TABLE trips ADD COLUMN IF NOT EXISTS destination_city VARCHAR(128);
 
@@ -226,6 +281,8 @@ INSERT INTO user_place_interactions (id, user_id, place_id, action, context, ses
   docker compose exec -T auth-db psql -U auth -d auth -c "select id, email, role from users where email in ('reco.tester@example.com', 'family.tester@example.com', 'admin.seed@example.com') order by id;"
   Write-Host "Places:"
   docker compose exec -T places-db psql -U places -d places -c "select city, count(*) from places where source='synthetic_seed' group by city order by city;"
+  Write-Host "Stories:"
+  docker compose exec -T places-db psql -U places -d places -c "select title, place_id, sort_order, is_active from place_stories order by sort_order, title;"
   Write-Host "Trips:"
   docker compose exec -T trips-db psql -U trips -d trips -c "select title, destination_city, user_id from trips where title like 'Synthetic %' order by id;"
   Write-Host "Interactions:"

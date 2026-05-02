@@ -1,3 +1,4 @@
+﻿
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -5,6 +6,7 @@ import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
 import '../recommendations/recommendations_repo.dart';
 import '../shared/travel_app_shell.dart';
+import '../stories/stories_repo.dart';
 import '../trips/trips_repo.dart';
 import 'profile_repo.dart';
 
@@ -14,6 +16,7 @@ class ProfilePage extends StatefulWidget {
   final PreferencesRepo preferencesRepo;
   final RecommendationsRepo recommendationsRepo;
   final InteractionsRepo interactionsRepo;
+  final StoriesRepo storiesRepo;
 
   const ProfilePage({
     super.key,
@@ -22,6 +25,7 @@ class ProfilePage extends StatefulWidget {
     required this.preferencesRepo,
     required this.recommendationsRepo,
     required this.interactionsRepo,
+    required this.storiesRepo,
   });
 
   @override
@@ -29,19 +33,13 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  static const _storyLabels = [
-    'Для вас',
-    'Москва',
-    'Природа',
-    'Еда',
-    'Маршруты',
-  ];
-
   UserMe? _me;
   SurveyProfile? _surveyProfile;
   List<TripSummary> _trips = const [];
   List<RecommendationItem> _recommendations = const [];
-  final Set<String> _savedRecommendationIds = {};
+  List<StoryItem> _stories = const [];
+  final Set<String> _savedRecommendationIds = <String>{};
+  Set<String> _viewedStoryIds = const <String>{};
   bool _loading = true;
   bool _recommendationsLoading = false;
   String? _error;
@@ -59,34 +57,34 @@ class _ProfilePageState extends State<ProfilePage> {
     });
 
     try {
-      final results = await Future.wait([
+      final results = await Future.wait<dynamic>([
         widget.repo.getMe(),
         widget.tripsRepo.listTrips(),
       ]);
+
       SurveyProfile profile;
       try {
         profile = await widget.preferencesRepo.getSurveyProfile();
       } catch (_) {
         profile = SurveyProfile.empty();
       }
+
       if (!mounted) return;
       setState(() {
         _me = results[0] as UserMe;
         _trips = results[1] as List<TripSummary>;
         _surveyProfile = profile;
       });
+
+      await _loadStories();
       await _loadSavedRecommendations();
       await _loadRecommendations();
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-      });
+      setState(() => _error = e.toString());
     } finally {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-      });
+      setState(() => _loading = false);
     }
   }
 
@@ -101,9 +99,52 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         _savedRecommendationIds
           ..clear()
-          ..addAll(groups.expand((group) => group.items).map((item) => item.placeId));
+          ..addAll(
+            groups.expand((group) => group.items).map((item) => item.placeId),
+          );
       });
     } catch (_) {}
+  }
+
+  Future<void> _loadStories() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        widget.storiesRepo.listStories(),
+        widget.storiesRepo.readViewedIds(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _stories = List<StoryItem>.from(results[0] as List<StoryItem>)
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+        _viewedStoryIds = Set<String>.from(results[1] as Set<String>);
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _stories = const [];
+        _viewedStoryIds = const <String>{};
+      });
+    }
+  }
+
+  Future<void> _loadRecommendations() async {
+    final profile = _surveyProfile;
+    if (profile == null) return;
+    setState(() => _recommendationsLoading = true);
+    try {
+      final items = await widget.recommendationsRepo.getPersonalized(
+        profile: profile,
+        userId: _me?.id.toString(),
+      );
+      if (!mounted) return;
+      setState(() => _recommendations = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _recommendations = const []);
+    } finally {
+      if (!mounted) return;
+      setState(() => _recommendationsLoading = false);
+    }
   }
 
   Map<String, dynamic> _metadata(RecommendationItem item) => {
@@ -132,7 +173,7 @@ class _ProfilePageState extends State<ProfilePage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Сохранено в избранное · ${item.city}')),
+        SnackBar(content: Text('Сохранено в избранное: ${item.title}')),
       );
     } catch (_) {
       if (!mounted) return;
@@ -157,6 +198,7 @@ class _ProfilePageState extends State<ProfilePage> {
         );
       } catch (_) {}
     }
+
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
@@ -197,14 +239,19 @@ class _ProfilePageState extends State<ProfilePage> {
                 children: [
                   _MetaChip(icon: Icons.location_on_rounded, label: item.city),
                   if (item.address.isNotEmpty)
-                    _MetaChip(icon: Icons.place_outlined, label: item.address),
+                    _MetaChip(
+                      icon: Icons.place_outlined,
+                      label: item.address,
+                    ),
                   _MetaChip(
                     icon: Icons.star_rounded,
                     label: item.rating.toStringAsFixed(1),
                   ),
                   _MetaChip(
                     icon: Icons.auto_awesome_rounded,
-                    label: item.subcategory.isEmpty ? item.category : item.subcategory,
+                    label: item.subcategory.isEmpty
+                        ? item.category
+                        : item.subcategory,
                   ),
                 ],
               ),
@@ -247,32 +294,32 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Future<void> _loadRecommendations() async {
-    final profile = _surveyProfile;
-    if (profile == null) return;
-    setState(() => _recommendationsLoading = true);
-    try {
-      final items = await widget.recommendationsRepo.getPersonalized(
-        profile: profile,
-        userId: _me?.id?.toString(),
-      );
-      if (!mounted) return;
-      setState(() {
-        _recommendations = items;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _recommendations = const [];
-      });
-    } finally {
-      if (!mounted) return;
-      setState(() => _recommendationsLoading = false);
+  Future<void> _openStory(StoryItem story) async {
+    final storyIndex = _stories.indexWhere((item) => item.id == story.id);
+    if (!_viewedStoryIds.contains(story.id)) {
+      try {
+        await widget.storiesRepo.markViewed(story.id);
+      } catch (_) {}
+      if (mounted) {
+        setState(() {
+          _viewedStoryIds = {..._viewedStoryIds, story.id};
+        });
+      }
     }
+    if (!mounted) return;
+    context.push(
+      '/story-viewer',
+      extra: {
+        'story': story,
+        'stories': _stories,
+        'initialIndex': storyIndex < 0 ? 0 : storyIndex,
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final displayName = (_me?.displayName ?? '').trim();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final activeTrips = _trips
@@ -288,7 +335,7 @@ class _ProfilePageState extends State<ProfilePage> {
       ..sort((a, b) => a.startDate.compareTo(b.startDate));
 
     return TravelAppShell(
-      title: 'Привет',
+      title: displayName.isEmpty ? 'Привет' : 'Привет, $displayName',
       subtitle: 'Соберите поездку и посмотрите новые идеи для путешествий',
       currentTab: TravelNavTab.home,
       headerAction: InkWell(
@@ -315,58 +362,58 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _StoriesRow(labels: _storyLabels),
-                      const SizedBox(height: 18),
-                      const _SectionHeader(
-                        title: 'Мои поездки',
-                      ),
+                      if (_stories.isNotEmpty) ...[
+                        _StoriesRow(
+                          stories: _stories,
+                          viewedStoryIds: _viewedStoryIds,
+                          onOpen: _openStory,
+                        ),
+                        const SizedBox(height: 18),
+                      ],
+                      const _SectionHeader(title: 'Мои поездки'),
                       const SizedBox(height: 12),
                       SizedBox(
                         height: 248,
                         child: activeTrips.isEmpty
                             ? _EmptyStrip(
                                 title: 'Пока нет поездок',
-                                subtitle:
-                                    'Создайте первое путешествие, и здесь появятся ваши маршруты.',
+                                subtitle: 'Создайте первое путешествие, и здесь появятся ваши маршруты.',
                                 actionLabel: 'Создать путешествие',
                                 onAction: () => context.go('/create-trip'),
                               )
                             : ListView.separated(
                                 scrollDirection: Axis.horizontal,
                                 itemCount: activeTrips.length,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(width: 14),
+                                separatorBuilder: (_, __) => const SizedBox(width: 14),
                                 itemBuilder: (_, index) {
                                   final trip = activeTrips[index];
                                   return _TripCarouselCard(
                                     trip: trip,
                                     onTap: () {
-                                      context.go(
-                                        '/trip-workspace',
-                                        extra: {
-                                          'id': trip.id,
-                                          'title': trip.title,
-                                          'destination_city':
-                                              trip.destinationCity,
-                                          'start_date': trip.startDate,
-                                          'end_date': trip.endDate,
-                                          'planned_days': trip.plannedDays,
-                                        },
-                                      );
+                                      context.go('/trip-workspace', extra: {
+                                        'id': trip.id,
+                                        'title': trip.title,
+                                        'destination_city': trip.destinationCity,
+                                        'start_date': trip.startDate,
+                                        'end_date': trip.endDate,
+                                        'planned_days': trip.plannedDays,
+                                      });
                                     },
                                   );
                                 },
                               ),
                       ),
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 28),
                       _SectionHeader(
-                        title: 'Рекомендации',
-                        actionLabel: 'Настроить',
-                        onTap: () => context.go('/preferences'),
+                        title: 'Идеи для вас',
+                        trailing: TextButton(
+                          onPressed: () => context.go('/preferences?from=recommendations'),
+                          child: const Text('Настроить'),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
-                        height: 248,
+                        height: 324,
                         child: _recommendationsLoading
                             ? const Center(
                                 child: CircularProgressIndicator(
@@ -374,51 +421,45 @@ class _ProfilePageState extends State<ProfilePage> {
                                 ),
                               )
                             : _recommendations.isEmpty
-                                ? const _EmptyStrip(
-                                    title: 'Пока нет рекомендаций',
-                                    subtitle: 'Пройдите опрос предпочтений, и подборка появится здесь.',
+                                ? _EmptyStrip(
+                                    title: 'Нет рекомендаций',
+                                    subtitle: 'Заполните предпочтения, чтобы получить персональные подборки.',
+                                    actionLabel: 'Открыть предпочтения',
+                                    onAction: () => context.go('/preferences?from=recommendations'),
                                   )
                                 : ListView.separated(
                                     scrollDirection: Axis.horizontal,
                                     itemCount: _recommendations.length,
-                                    separatorBuilder: (_, __) =>
-                                        const SizedBox(width: 14),
+                                    separatorBuilder: (_, __) => const SizedBox(width: 14),
                                     itemBuilder: (_, index) {
                                       final item = _recommendations[index];
                                       return _RecommendationCarouselCard(
                                         item: item,
-                                        isSaved: _savedRecommendationIds.contains(item.id),
-                                        onSave: () => _saveRecommendation(item),
-                                        onOpen: () => _openRecommendationDetails(item),
+                                        saved: _savedRecommendationIds.contains(item.id),
+                                        onTap: () => _openRecommendationDetails(item),
+                                        onSave: _savedRecommendationIds.contains(item.id)
+                                            ? null
+                                            : () => _saveRecommendation(item),
                                       );
                                     },
                                   ),
                       ),
+                      const SizedBox(height: 16),
                     ],
                   ),
                 ),
     );
   }
-
-  String _fmtDate(DateTime value) {
-    final m = value.month.toString().padLeft(2, '0');
-    final d = value.day.toString().padLeft(2, '0');
-    return '$d.$m.${value.year}';
-  }
 }
 
 class _SectionHeader extends StatelessWidget {
+  final String title;
+  final Widget? trailing;
+
   const _SectionHeader({
     required this.title,
-    this.actionLabel,
-    this.onTap,
     this.trailing,
   });
-
-  final String title;
-  final String? actionLabel;
-  final VoidCallback? onTap;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -429,23 +470,11 @@ class _SectionHeader extends StatelessWidget {
             title,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w500,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ),
-        if (actionLabel != null && onTap != null)
-          TextButton(
-            onPressed: onTap,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFD7E37A),
-              textStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            child: Text(actionLabel!),
-          ),
         if (trailing != null) trailing!,
       ],
     );
@@ -453,9 +482,15 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _StoriesRow extends StatelessWidget {
-  const _StoriesRow({required this.labels});
+  final List<StoryItem> stories;
+  final Set<String> viewedStoryIds;
+  final ValueChanged<StoryItem> onOpen;
 
-  final List<String> labels;
+  const _StoriesRow({
+    required this.stories,
+    required this.viewedStoryIds,
+    required this.onOpen,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -463,55 +498,63 @@ class _StoriesRow extends StatelessWidget {
       height: 104,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: labels.length,
+        itemCount: stories.length,
         separatorBuilder: (_, __) => const SizedBox(width: 14),
         itemBuilder: (_, index) {
-          final label = labels[index];
-          return Column(
-            children: [
-              Container(
-                width: 68,
-                height: 68,
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [
-                      Color(0xFFD7E37A),
-                      Color(0xFF6E7A34),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+          final story = stories[index];
+          final viewed = viewedStoryIds.contains(story.id);
+          return InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () => onOpen(story),
+            child: SizedBox(
+              width: 78,
+              child: Column(
+                children: [
+                  Container(
+                    width: 74,
+                    height: 74,
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: viewed
+                          ? null
+                          : const LinearGradient(
+                              colors: [Color(0xFFD7E37A), Color(0xFFF2B879)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                      color: viewed ? const Color(0xFF3A3A3A) : null,
+                    ),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFF161616),
+                          width: 2,
+                        ),
+                      ),
+                      child: ClipOval(
+                        child: _StoryImage(url: story.circleImageUrl),
+                      ),
+                    ),
                   ),
-                ),
-                child: Container(
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFF1E1E1E),
+                  const SizedBox(height: 8),
+                  Text(
+                    story.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: viewed
+                          ? Colors.white.withOpacity(0.64)
+                          : Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.auto_awesome_rounded,
-                    color: Color(0xFFD7E37A),
-                    size: 24,
-                  ),
-                ),
+                ],
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: 72,
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.76),
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
+            ),
           );
         },
       ),
@@ -520,111 +563,84 @@ class _StoriesRow extends StatelessWidget {
 }
 
 class _TripCarouselCard extends StatelessWidget {
+  final TripSummary trip;
+  final VoidCallback onTap;
+
   const _TripCarouselCard({
     required this.trip,
     required this.onTap,
   });
 
-  final TripSummary trip;
-  final VoidCallback onTap;
-
   @override
   Widget build(BuildContext context) {
-    final city = trip.destinationCity;
-    final startLabel =
-        '${_twoDigits(trip.startDate.day)}.${_twoDigits(trip.startDate.month)}';
-    final endLabel =
-        '${_twoDigits(trip.endDate.day)}.${_twoDigits(trip.endDate.month)}';
-    final tripPeriodLabel = (trip.plannedDays != null && trip.plannedDays! > 0)
-        ? '${trip.plannedDays} дн.'
-        : ((trip.startDate.year == trip.endDate.year &&
-                trip.startDate.month == trip.endDate.month &&
-                trip.startDate.day == trip.endDate.day)
-            ? startLabel
-            : '$startLabel - $endLabel');
-    final cityLabel = city == null || city.isEmpty ? 'Маршрут' : city;
-    return InkWell(
-      borderRadius: BorderRadius.circular(30),
-      onTap: onTap,
-      child: SizedBox(
-        width: 240,
-        child: Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(30),
-            color: const Color(0xFF1D1D1D),
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _TripPlaceholderArt(seed: trip.id, city: cityLabel),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.72),
+    final city = (trip.destinationCity ?? '').trim();
+    final dateLabel = '${_twoDigits(trip.startDate.day)}.${_twoDigits(trip.startDate.month)} - ${_twoDigits(trip.endDate.day)}.${_twoDigits(trip.endDate.month)}';
+
+    return SizedBox(
+      width: 286,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(28),
+          onTap: onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF252525), Color(0xFF171717)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x26000000),
+                  blurRadius: 22,
+                  offset: Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Expanded(child: _TripPlaceholderArt()),
+                  const SizedBox(height: 16),
+                  Text(
+                    trip.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (city.isNotEmpty)
+                        _MetaChip(
+                          icon: Icons.location_on_outlined,
+                          label: city,
+                        ),
+                      _MetaChip(
+                        icon: Icons.calendar_today_outlined,
+                        label: dateLabel,
+                      ),
+                      if (trip.plannedDays != null)
+                        _MetaChip(
+                          icon: Icons.schedule_outlined,
+                          label: '${trip.plannedDays} дн.',
+                        ),
                     ],
                   ),
-                ),
+                ],
               ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Align(
-                      alignment: Alignment.topRight,
-                      child: Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.24),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.north_east_rounded,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      trip.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        height: 1,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      cityLabel,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        _MetaChip(
-                          icon: Icons.calendar_today_rounded,
-                          label: tripPeriodLabel,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -633,141 +649,130 @@ class _TripCarouselCard extends StatelessWidget {
 }
 
 class _RecommendationCarouselCard extends StatelessWidget {
+  final RecommendationItem item;
+  final bool saved;
+  final VoidCallback onTap;
+  final VoidCallback? onSave;
+
   const _RecommendationCarouselCard({
     required this.item,
-    required this.isSaved,
+    required this.saved,
+    required this.onTap,
     required this.onSave,
-    required this.onOpen,
   });
-
-  final RecommendationItem item;
-  final bool isSaved;
-  final VoidCallback onSave;
-  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 240,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(30),
-        onTap: onOpen,
-        child: Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(30),
-            color: const Color(0xFF1D1D1D),
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              item.imageUrl.isNotEmpty
-                  ? Image.network(
-                      item.imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _RecommendationPlaceholderArt(
-                        city: item.city,
-                      ),
-                    )
-                  : _RecommendationPlaceholderArt(city: item.city),
-              Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.76),
-                    ],
+      width: 286,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(28),
+          onTap: onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              color: const Color(0xFF1C1C1C),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 184,
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(28),
+                    ),
+                    child: item.imageUrl.trim().isEmpty
+                        ? const _RecommendationPlaceholderArt()
+                        : Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                item.imageUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const _RecommendationPlaceholderArt(),
+                              ),
+                              DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
+                                    colors: [
+                                      Colors.black.withOpacity(0.45),
+                                      Colors.transparent,
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                   ),
                 ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text(
+                          item.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          item.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.72),
+                            height: 1.35,
+                          ),
+                        ),
                         const Spacer(),
-                        Material(
-                          color: Colors.black.withOpacity(0.24),
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: isSaved ? onOpen : onSave,
-                            child: SizedBox(
-                              width: 34,
-                              height: 34,
-                              child: Icon(
-                                isSaved
-                                    ? Icons.bookmark_rounded
-                                    : Icons.bookmark_add_outlined,
-                                color: isSaved
-                                    ? const Color(0xFFD7E37A)
-                                    : Colors.white,
-                                size: 18,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  _MetaChip(
+                                    icon: Icons.location_on_outlined,
+                                    label: item.city,
+                                  ),
+                                  _MetaChip(
+                                    icon: Icons.star_rounded,
+                                    label: item.rating.toStringAsFixed(1),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.24),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.north_east_rounded,
-                            color: Colors.white,
-                            size: 18,
-                          ),
+                            const SizedBox(width: 12),
+                            IconButton.filledTonal(
+                              onPressed: onSave,
+                              icon: Icon(
+                                saved
+                                    ? Icons.bookmark_rounded
+                                    : Icons.bookmark_add_outlined,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const Spacer(),
-                    Text(
-                      item.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        height: 1,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      item.city,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        _MetaChip(
-                          icon: Icons.star_rounded,
-                          label: item.rating.toStringAsFixed(1),
-                        ),
-                        const SizedBox(width: 8),
-                        _MetaChip(
-                          icon: Icons.auto_awesome_rounded,
-                          label: item.category,
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -776,30 +781,36 @@ class _RecommendationCarouselCard extends StatelessWidget {
 }
 
 class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label});
-
   final IconData icon;
   final String label;
+
+  const _MetaChip({
+    required this.icon,
+    required this.label,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.24),
+        color: Colors.white.withOpacity(0.06),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: const Color(0xFFD7E37A), size: 14),
+          Icon(icon, size: 16, color: const Color(0xFFD7E37A)),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -809,96 +820,89 @@ class _MetaChip extends StatelessWidget {
 }
 
 class _EmptyStrip extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String actionLabel;
+  final VoidCallback onAction;
+
   const _EmptyStrip({
     required this.title,
     required this.subtitle,
-    this.actionLabel,
-    this.onAction,
+    required this.actionLabel,
+    required this.onAction,
   });
-
-  final String title;
-  final String subtitle;
-  final String? actionLabel;
-  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
-    return TravelCard(
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.auto_awesome_rounded,
-                color: Color(0xFFD7E37A),
-                size: 30,
-              ),
-              const SizedBox(height: 10),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                subtitle,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.64),
-                  fontSize: 14,
-                  height: 1.35,
-                ),
-              ),
-              if (actionLabel != null && onAction != null) ...[
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: onAction,
-                    icon: const Icon(Icons.add_rounded),
-                    label: Text(actionLabel!),
-                  ),
-                ),
-              ],
-            ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1B1B1B),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.72),
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: onAction,
+            child: Text(actionLabel),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _ErrorState extends StatelessWidget {
+  final String message;
+  final Future<void> Function() onRetry;
+
   const _ErrorState({
     required this.message,
     required this.onRetry,
   });
 
-  final String message;
-  final VoidCallback onRetry;
-
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: TravelCard(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline_rounded,
-                color: Colors.redAccent, size: 32),
-            const SizedBox(height: 12),
+            const Icon(
+              Icons.error_outline_rounded,
+              color: Color(0xFFF2B879),
+              size: 42,
+            ),
+            const SizedBox(height: 14),
             const Text(
-              'Не удалось загрузить экран',
+              'Не удалось загрузить профиль',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 8),
@@ -906,16 +910,14 @@ class _ErrorState extends StatelessWidget {
               message,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withOpacity(0.68),
-                fontSize: 13,
+                color: Colors.white.withOpacity(0.7),
+                height: 1.45,
               ),
             ),
-            const SizedBox(height: 14),
-            TravelCapsuleButton(
-              label: 'Повторить',
-              icon: Icons.refresh_rounded,
-              active: true,
-              onTap: onRetry,
+            const SizedBox(height: 18),
+            ElevatedButton(
+              onPressed: () => onRetry(),
+              child: const Text('Повторить'),
             ),
           ],
         ),
@@ -925,56 +927,68 @@ class _ErrorState extends StatelessWidget {
 }
 
 class _TripPlaceholderArt extends StatelessWidget {
-  const _TripPlaceholderArt({
-    required this.seed,
-    required this.city,
-  });
-
-  final int seed;
-  final String city;
+  const _TripPlaceholderArt();
 
   @override
   Widget build(BuildContext context) {
-    final gradients = [
-      const [Color(0xFF6F826A), Color(0xFF2E3F2B)],
-      const [Color(0xFF8A6D58), Color(0xFF493427)],
-      const [Color(0xFF697C8F), Color(0xFF24313D)],
-      const [Color(0xFF7A5F6B), Color(0xFF35242C)],
-    ];
-    final palette = gradients[seed % gradients.length];
-    return Container(
+    return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: palette,
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2F3A1D), Color(0xFF191919)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
       ),
       child: Stack(
         fit: StackFit.expand,
         children: [
           Positioned(
-            top: 18,
-            left: 18,
-            child: Text(
-              city,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.16),
-                fontSize: 32,
-                fontWeight: FontWeight.w700,
+            left: -18,
+            top: 24,
+            child: Container(
+              width: 92,
+              height: 92,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD7E37A).withOpacity(0.16),
+                shape: BoxShape.circle,
               ),
             ),
           ),
           Positioned(
-            bottom: -24,
-            left: -10,
-            right: -10,
-            child: Container(
-              height: 96,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(100),
-                color: Colors.black.withOpacity(0.22),
-              ),
+            right: 22,
+            top: 18,
+            child: Icon(
+              Icons.luggage_rounded,
+              size: 42,
+              color: Colors.white.withOpacity(0.84),
+            ),
+          ),
+          Positioned(
+            left: 22,
+            right: 22,
+            bottom: 22,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFD7E37A),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -984,31 +998,88 @@ class _TripPlaceholderArt extends StatelessWidget {
 }
 
 class _RecommendationPlaceholderArt extends StatelessWidget {
-  const _RecommendationPlaceholderArt({required this.city});
-
-  final String city;
+  const _RecommendationPlaceholderArt();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return DecoratedBox(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF3A4438),
-            Color(0xFF1D231C),
-          ],
+          colors: [Color(0xFF2B2B2B), Color(0xFF181818)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
       ),
-      child: Center(
-        child: Text(
-          city,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.16),
-            fontSize: 30,
-            fontWeight: FontWeight.w700,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned(
+            left: -10,
+            bottom: -20,
+            child: Container(
+              width: 132,
+              height: 132,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD7E37A).withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Center(
+            child: Icon(
+              Icons.landscape_rounded,
+              size: 44,
+              color: Colors.white.withOpacity(0.74),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StoryImage extends StatelessWidget {
+  final String url;
+
+  const _StoryImage({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    if (url.trim().isEmpty) {
+      return const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF3C3C3C), Color(0xFF1D1D1D)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: Icon(
+            Icons.auto_stories_rounded,
+            color: Colors.white,
+            size: 24,
+          ),
+        ),
+      );
+    }
+
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => const DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF3C3C3C), Color(0xFF1D1D1D)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Center(
+          child: Icon(
+            Icons.auto_stories_rounded,
+            color: Colors.white,
+            size: 24,
           ),
         ),
       ),

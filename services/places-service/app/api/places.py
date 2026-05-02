@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps import require_admin
 from app.core.config import settings
 from app.db.deps import get_db
-from app.models.place import Place, PlaceCandidate, PlaceImportJob, PlaceTag
+from app.models.place import Place, PlaceCandidate, PlaceImportJob, PlaceStory, PlaceTag
 from app.schemas.place import (
     CitySuggestionOut,
     ImportJobCreate,
@@ -22,6 +22,10 @@ from app.schemas.place import (
     PlaceCreate,
     PlaceListResponse,
     PlaceOut,
+    PlaceStoryCreate,
+    PlaceStoryOut,
+    PlaceStoryPlaceOut,
+    PlaceStoryUpdate,
     PlaceUpdate,
     TagCatalogItemOut,
 )
@@ -125,6 +129,10 @@ def _place_query():
     return select(Place).options(selectinload(Place.tags))
 
 
+def _story_query():
+    return select(PlaceStory).options(selectinload(PlaceStory.place))
+
+
 def _to_place_out(place: Place) -> PlaceOut:
     return PlaceOut(
         id=place.id,
@@ -150,6 +158,35 @@ def _to_place_out(place: Place) -> PlaceOut:
         tags={tag.tag: tag.weight for tag in place.tags},
         created_at=place.created_at,
         updated_at=place.updated_at,
+    )
+
+
+def _to_story_out(story: PlaceStory) -> PlaceStoryOut:
+    place_out = None
+    if story.place is not None:
+        place_out = PlaceStoryPlaceOut(
+            id=story.place.id,
+            name=story.place.name,
+            city=story.place.city,
+            image_url=story.place.image_url,
+            address=story.place.address,
+            category=story.place.category,
+            subcategory=story.place.subcategory,
+            rating=story.place.rating,
+            description=story.place.description,
+        )
+    return PlaceStoryOut(
+        id=story.id,
+        title=story.title,
+        cover_image_url=story.cover_image_url,
+        image_url=story.image_url,
+        body_text=story.body_text,
+        place_id=story.place_id,
+        sort_order=story.sort_order,
+        is_active=story.is_active,
+        place=place_out,
+        created_at=story.created_at,
+        updated_at=story.updated_at,
     )
 
 
@@ -389,6 +426,99 @@ def suggest_cities(
 @router.get("/tags/catalog", response_model=list[TagCatalogItemOut])
 def list_tag_catalog():
     return [TagCatalogItemOut(**item) for item in TAG_CATALOG]
+
+
+@router.get("/stories", response_model=list[PlaceStoryOut])
+def list_place_stories(
+    active_only: bool = Query(default=True),
+    db: Session = Depends(get_db),
+):
+    query = _story_query().order_by(PlaceStory.sort_order.asc(), PlaceStory.updated_at.desc())
+    if active_only:
+        query = query.where(PlaceStory.is_active.is_(True))
+    stories = db.execute(query).scalars().unique().all()
+    return [_to_story_out(story) for story in stories]
+
+
+@router.get("/stories/admin", response_model=list[PlaceStoryOut])
+def list_place_stories_admin(
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    stories = db.execute(
+        _story_query().order_by(PlaceStory.sort_order.asc(), PlaceStory.updated_at.desc())
+    ).scalars().unique().all()
+    return [_to_story_out(story) for story in stories]
+
+
+@router.post("/stories", response_model=PlaceStoryOut, status_code=status.HTTP_201_CREATED)
+def create_place_story(
+    payload: PlaceStoryCreate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    linked_place = None
+    if payload.place_id:
+        linked_place = db.get(Place, payload.place_id)
+        if linked_place is None:
+            raise HTTPException(status_code=404, detail="Linked place not found")
+    story = PlaceStory(
+        id=str(uuid4()),
+        title=payload.title,
+        cover_image_url=payload.cover_image_url,
+        image_url=payload.image_url,
+        body_text=payload.body_text,
+        place_id=linked_place.id if linked_place else None,
+        sort_order=payload.sort_order,
+        is_active=payload.is_active,
+    )
+    db.add(story)
+    db.commit()
+    story = db.execute(_story_query().where(PlaceStory.id == story.id)).scalar_one()
+    return _to_story_out(story)
+
+
+@router.patch("/stories/{story_id}", response_model=PlaceStoryOut)
+def update_place_story(
+    story_id: str,
+    payload: PlaceStoryUpdate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    story = db.execute(_story_query().where(PlaceStory.id == story_id)).scalar_one_or_none()
+    if story is None:
+        raise HTTPException(status_code=404, detail="Story not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "place_id" in data:
+        place_id = data.get("place_id")
+        if place_id:
+            linked_place = db.get(Place, place_id)
+            if linked_place is None:
+                raise HTTPException(status_code=404, detail="Linked place not found")
+            story.place_id = linked_place.id
+        else:
+            story.place_id = None
+        data.pop("place_id", None)
+    for key, value in data.items():
+        setattr(story, key, value)
+    db.add(story)
+    db.commit()
+    db.expire_all()
+    story = db.execute(_story_query().where(PlaceStory.id == story_id)).scalar_one()
+    return _to_story_out(story)
+
+
+@router.delete("/stories/{story_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_place_story(
+    story_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin),
+):
+    story = db.get(PlaceStory, story_id)
+    if story is None:
+        raise HTTPException(status_code=404, detail="Story not found")
+    db.delete(story)
+    db.commit()
 
 
 @router.get("/candidates/list", response_model=list[PlaceCandidateOut])

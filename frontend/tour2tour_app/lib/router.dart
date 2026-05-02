@@ -21,7 +21,11 @@ import 'features/favorites/favorites_page.dart';
 import 'features/profile/profile_repo.dart';
 import 'features/profile/profile_page.dart';
 import 'features/profile/account_page.dart';
+import 'features/profile/complete_profile_page.dart';
+import 'features/profile/edit_account_page.dart';
 import 'features/shared/travel_app_shell.dart';
+import 'features/stories/stories_repo.dart';
+import 'features/stories/story_viewer_page.dart';
 import 'features/trips/create_trip_page.dart';
 import 'features/trips/trip_workspace_page.dart';
 import 'features/trips/trips_repo.dart';
@@ -36,6 +40,7 @@ GoRouter buildRouter() {
   final recommendations = RecommendationsRepo(api);
   final interactions = InteractionsRepo(api);
   final profile = ProfileRepo(api);
+  final stories = StoriesRepo(api);
   final trips = TripsRepo(api);
   final documents = DocumentsRepo(api);
 
@@ -90,7 +95,60 @@ GoRouter buildRouter() {
           preferencesRepo: prefs,
           recommendationsRepo: recommendations,
           interactionsRepo: interactions,
+          storiesRepo: stories,
         ),
+      ),
+      GoRoute(
+        path: '/complete-profile',
+        builder: (_, __) => CompleteProfilePage(profileRepo: profile),
+      ),
+      GoRoute(
+        path: '/story-viewer',
+        builder: (_, state) {
+          final payload = state.extra;
+          final payloadMap = payload is Map<String, dynamic>
+              ? payload
+              : <String, dynamic>{};
+          final story = payload is StoryItem
+              ? payload
+              : payloadMap['story'] is StoryItem
+                  ? payloadMap['story'] as StoryItem
+                  : null;
+          final stories = payloadMap['stories'] is List
+              ? (payloadMap['stories'] as List)
+                  .whereType<StoryItem>()
+                  .toList()
+              : <StoryItem>[];
+          final initialIndex = payloadMap['initialIndex'] is int
+              ? payloadMap['initialIndex'] as int
+              : 0;
+          if (story == null) {
+            return StoryViewerPage(
+              profileRepo: profile,
+              interactionsRepo: interactions,
+              story: StoryItem(
+                id: '',
+                title: 'История не найдена',
+                imageUrl: '',
+                coverImageUrl: null,
+                bodyText: 'Не удалось открыть историю. Вернитесь назад и попробуйте снова.',
+                placeId: null,
+                sortOrder: 0,
+                isActive: false,
+                place: null,
+              ),
+              stories: const [],
+              initialIndex: 0,
+            );
+          }
+          return StoryViewerPage(
+            story: story,
+            stories: stories,
+            initialIndex: initialIndex,
+            profileRepo: profile,
+            interactionsRepo: interactions,
+          );
+        },
       ),
       GoRoute(
         path: '/account',
@@ -99,6 +157,10 @@ GoRouter buildRouter() {
           tripsRepo: trips,
           authRepo: auth,
         ),
+      ),
+      GoRoute(
+        path: '/edit-account',
+        builder: (_, __) => EditAccountPage(profileRepo: profile),
       ),
       GoRoute(
         path: '/favorites',

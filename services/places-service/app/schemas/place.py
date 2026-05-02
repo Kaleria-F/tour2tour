@@ -79,6 +79,49 @@ class PlaceListResponse(BaseModel):
     total: int
 
 
+class PlaceStoryPlaceOut(BaseModel):
+    id: str
+    name: str
+    city: str
+    image_url: str | None = None
+    address: str | None = None
+    category: str
+    subcategory: str | None = None
+    rating: float | None = None
+    description: str | None = None
+
+
+class PlaceStoryBase(BaseModel):
+    title: str = Field(min_length=1, max_length=140)
+    cover_image_url: str | None = None
+    image_url: str = Field(min_length=1, max_length=512)
+    body_text: str | None = None
+    place_id: str | None = None
+    sort_order: int = Field(default=0, ge=0, le=10000)
+    is_active: bool = True
+
+
+class PlaceStoryCreate(PlaceStoryBase):
+    pass
+
+
+class PlaceStoryUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=140)
+    cover_image_url: str | None = None
+    image_url: str | None = Field(default=None, min_length=1, max_length=512)
+    body_text: str | None = None
+    place_id: str | None = None
+    sort_order: int | None = Field(default=None, ge=0, le=10000)
+    is_active: bool | None = None
+
+
+class PlaceStoryOut(PlaceStoryBase):
+    id: str
+    place: PlaceStoryPlaceOut | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class CitySuggestionOut(BaseModel):
     city: str
     region: str | None = None

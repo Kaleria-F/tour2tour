@@ -39,6 +39,30 @@ export type AdminPlaceListResponse = {
   total: number;
 };
 
+export type AdminStoryPlace = {
+  id: string;
+  name: string;
+  city: string;
+  image_url?: string | null;
+  address?: string | null;
+  category: string;
+  subcategory?: string | null;
+  rating?: number | null;
+  description?: string | null;
+};
+
+export type AdminStory = {
+  id: string;
+  title: string;
+  cover_image_url?: string | null;
+  image_url: string;
+  body_text?: string | null;
+  place_id?: string | null;
+  sort_order: number;
+  is_active: boolean;
+  place?: AdminStoryPlace | null;
+};
+
 export type AdminPlaceCandidate = {
   id: string;
   source: string;

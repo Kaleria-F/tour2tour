@@ -1,7 +1,9 @@
 ﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
 
 import {
+  createStory,
   createPlace,
+  deleteStory,
   decideCandidate,
   deleteCandidate,
   deletePlace,
@@ -10,11 +12,13 @@ import {
   listCandidates,
   listImportJobs,
   listPlaces,
+  listStoriesAdmin,
   listTagCatalog,
   login,
   setStoredToken,
   suggestCities,
   updatePlace,
+  updateStory,
   uploadImportCsv,
   uploadPlaceImage,
   verify2fa,
@@ -23,12 +27,14 @@ import type {
   AdminImportJob,
   AdminPlace,
   AdminPlaceCandidate,
+  AdminStory,
+  AdminStoryPlace,
   AdminTagCatalogItem,
   CitySuggestion,
   UserMe,
 } from './types';
 
-type TabKey = 'places' | 'candidates' | 'imports';
+type TabKey = 'places' | 'stories' | 'candidates' | 'imports';
 
 type Option = {
   value: string;
@@ -47,6 +53,16 @@ type PlaceFormState = {
   description: string;
   rating: string;
   tags: Record<string, number>;
+};
+
+type StoryFormState = {
+  title: string;
+  cover_image_url: string;
+  image_url: string;
+  body_text: string;
+  place_id: string;
+  sort_order: string;
+  is_active: boolean;
 };
 
 const CATEGORY_OPTIONS: Array<Option & { subcategories: Option[] }> = [
@@ -157,6 +173,16 @@ const EMPTY_FORM: PlaceFormState = {
   tags: {},
 };
 
+const EMPTY_STORY_FORM: StoryFormState = {
+  title: '',
+  cover_image_url: '',
+  image_url: '',
+  body_text: '',
+  place_id: '',
+  sort_order: '0',
+  is_active: true,
+};
+
 function normalizeTags(tags: Record<string, number>) {
   return Object.fromEntries(Object.entries(tags).filter(([, weight]) => weight > 0));
 }
@@ -213,11 +239,17 @@ export function App() {
   const [challengeId, setChallengeId] = useState('');
   const [tab, setTab] = useState<TabKey>('places');
   const [places, setPlaces] = useState<AdminPlace[]>([]);
+  const [stories, setStories] = useState<AdminStory[]>([]);
   const [candidates, setCandidates] = useState<AdminPlaceCandidate[]>([]);
   const [imports, setImports] = useState<AdminImportJob[]>([]);
   const [placeEditor, setPlaceEditor] = useState<AdminPlace | null>(null);
   const [placeModalOpen, setPlaceModalOpen] = useState(false);
   const [placeForm, setPlaceForm] = useState<PlaceFormState>(EMPTY_FORM);
+  const [storyEditor, setStoryEditor] = useState<AdminStory | null>(null);
+  const [storyModalOpen, setStoryModalOpen] = useState(false);
+  const [storyForm, setStoryForm] = useState<StoryFormState>(EMPTY_STORY_FORM);
+  const [storyPlaceSearch, setStoryPlaceSearch] = useState('');
+  const [storyPlaceResults, setStoryPlaceResults] = useState<AdminStoryPlace[]>([]);
   const [placeSearchInput, setPlaceSearchInput] = useState('');
   const [placeSearchQuery, setPlaceSearchQuery] = useState('');
   const [placesTotal, setPlacesTotal] = useState(0);
@@ -261,6 +293,28 @@ export function App() {
   }, [placeEditor]);
 
   useEffect(() => {
+    if (!storyEditor) {
+      setStoryForm(EMPTY_STORY_FORM);
+      return;
+    }
+    setStoryForm({
+      title: storyEditor.title ?? '',
+      cover_image_url: storyEditor.cover_image_url ?? '',
+      image_url: storyEditor.image_url ?? '',
+      body_text: storyEditor.body_text ?? '',
+      place_id: storyEditor.place_id ?? '',
+      sort_order: String(storyEditor.sort_order ?? 0),
+      is_active: storyEditor.is_active ?? true,
+    });
+    if (storyEditor.place) {
+      setStoryPlaceResults([storyEditor.place]);
+      setStoryPlaceSearch(
+        `${storyEditor.place.name}${storyEditor.place.city ? ` · ${storyEditor.place.city}` : ''}`,
+      );
+    }
+  }, [storyEditor]);
+
+  useEffect(() => {
     const query = placeForm.city.trim();
     if (query.length < 2) {
       setCitySuggestions([]);
@@ -276,6 +330,36 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [placeForm.city, token]);
 
+  useEffect(() => {
+    const query = storyPlaceSearch.trim();
+    if (!token || query.length < 2) {
+      if (!storyEditor?.place || !query) {
+        setStoryPlaceResults([]);
+      }
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void listPlaces(token, { limit: 8, offset: 0, q: query })
+        .then((payload) =>
+          setStoryPlaceResults(
+            payload.items.map((place) => ({
+              id: place.id,
+              name: place.name,
+              city: place.city,
+              image_url: place.image_url,
+              address: place.address,
+              category: place.category,
+              subcategory: place.subcategory,
+              rating: place.rating,
+              description: place.description,
+            })),
+          ),
+        )
+        .catch(() => setStoryPlaceResults([]));
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [storyPlaceSearch, token, storyEditor]);
+
   async function refreshAll(activeToken: string) {
     setLoading(true);
     setError('');
@@ -285,11 +369,13 @@ export function App() {
       if (user.role !== 'admin') {
         setPlaces([]);
         setPlacesTotal(0);
+        setStories([]);
         setCandidates([]);
         setImports([]);
         return;
       }
-      const [candidateItems, importItems] = await Promise.all([
+      const [storyItems, candidateItems, importItems] = await Promise.all([
+        listStoriesAdmin(activeToken),
         listCandidates(activeToken),
         listImportJobs(activeToken),
       ]);
@@ -299,6 +385,7 @@ export function App() {
       } catch {
         setTagCatalog(FALLBACK_TAG_OPTIONS);
       }
+      setStories(storyItems);
       setCandidates(candidateItems);
       setImports(importItems);
       await loadPlacesPage(activeToken, { reset: true, query: placeSearchQuery });
@@ -352,6 +439,27 @@ export function App() {
     setPlaceModalOpen(false);
     setPlaceEditor(null);
     setPlaceForm(EMPTY_FORM);
+  }
+
+  function openNewStoryModal() {
+    setStoryEditor(null);
+    setStoryForm(EMPTY_STORY_FORM);
+    setStoryPlaceSearch('');
+    setStoryPlaceResults([]);
+    setStoryModalOpen(true);
+  }
+
+  function openEditStoryModal(story: AdminStory) {
+    setStoryEditor(story);
+    setStoryModalOpen(true);
+  }
+
+  function closeStoryModal() {
+    setStoryModalOpen(false);
+    setStoryEditor(null);
+    setStoryForm(EMPTY_STORY_FORM);
+    setStoryPlaceSearch('');
+    setStoryPlaceResults([]);
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -445,6 +553,62 @@ export function App() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка удаления');
+    }
+  }
+
+  async function handleSaveStory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    setError('');
+    const form = new FormData(event.currentTarget);
+    try {
+      let imageUrl = storyForm.image_url.trim();
+      let coverImageUrl = storyForm.cover_image_url.trim();
+
+      const imageFile = form.get('story_image_file');
+      if (imageFile instanceof File && imageFile.size > 0) {
+        const uploaded = await uploadPlaceImage(token, imageFile);
+        imageUrl = uploaded.url;
+      }
+
+      const coverFile = form.get('story_cover_file');
+      if (coverFile instanceof File && coverFile.size > 0) {
+        const uploaded = await uploadPlaceImage(token, coverFile);
+        coverImageUrl = uploaded.url;
+      }
+
+      const payload = {
+        title: storyForm.title.trim(),
+        cover_image_url: coverImageUrl || null,
+        image_url: imageUrl,
+        body_text: storyForm.body_text.trim() || null,
+        place_id: storyForm.place_id || null,
+        sort_order: Number(storyForm.sort_order || '0') || 0,
+        is_active: storyForm.is_active,
+      };
+
+      if (storyEditor) {
+        await updateStory(token, storyEditor.id, payload);
+      } else {
+        await createStory(token, payload);
+      }
+      closeStoryModal();
+      setStories(await listStoriesAdmin(token));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка сохранения истории');
+    }
+  }
+
+  async function handleDeleteStory(id: string) {
+    if (!token) return;
+    try {
+      await deleteStory(token, id);
+      setStories((current) => current.filter((story) => story.id !== id));
+      if (storyEditor?.id === id) {
+        closeStoryModal();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Ошибка удаления истории');
     }
   }
 
@@ -584,6 +748,8 @@ export function App() {
     switch (tab) {
       case 'places':
         return 'Каталог мест';
+      case 'stories':
+        return 'Истории';
       case 'candidates':
         return 'Кандидаты на модерацию';
       case 'imports':
@@ -627,6 +793,9 @@ export function App() {
             <div className="nav nav-inline">
               <button className={tab === 'places' ? 'nav-active' : ''} onClick={() => setTab('places')}>
                 Места
+              </button>
+              <button className={tab === 'stories' ? 'nav-active' : ''} onClick={() => setTab('stories')}>
+                Истории
               </button>
               <button className={tab === 'candidates' ? 'nav-active' : ''} onClick={() => setTab('candidates')}>
                 Кандидаты
@@ -804,6 +973,51 @@ export function App() {
               </div>
             )}
 
+            {tab === 'stories' && (
+              <div className="card">
+                <div className="section-head">
+                  <h2>Истории</h2>
+                  <div className="row">
+                    <span className="muted small">Всего: {stories.length}</span>
+                    <button onClick={openNewStoryModal}>Новая история</button>
+                  </div>
+                </div>
+                <div className="story-list">
+                  {stories.map((story) => (
+                    <div key={story.id} className="story-card">
+                      <img
+                        className="story-cover-preview"
+                        src={story.cover_image_url || story.image_url}
+                        alt={story.title}
+                      />
+                      <div className="story-main">
+                        <div className="candidate-head">
+                          <strong>{story.title}</strong>
+                          <span className={story.is_active ? 'status-badge' : 'tag-pill tag-default'}>
+                            {story.is_active ? 'Активна' : 'Скрыта'}
+                          </span>
+                        </div>
+                        <div className="muted small">
+                          Порядок: {story.sort_order}
+                          {story.place ? ` · ${story.place.name} · ${story.place.city}` : ' · Без привязки к месту'}
+                        </div>
+                        {story.body_text && <div className="candidate-description">{story.body_text}</div>}
+                        <div className="row">
+                          <button className="ghost" onClick={() => openEditStoryModal(story)}>
+                            Изменить
+                          </button>
+                          <button className="danger" onClick={() => handleDeleteStory(story.id)}>
+                            Удалить
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {stories.length === 0 && <div className="item">Историй пока нет.</div>}
+                </div>
+              </div>
+            )}
+
             {tab === 'candidates' && (
               <div className="card">
                 <div className="section-head">
@@ -944,6 +1158,150 @@ export function App() {
               </div>
             )}
           </>
+        )}
+
+        {isAdmin && storyModalOpen && (
+          <div className="modal-backdrop" onClick={closeStoryModal}>
+            <div className="modal-panel card" onClick={(event) => event.stopPropagation()}>
+              <div className="section-head modal-head">
+                <div>
+                  <h2>{storyEditor ? 'Редактирование истории' : 'Новая история'}</h2>
+                  <div className="muted">История для главной страницы приложения и веба.</div>
+                </div>
+                <button className="ghost modal-close" type="button" onClick={closeStoryModal}>
+                  Закрыть
+                </button>
+              </div>
+
+              <form className="stack" onSubmit={handleSaveStory}>
+                <div className="place-form-grid">
+                  <div className="form-panel form-panel-wide">
+                    <div className="field-grid field-grid-2">
+                      <div className="field-group form-span-2">
+                        <label>Название истории</label>
+                        <input
+                          value={storyForm.title}
+                          onChange={(event) => setStoryForm((current) => ({ ...current, title: event.target.value }))}
+                          placeholder="Название истории"
+                          required
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label>Картинка истории</label>
+                        <input
+                          value={storyForm.image_url}
+                          onChange={(event) => setStoryForm((current) => ({ ...current, image_url: event.target.value }))}
+                          placeholder="Ссылка на картинку истории"
+                          required
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label>Загрузить картинку истории</label>
+                        <input name="story_image_file" type="file" accept="image/*" />
+                      </div>
+                      <div className="field-group">
+                        <label>Картинка кружка</label>
+                        <input
+                          value={storyForm.cover_image_url}
+                          onChange={(event) => setStoryForm((current) => ({ ...current, cover_image_url: event.target.value }))}
+                          placeholder="Ссылка на обложку кружка"
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label>Загрузить картинку кружка</label>
+                        <input name="story_cover_file" type="file" accept="image/*" />
+                      </div>
+                      <div className="field-group">
+                        <label>Порядок</label>
+                        <input
+                          value={storyForm.sort_order}
+                          onChange={(event) => setStoryForm((current) => ({ ...current, sort_order: event.target.value }))}
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label>Статус</label>
+                        <div className="chip-group">
+                          <button
+                            type="button"
+                            className={storyForm.is_active ? 'chip chip-active' : 'chip'}
+                            onClick={() => setStoryForm((current) => ({ ...current, is_active: true }))}
+                          >
+                            Активна
+                          </button>
+                          <button
+                            type="button"
+                            className={!storyForm.is_active ? 'chip chip-active' : 'chip'}
+                            onClick={() => setStoryForm((current) => ({ ...current, is_active: false }))}
+                          >
+                            Скрыта
+                          </button>
+                        </div>
+                      </div>
+                      <div className="field-group form-span-2">
+                        <label>Текст истории</label>
+                        <textarea
+                          rows={6}
+                          value={storyForm.body_text}
+                          onChange={(event) => setStoryForm((current) => ({ ...current, body_text: event.target.value }))}
+                          placeholder="Текст, который будет раскрыт снизу в истории"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="form-panel">
+                    <div className="field-group">
+                      <label>Привязать место</label>
+                      <input
+                        value={storyPlaceSearch}
+                        onChange={(event) => setStoryPlaceSearch(event.target.value)}
+                        placeholder="Найти место по названию или городу"
+                      />
+                    </div>
+                    <div className="story-place-results">
+                      {storyPlaceResults.map((place) => (
+                        <button
+                          key={place.id}
+                          type="button"
+                          className={storyForm.place_id === place.id ? 'story-place-option story-place-option-active' : 'story-place-option'}
+                          onClick={() =>
+                            setStoryForm((current) => ({ ...current, place_id: place.id }))
+                          }
+                        >
+                          <strong>{place.name}</strong>
+                          <span className="muted small">{place.city}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {storyForm.place_id && (
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => setStoryForm((current) => ({ ...current, place_id: '' }))}
+                      >
+                        Убрать привязку места
+                      </button>
+                    )}
+
+                    {storyForm.cover_image_url && (
+                      <img className="form-image-preview" src={storyForm.cover_image_url} alt="story cover preview" />
+                    )}
+                    {!storyForm.cover_image_url && storyForm.image_url && (
+                      <img className="form-image-preview" src={storyForm.image_url} alt="story preview" />
+                    )}
+                  </div>
+                </div>
+
+                <div className="row modal-actions">
+                  <button type="submit">Сохранить</button>
+                  <button type="button" className="ghost" onClick={closeStoryModal}>
+                    Отмена
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
 
         {isAdmin && placeModalOpen && (

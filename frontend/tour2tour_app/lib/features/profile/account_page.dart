@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../auth/auth_repo.dart';
 import '../shared/travel_app_shell.dart';
 import '../trips/trips_repo.dart';
+import 'avatar_image.dart';
 import 'profile_repo.dart';
 
 class AccountPage extends StatefulWidget {
@@ -72,6 +73,12 @@ class _AccountPageState extends State<AccountPage> {
     }
   }
 
+  Future<void> _openEditAccount() async {
+    await context.push('/edit-account');
+    if (!mounted) return;
+    await _load();
+  }
+
   String _formatDate(DateTime value) {
     final m = value.month.toString().padLeft(2, '0');
     final d = value.day.toString().padLeft(2, '0');
@@ -106,8 +113,8 @@ class _AccountPageState extends State<AccountPage> {
                       Text(
                         _error!,
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.65),
+                        style: const TextStyle(
+                          color: Colors.white70,
                           fontSize: 13,
                         ),
                       ),
@@ -123,13 +130,39 @@ class _AccountPageState extends State<AccountPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Юлия',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 30,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 28,
+                            backgroundColor: const Color(0xFF2B2B2B),
+                            backgroundImage: buildAvatarImage(_me?.avatarUrl),
+                            child: buildAvatarImage(_me?.avatarUrl) == null
+                                ? const Icon(
+                                    Icons.person_rounded,
+                                    size: 28,
+                                    color: Color(0xFFD7E37A),
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Text(
+                              _me?.displayName?.trim().isNotEmpty == true
+                                  ? _me!.displayName!
+                                  : 'Путешественник',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 30,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _openEditAccount,
+                            icon: const Icon(Icons.edit_outlined),
+                            label: const Text('Изменить'),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 14),
                       TravelCard(
@@ -138,6 +171,8 @@ class _AccountPageState extends State<AccountPage> {
                           children: [
                             _sectionTitle('Мои данные'),
                             const SizedBox(height: 10),
+                            _infoRow('Имя', _me?.displayName?.trim().isNotEmpty == true ? _me!.displayName! : 'Не указано'),
+                            const SizedBox(height: 8),
                             _infoRow('Почта', _me?.email ?? 'Не указана'),
                             const SizedBox(height: 8),
                             _infoRow('Телефон', _me?.phone ?? 'Не указан'),
@@ -183,11 +218,7 @@ class _AccountPageState extends State<AccountPage> {
                                   label: const Text('Оплата и подписка'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF2B2B2B),
-                                    foregroundColor: Colors.white.withOpacity(0.82),
-                                    disabledBackgroundColor:
-                                        const Color(0xFF2B2B2B),
-                                    disabledForegroundColor:
-                                        Colors.white.withOpacity(0.82),
+                                    foregroundColor: Colors.white70,
                                     elevation: 0,
                                     side: BorderSide(
                                       color: Colors.white.withOpacity(0.14),
@@ -222,6 +253,12 @@ class _AccountPageState extends State<AccountPage> {
                             ),
                             const SizedBox(height: 6),
                             _settingsTile(
+                              icon: Icons.manage_accounts_outlined,
+                              title: 'Редактировать профиль',
+                              subtitle: 'Имя, фото, почта и телефон',
+                              onTap: _openEditAccount,
+                            ),
+                            _settingsTile(
                               icon: Icons.lock_outline_rounded,
                               title: 'Смена пароля',
                               subtitle: 'Обновить пароль аккаунта',
@@ -243,8 +280,7 @@ class _AccountPageState extends State<AccountPage> {
                         children: [
                           Expanded(child: _sectionTitle('Мои поездки')),
                           IconButton(
-                            tooltip:
-                                _tripsExpanded ? 'Свернуть' : 'Развернуть',
+                            tooltip: _tripsExpanded ? 'Свернуть' : 'Развернуть',
                             onPressed: () {
                               setState(() {
                                 _tripsExpanded = !_tripsExpanded;
@@ -283,8 +319,7 @@ class _AccountPageState extends State<AccountPage> {
                                 children: _trips
                                     .map(
                                       (trip) => Padding(
-                                        padding:
-                                            const EdgeInsets.only(bottom: 10),
+                                        padding: const EdgeInsets.only(bottom: 10),
                                         child: _TripRowCard(
                                           trip: trip,
                                           formatDate: _formatDate,
@@ -294,8 +329,7 @@ class _AccountPageState extends State<AccountPage> {
                                               extra: {
                                                 'id': trip.id,
                                                 'title': trip.title,
-                                                'destination_city':
-                                                    trip.destinationCity,
+                                                'destination_city': trip.destinationCity,
                                                 'start_date': trip.startDate,
                                                 'end_date': trip.endDate,
                                                 'planned_days': trip.plannedDays,
@@ -415,10 +449,8 @@ class _TripRowCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasDates = trip.startDate != null && trip.endDate != null;
-    final dateText = hasDates
-        ? '${formatDate(trip.startDate!)} - ${formatDate(trip.endDate!)}'
-        : 'Даты не указаны';
+    final dateText =
+        '${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}';
 
     return InkWell(
       borderRadius: BorderRadius.circular(18),
@@ -440,7 +472,10 @@ class _TripRowCard extends StatelessWidget {
                 color: const Color(0xFF2B2B2B),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.luggage_rounded, color: Color(0xFFD7E37A)),
+              child: const Icon(
+                Icons.luggage_rounded,
+                color: Color(0xFFD7E37A),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(

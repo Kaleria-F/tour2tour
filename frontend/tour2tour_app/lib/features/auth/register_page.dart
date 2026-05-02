@@ -83,7 +83,7 @@ class _RegisterPageState extends State<RegisterPage> {
         password: _password.text,
       );
       if (!mounted) return;
-      context.go('/security-setup');
+      context.go('/complete-profile');
     } catch (error) {
       if (!mounted) return;
       showAuthError(context, error.toString());

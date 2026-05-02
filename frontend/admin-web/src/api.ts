@@ -3,6 +3,7 @@ import type {
   AdminPlace,
   AdminPlaceListResponse,
   AdminPlaceCandidate,
+  AdminStory,
   AdminTagCatalogItem,
   CitySuggestion,
   TokenResponse,
@@ -138,6 +139,22 @@ export async function listImportJobs(token: string): Promise<AdminImportJob[]> {
 
 export async function listTagCatalog(token?: string): Promise<AdminTagCatalogItem[]> {
   return request<AdminTagCatalogItem[]>('/places/tags/catalog', { method: 'GET' }, token);
+}
+
+export async function listStoriesAdmin(token: string): Promise<AdminStory[]> {
+  return request<AdminStory[]>('/places/stories/admin', { method: 'GET' }, token);
+}
+
+export async function createStory(token: string, data: Record<string, unknown>): Promise<AdminStory> {
+  return request<AdminStory>('/places/stories', { method: 'POST', body: JSON.stringify(data) }, token);
+}
+
+export async function updateStory(token: string, id: string, data: Record<string, unknown>): Promise<AdminStory> {
+  return request<AdminStory>(`/places/stories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }, token);
+}
+
+export async function deleteStory(token: string, id: string): Promise<void> {
+  return request<void>(`/places/stories/${id}`, { method: 'DELETE' }, token);
 }
 
 export async function uploadImportCsv(

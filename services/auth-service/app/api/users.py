@@ -1,8 +1,13 @@
 import json
-from fastapi import APIRouter, Depends
+import logging
+import secrets
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import delete, select
 
+from app.core import auth_state
+from app.core.mailer import send_email
 from app.db.deps import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
@@ -17,9 +22,15 @@ from app.schemas.preferences import (
     TRAVEL_MODE_TAGS,
     TRIP_FORMAT_TAGS,
 )
-from app.schemas.user import UserMeOut
+from app.schemas.user import (
+    EmailChangeConfirmIn,
+    EmailChangeRequestIn,
+    UserMeOut,
+    UserProfileUpdateIn,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
+logger = logging.getLogger(__name__)
 
 SURVEY_PROFILE_META_KEY = "survey_profile_meta"
 INTEREST_KEY = "interest"
@@ -34,6 +45,7 @@ TRIP_FORMAT_ALIASES = {
 TRAVEL_MODE_ALIASES = {
     "walk": "walk",
 }
+EMAIL_CHANGE_CODE_TTL = 10 * 60
 
 
 @router.get("/me", response_model=UserMeOut)
@@ -42,11 +54,163 @@ def get_me(me: User = Depends(get_current_user)):
         id=me.id,
         email=me.email,
         phone=me.phone,
+        display_name=me.display_name,
+        avatar_url=me.avatar_url,
         role=me.role,
         is_2fa_enabled=me.is_2fa_enabled,
         totp_enabled=me.totp_enabled,
         passkey_enabled=me.passkey_enabled,
     )
+
+
+def _normalize_email(email: str | None) -> str:
+    return (email or "").strip().lower()
+
+
+def _email_change_key(user_id: int, email: str) -> str:
+    return f"users:email-change:{user_id}:{_normalize_email(email)}"
+
+
+def _state_read_or_503(key: str) -> dict | None:
+    try:
+        return auth_state.get_json(key)
+    except RuntimeError:
+        logger.exception("Redis read failed for key %s", key)
+        raise HTTPException(status_code=503, detail="Temporary auth storage is unavailable.")
+
+
+def _state_write_or_503(key: str, value: dict, ttl_seconds: int) -> None:
+    try:
+        auth_state.set_json(key, value, ttl_seconds=ttl_seconds)
+    except RuntimeError:
+        logger.exception("Redis write failed for key %s", key)
+        raise HTTPException(status_code=503, detail="Temporary auth storage is unavailable.")
+
+
+def _state_delete_or_503(key: str) -> None:
+    try:
+        auth_state.delete(key)
+    except RuntimeError:
+        logger.exception("Redis delete failed for key %s", key)
+        raise HTTPException(status_code=503, detail="Temporary auth storage is unavailable.")
+
+
+def _build_code_email(code: str) -> tuple[str, str]:
+    text = (
+        "Tour2Tour\n\n"
+        "Подтверждение новой почты\n\n"
+        f"Код: {code}\n\n"
+        "Код действует 10 минут. Если вы не запрашивали изменение почты, просто проигнорируйте письмо."
+    )
+    html = f"""
+<html>
+  <body style="margin:0;padding:0;background:#f4f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#172033;">
+    <div style="max-width:560px;margin:0 auto;padding:32px 16px;">
+      <div style="background:#ffffff;border-radius:20px;padding:32px 28px;border:1px solid #e6ebf2;box-shadow:0 12px 40px rgba(23,32,51,0.08);">
+        <div style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#4b6bfb;margin-bottom:18px;">Tour2Tour</div>
+        <h1 style="margin:0 0 12px;font-size:24px;line-height:1.25;color:#172033;">Подтверждение новой почты</h1>
+        <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#4b5567;">
+          Введите этот код в приложении, чтобы подтвердить изменение email.
+        </p>
+        <div style="margin:0 0 22px;padding:18px 20px;background:#f7f9fc;border:1px solid #dbe4f0;border-radius:16px;text-align:center;">
+          <div style="margin-bottom:8px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#7b8797;">Код подтверждения</div>
+          <div style="font-size:32px;line-height:1;font-weight:800;letter-spacing:0.28em;color:#172033;">{code}</div>
+        </div>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#4b5567;">
+          Код действует 10 минут. Если вы не запрашивали изменение почты, просто проигнорируйте письмо.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+    return text, html
+
+
+def _send_email_safely(to_email: str, subject: str, body: str, html_body: str | None = None) -> None:
+    try:
+        send_email(to_email=to_email, subject=subject, body=body, html_body=html_body)
+        logger.info("Email sent to %s", to_email)
+    except Exception:
+        logger.exception("Failed to send email to %s", to_email)
+
+
+@router.patch("/me", response_model=UserMeOut)
+def update_me(
+    payload: UserProfileUpdateIn,
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    if payload.phone != me.phone and payload.phone is not None:
+        existing = db.execute(
+            select(User).where(User.phone == payload.phone, User.id != me.id)
+        ).scalars().first()
+        if existing:
+            raise HTTPException(status_code=409, detail="User already exists.")
+
+    me.display_name = payload.display_name
+    me.phone = payload.phone
+    me.avatar_url = payload.avatar_url
+    db.add(me)
+    db.commit()
+    db.refresh(me)
+    return get_me(me)
+
+
+@router.post("/me/request-email-change")
+def request_email_change(
+    payload: EmailChangeRequestIn,
+    me: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    new_email = _normalize_email(str(payload.new_email))
+    if new_email == _normalize_email(me.email):
+        raise HTTPException(status_code=400, detail="New email must differ from the current one.")
+
+    existing = db.execute(
+        select(User).where(User.email == new_email, User.id != me.id)
+    ).scalars().first()
+    if existing:
+        raise HTTPException(status_code=409, detail="User already exists.")
+
+    code = f"{secrets.randbelow(900000) + 100000}"
+    key = _email_change_key(me.id, new_email)
+    _state_write_or_503(key, {"code": code, "new_email": new_email}, ttl_seconds=EMAIL_CHANGE_CODE_TTL)
+    text_body, html_body = _build_code_email(code)
+    _send_email_safely(
+        to_email=new_email,
+        subject="Tour2Tour: код подтверждения новой почты",
+        body=text_body,
+        html_body=html_body,
+    )
+    return {"status": "ok"}
+
+
+@router.post("/me/confirm-email-change", response_model=UserMeOut)
+def confirm_email_change(
+    payload: EmailChangeConfirmIn,
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    new_email = _normalize_email(str(payload.new_email))
+    key = _email_change_key(me.id, new_email)
+    record = _state_read_or_503(key)
+    if not record or record.get("code") != payload.code:
+        raise HTTPException(status_code=400, detail="Verification code is invalid or expired.")
+
+    existing = db.execute(
+        select(User).where(User.email == new_email, User.id != me.id)
+    ).scalars().first()
+    if existing:
+        _state_delete_or_503(key)
+        raise HTTPException(status_code=409, detail="User already exists.")
+
+    me.email = new_email
+    db.add(me)
+    db.commit()
+    db.refresh(me)
+    _state_delete_or_503(key)
+    return get_me(me)
 
 
 @router.get("/me/preferences", response_model=PreferencesOut)

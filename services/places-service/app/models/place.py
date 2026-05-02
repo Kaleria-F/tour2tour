@@ -43,6 +43,7 @@ class Place(Base):
         back_populates="place",
         cascade="all, delete-orphan",
     )
+    stories: Mapped[list["PlaceStory"]] = relationship(back_populates="place")
 
 
 class PlaceTag(Base):
@@ -91,3 +92,28 @@ class PlaceImportJob(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class PlaceStory(Base):
+    __tablename__ = "place_stories"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    title: Mapped[str] = mapped_column(String(140))
+    cover_image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    image_url: Mapped[str] = mapped_column(String(512))
+    body_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    place_id: Mapped[str | None] = mapped_column(
+        ForeignKey("places.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    place: Mapped[Place | None] = relationship(back_populates="stories")
