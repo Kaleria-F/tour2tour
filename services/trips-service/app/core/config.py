@@ -13,6 +13,8 @@ class Settings(BaseSettings):
         default="http://recommendations-service:8000",
         alias="RECOMMENDATIONS_SERVICE_URL",
     )
+    yandex_api_key: str | None = Field(default=None, alias="YANDEX_API_KEY")
+    yandex_folder_id: str | None = Field(default=None, alias="YANDEX_FOLDER_ID")
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_PATH),

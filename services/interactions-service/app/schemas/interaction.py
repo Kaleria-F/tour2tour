@@ -9,7 +9,9 @@ from pydantic import BaseModel, Field
 class InteractionCreate(BaseModel):
     user_id: str = Field(min_length=1, max_length=64)
     place_id: str = Field(min_length=1, max_length=64)
-    action: str = Field(pattern="^(shown|opened|liked|disliked|saved|added_to_trip|dismissed|shared)$")
+    action: str = Field(
+        pattern="^(shown|opened|liked|disliked|saved|unsaved|added_to_trip|dismissed|shared)$"
+    )
     context: str = Field(default="recommendation", max_length=32)
     session_id: str | None = Field(default=None, max_length=64)
     recommendation_id: str | None = Field(default=None, max_length=64)

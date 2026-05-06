@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -81,3 +81,29 @@ class StageSuggestionOut(BaseModel):
         max_digits=12,
         decimal_places=2,
     )
+
+
+class StageAssistantDraftRequest(BaseModel):
+    stage_type: str = Field(..., min_length=1, max_length=32)
+    text: str = Field(..., min_length=1, max_length=4000)
+    route_day: date | None = None
+
+
+class StageAssistantDraftOut(BaseModel):
+    stage_type: str
+    subtype: str
+    title: str
+    start_location: str | None = Field(None, max_length=255)
+    end_location: str | None = Field(None, max_length=255)
+    address: str | None = Field(None, max_length=255)
+    start_time_text: str | None = Field(None, max_length=5)
+    end_time_text: str | None = Field(None, max_length=5)
+    duration_minutes: int | None = Field(None, ge=0)
+    cost_rub: Decimal | None = Field(None, ge=0, max_digits=12, decimal_places=2)
+    notes: str | None = None
+    time_mode: str = Field(default="duration", max_length=16)
+    source_text: str = Field(..., min_length=1)
+
+
+class StageAssistantTranscriptionOut(BaseModel):
+    text: str = Field(..., min_length=1)

@@ -158,28 +158,52 @@ class _ProfilePageState extends State<ProfilePage> {
         'description': item.description,
       };
 
-  Future<void> _saveRecommendation(RecommendationItem item) async {
+  Future<void> _toggleRecommendationSaved(RecommendationItem item) async {
     final me = _me;
     if (me == null) return;
-    setState(() => _savedRecommendationIds.add(item.id));
+    final wasSaved = _savedRecommendationIds.contains(item.id);
+    setState(() {
+      if (wasSaved) {
+        _savedRecommendationIds.remove(item.id);
+      } else {
+        _savedRecommendationIds.add(item.id);
+      }
+    });
     try {
-      await widget.interactionsRepo.trackEvent(
+      await widget.interactionsRepo.setFavorite(
         userId: me.id.toString(),
         placeId: item.id,
-        action: 'saved',
         recommendationId: item.id,
-        weight: 3,
         metadata: _metadata(item),
+        saved: !wasSaved,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Сохранено в избранное: ${item.title}')),
+        SnackBar(
+          content: Text(
+            wasSaved
+                ? 'Удалено из избранного: ${item.title}'
+                : 'Сохранено в избранное: ${item.title}',
+          ),
+        ),
       );
     } catch (_) {
       if (!mounted) return;
-      setState(() => _savedRecommendationIds.remove(item.id));
+      setState(() {
+        if (wasSaved) {
+          _savedRecommendationIds.add(item.id);
+        } else {
+          _savedRecommendationIds.remove(item.id);
+        }
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось сохранить место')),
+        SnackBar(
+          content: Text(
+            wasSaved
+                ? 'Не удалось убрать место из избранного'
+                : 'Не удалось сохранить место',
+          ),
+        ),
       );
     }
   }
@@ -270,10 +294,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   onPressed: _savedRecommendationIds.contains(item.id)
-                      ? null
+                      ? () async {
+                          Navigator.of(context).pop();
+                          await _toggleRecommendationSaved(item);
+                        }
                       : () async {
                           Navigator.of(context).pop();
-                          await _saveRecommendation(item);
+                          await _toggleRecommendationSaved(item);
                         },
                   icon: Icon(
                     _savedRecommendationIds.contains(item.id)
@@ -282,7 +309,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   label: Text(
                     _savedRecommendationIds.contains(item.id)
-                        ? 'Уже сохранено'
+                        ? 'Убрать из избранного'
                         : 'Сохранить',
                   ),
                 ),
@@ -437,9 +464,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                         item: item,
                                         saved: _savedRecommendationIds.contains(item.id),
                                         onTap: () => _openRecommendationDetails(item),
-                                        onSave: _savedRecommendationIds.contains(item.id)
-                                            ? null
-                                            : () => _saveRecommendation(item),
+                                        onSave: () => _toggleRecommendationSaved(item),
                                       );
                                     },
                                   ),

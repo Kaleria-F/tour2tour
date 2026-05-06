@@ -41,6 +41,7 @@ dependencies:
   go_router: ^17.0.1
   file_picker: ^10.3.3
   image: ^4.5.4
+  record: ^6.1.2
   syncfusion_flutter_pdfviewer: ^30.2.7
   yandex_maps_mapkit:
     version: ^4.33.1-beta

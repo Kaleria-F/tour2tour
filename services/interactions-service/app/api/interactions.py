@@ -30,6 +30,7 @@ ACTION_WEIGHTS: dict[str, float] = {
     "opened": 1.0,
     "liked": 4.0,
     "saved": 3.5,
+    "unsaved": -3.5,
     "added_to_trip": 5.0,
     "shared": 2.5,
     "dismissed": -2.0,
@@ -166,7 +167,7 @@ def get_user_favorites(
             continue
 
         last_action = rows[0].action if rows else None
-        if last_action in {"disliked", "dismissed"}:
+        if last_action in {"disliked", "dismissed", "unsaved"}:
             continue
 
         latest_saved = saved_rows[0]

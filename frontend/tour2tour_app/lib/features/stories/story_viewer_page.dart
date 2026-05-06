@@ -111,30 +111,32 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
     };
   }
 
-  Future<void> _savePlace() async {
+  Future<void> _toggleSavedPlace() async {
     final story = _currentStory;
     final place = story.place;
     final placeId = _effectivePlaceId(story);
-    if (_saving || _saved || place == null || placeId == null || placeId.isEmpty) {
+    if (_saving || place == null || placeId == null || placeId.isEmpty) {
       return;
     }
+    final wasSaved = _saved;
 
     setState(() => _saving = true);
     try {
       final userId = _userId ?? (await widget.profileRepo.getMe()).id.toString();
       _userId = userId;
-      await widget.interactionsRepo.trackEvent(
+      await widget.interactionsRepo.setFavorite(
         userId: userId,
         placeId: placeId,
-        action: 'saved',
         recommendationId: placeId,
-        weight: 3,
         metadata: _metadata(story),
+        saved: !wasSaved,
       );
       if (!mounted) return;
       setState(() {
-        _saved = true;
-        _savedPlaceIds = {..._savedPlaceIds, placeId};
+        _saved = !wasSaved;
+        _savedPlaceIds = wasSaved
+            ? ({..._savedPlaceIds}..remove(placeId))
+            : {..._savedPlaceIds, placeId};
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Место сохранено: ${place.name}')),
@@ -259,7 +261,7 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
                           icon: _saved
                               ? Icons.bookmark_rounded
                               : Icons.bookmark_add_outlined,
-                          onTap: _saving ? null : _savePlace,
+                          onTap: _saving ? null : _toggleSavedPlace,
                         ),
                     ],
                   ),
@@ -380,7 +382,7 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed: _saving ? null : _savePlace,
+                          onPressed: _saving ? null : _toggleSavedPlace,
                           icon: Icon(
                             _saved
                                 ? Icons.bookmark_rounded

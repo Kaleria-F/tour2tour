@@ -95,6 +95,25 @@ class InteractionsRepo {
     );
   }
 
+  Future<void> setFavorite({
+    required String userId,
+    required String placeId,
+    required bool saved,
+    String context = 'recommendation',
+    String? recommendationId,
+    Map<String, dynamic>? metadata,
+  }) {
+    return trackEvent(
+      userId: userId,
+      placeId: placeId,
+      action: saved ? 'saved' : 'unsaved',
+      context: context,
+      recommendationId: recommendationId,
+      weight: saved ? 3 : -3,
+      metadata: metadata,
+    );
+  }
+
   Future<void> trackImpression({
     required String userId,
     required String placeId,

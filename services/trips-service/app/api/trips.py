@@ -1,9 +1,14 @@
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
+import wave
+from decimal import Decimal, InvalidOperation
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from io import BytesIO
+
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -16,6 +21,9 @@ from app.models.trip import Trip
 from app.schemas.expense import ExpenseCreate, ExpenseOut, ExpenseUpdate
 from app.schemas.stage import (
     StageCreate,
+    StageAssistantDraftOut,
+    StageAssistantDraftRequest,
+    StageAssistantTranscriptionOut,
     StageOut,
     StageReorderRequest,
     StageSuggestionOut,
@@ -27,6 +35,7 @@ router = APIRouter(prefix="/trips", tags=["trips"])
 
 STAGE_SUBTYPES: dict[str, set[str]] = {
     "transport": {
+        "road",
         "airplane",
         "train",
         "car",
@@ -52,6 +61,18 @@ STAGE_TYPE_TO_EXPENSE_CATEGORY: dict[str, str] = {
     "shopping": "entertainment",
     "activity": "entertainment",
 }
+
+_DEFAULT_SUBTYPE_BY_TYPE: dict[str, str] = {
+    "transport": "road",
+    "place": "attraction",
+    "stay": "hotel",
+    "food": "restaurant",
+    "shopping": "shopping",
+    "activity": "entertainment",
+    "document": "booking",
+}
+
+_TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 
 @router.get("/", response_model=list[TripOut])
@@ -107,6 +128,303 @@ def _validate_stage_type_and_subtype(stage_type: str, subtype: str) -> tuple[str
     if normalized_subtype not in STAGE_SUBTYPES[normalized_type]:
         raise HTTPException(status_code=400, detail="Invalid stage subtype for selected type")
     return normalized_type, normalized_subtype
+
+
+def _require_yandex_credentials() -> tuple[str, str]:
+    api_key = (settings.yandex_api_key or "").strip()
+    folder_id = (settings.yandex_folder_id or "").strip()
+    if not api_key or not folder_id:
+        raise HTTPException(
+            status_code=503,
+            detail="Yandex AI integration is not configured",
+        )
+    return api_key, folder_id
+
+
+def _trim_optional_text(value, *, max_length: int = 255) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text[:max_length]
+
+
+def _parse_optional_decimal(value) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = Decimal(str(value).replace(",", "."))
+    except (InvalidOperation, ValueError):
+        return None
+    if parsed < 0:
+        return None
+    return parsed.quantize(Decimal("0.01"))
+
+
+def _validate_time_text(value) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or not _TIME_RE.fullmatch(text):
+        return None
+    return text
+
+
+def _default_stage_title(stage_type: str, subtype: str) -> str:
+    if stage_type == "transport" and subtype == "road":
+        return "Дорога"
+    labels = {
+        "road": "Дорога",
+        "airplane": "Самолет",
+        "train": "Поезд",
+        "car": "Автомобиль",
+        "bus": "Автобус",
+        "public_transport": "Общественный транспорт",
+        "walk": "Пешком",
+        "taxi": "Такси",
+        "bicycle": "Велосипед",
+        "attraction": "Достопримечательность",
+        "excursion": "Экскурсия",
+        "museum": "Музей",
+        "park": "Парк",
+        "event": "Мероприятие",
+        "nature": "Природный объект",
+        "hotel": "Отель",
+        "hostel": "Хостел",
+        "apartment": "Апартаменты",
+        "overnight": "Ночевка",
+        "rest": "Отдых",
+        "restaurant": "Ресторан",
+        "cafe": "Кафе",
+        "fastfood": "Фастфуд",
+        "breakfast": "Завтрак",
+        "lunch": "Обед",
+        "dinner": "Ужин",
+        "to_go": "Взять с собой",
+        "mall": "Торговый центр",
+        "market": "Рынок",
+        "souvenirs": "Сувениры",
+        "shopping": "Покупки",
+        "sport": "Спорт",
+        "entertainment": "Развлечения",
+        "beach": "Пляж",
+        "tickets": "Билеты",
+        "visa": "Виза",
+        "insurance": "Страховка",
+        "booking": "Бронь",
+    }
+    return labels.get(subtype, subtype.replace("_", " ").strip().title() or "Этап")
+
+
+def _extract_json_object(raw_text: str) -> dict:
+    text = raw_text.strip()
+    if not text:
+        raise ValueError("Empty model response")
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("No JSON object in model response")
+    parsed = json.loads(text[start : end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("Model response is not an object")
+    return parsed
+
+
+def _normalize_stage_assistant_draft(
+    raw: dict,
+    *,
+    requested_stage_type: str,
+    source_text: str,
+) -> StageAssistantDraftOut:
+    stage_type = requested_stage_type
+    subtype = str(raw.get("subtype") or "").strip().lower()
+    if subtype not in STAGE_SUBTYPES.get(stage_type, set()):
+        subtype = _DEFAULT_SUBTYPE_BY_TYPE.get(stage_type, next(iter(STAGE_SUBTYPES[stage_type])))
+
+    title = _trim_optional_text(raw.get("title"), max_length=255) or _default_stage_title(
+        stage_type,
+        subtype,
+    )
+    start_time_text = _validate_time_text(raw.get("start_time_text"))
+    end_time_text = _validate_time_text(raw.get("end_time_text"))
+    duration_minutes = raw.get("duration_minutes")
+    try:
+        duration_minutes = int(duration_minutes) if duration_minutes is not None else None
+    except (TypeError, ValueError):
+        duration_minutes = None
+    if duration_minutes is not None and duration_minutes < 0:
+        duration_minutes = None
+
+    time_mode = "range" if start_time_text and end_time_text else "duration"
+    return StageAssistantDraftOut(
+        stage_type=stage_type,
+        subtype=subtype,
+        title=title,
+        start_location=_trim_optional_text(raw.get("start_location")),
+        end_location=_trim_optional_text(raw.get("end_location")),
+        address=_trim_optional_text(raw.get("address")),
+        start_time_text=start_time_text,
+        end_time_text=end_time_text,
+        duration_minutes=duration_minutes,
+        cost_rub=_parse_optional_decimal(raw.get("cost_rub")),
+        notes=_trim_optional_text(raw.get("notes"), max_length=2000),
+        time_mode=time_mode,
+        source_text=source_text.strip(),
+    )
+
+
+def _speechkit_transcribe_lpcm(audio_bytes: bytes) -> str:
+    api_key, _ = _require_yandex_credentials()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Audio payload is empty")
+    if len(audio_bytes) > 1_000_000:
+        raise HTTPException(status_code=400, detail="Audio payload is too large")
+
+    endpoint = (
+        "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize"
+        "?lang=ru-RU&topic=general&format=lpcm&sampleRateHertz=16000"
+    )
+    request = urllib.request.Request(
+        endpoint,
+        data=audio_bytes,
+        method="POST",
+        headers={
+            "Authorization": f"Api-Key {api_key}",
+            "Content-Type": "application/octet-stream",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=502, detail=f"SpeechKit request failed: {detail}") from exc
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail="SpeechKit request failed") from exc
+
+    result = str(payload.get("result") or "").strip()
+    if not result:
+        raise HTTPException(status_code=422, detail="Speech was not recognized")
+    return result
+
+
+def _extract_pcm_from_upload(file: UploadFile, content: bytes) -> bytes:
+    filename = (file.filename or "").lower()
+    content_type = (file.content_type or "").lower()
+    if filename.endswith(".wav") or "wav" in content_type:
+        try:
+            with wave.open(BytesIO(content), "rb") as wav_file:
+                if wav_file.getnchannels() != 1:
+                    raise HTTPException(status_code=400, detail="Only mono audio is supported")
+                if wav_file.getsampwidth() != 2:
+                    raise HTTPException(status_code=400, detail="Only 16-bit PCM audio is supported")
+                if wav_file.getframerate() != 16000:
+                    raise HTTPException(status_code=400, detail="Use 16 kHz audio recording")
+                return wav_file.readframes(wav_file.getnframes())
+        except wave.Error as exc:
+            raise HTTPException(status_code=400, detail="Invalid WAV file") from exc
+    return content
+
+
+def _generate_stage_assistant_draft(
+    *,
+    stage_type: str,
+    source_text: str,
+    route_day=None,
+) -> StageAssistantDraftOut:
+    api_key, folder_id = _require_yandex_credentials()
+    normalized_type = stage_type.strip().lower()
+    if normalized_type not in STAGE_SUBTYPES:
+        raise HTTPException(status_code=400, detail="Invalid stage type")
+
+    system_prompt = (
+        "Ты заполняешь поля этапа маршрута для travel-приложения. "
+        "Верни только JSON-объект без markdown и пояснений. "
+        "Тип этапа уже выбран пользователем, менять его нельзя. "
+        "Используй только допустимые подтипы для этого типа. "
+        "Поля ответа: subtype, title, start_location, end_location, address, "
+        "start_time_text, end_time_text, duration_minutes, cost_rub, notes. "
+        "Время возвращай только в формате HH:MM или null. "
+        "Если пользователь не указал время окончания, но указал длительность, "
+        "заполни duration_minutes. Если данных нет, ставь null. "
+        "Название делай коротким и понятным. Не выдумывай факты."
+    )
+    user_prompt = (
+        f"Тип этапа: {normalized_type}\n"
+        f"Дата маршрута: {route_day.isoformat() if route_day else 'не указана'}\n"
+        f"Допустимые подтипы: {', '.join(sorted(STAGE_SUBTYPES[normalized_type]))}\n"
+        f"Текст пользователя:\n{source_text.strip()}"
+    )
+    system_prompt = (
+        "You fill route stage fields for a travel app. "
+        "Return only one JSON object without markdown or explanations. "
+        "The stage type is already selected by the user and must not be changed. "
+        "Use only allowed subtypes for that stage type. "
+        "Response fields: subtype, title, start_location, end_location, address, "
+        "start_time_text, end_time_text, duration_minutes, cost_rub, notes. "
+        "Return time only as HH:MM or null. "
+        "If the user mentions a specific name of a place, hotel, apartment, restaurant, museum, park, event, route, or venue, "
+        "you must put that exact specific name into the title field. "
+        "Do not replace a mentioned proper name with a generic subtype label like Hotel, Restaurant, Museum, Flight, or Road. "
+        "Use a generic subtype-based title only when the source text contains no specific proper name at all. "
+        "If the user gave a duration but no explicit end time, fill duration_minutes. "
+        "If data is missing, use null. Keep the title short and clear. Do not invent facts."
+    )
+    user_prompt = (
+        f"Stage type: {normalized_type}\n"
+        f"Route day: {route_day.isoformat() if route_day else 'not specified'}\n"
+        f"Allowed subtypes: {', '.join(sorted(STAGE_SUBTYPES[normalized_type]))}\n"
+        f"User text:\n{source_text.strip()}"
+    )
+    body = {
+        "modelUri": f"gpt://{folder_id}/yandexgpt-lite",
+        "completionOptions": {
+            "stream": False,
+            "temperature": 0,
+            "maxTokens": "800",
+        },
+        "messages": [
+            {"role": "system", "text": system_prompt},
+            {"role": "user", "text": user_prompt},
+        ],
+    }
+    request = urllib.request.Request(
+        "https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Api-Key {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=502, detail=f"YandexGPT request failed: {detail}") from exc
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail="YandexGPT request failed") from exc
+
+    try:
+        raw_text = payload["result"]["alternatives"][0]["message"]["text"]
+        raw_object = _extract_json_object(raw_text)
+    except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail="Invalid YandexGPT response") from exc
+
+    return _normalize_stage_assistant_draft(
+        raw_object,
+        requested_stage_type=normalized_type,
+        source_text=source_text,
+    )
 
 
 def _create_expense_from_stage_if_needed(stage: Stage, db: Session) -> None:
@@ -174,6 +492,37 @@ def _sync_stage_expense(
     existing.description = stage.title.strip()
     existing.amount_rub = stage.cost_rub
     existing.category = category
+
+
+@router.post(
+    "/stage-assistant/transcribe",
+    response_model=StageAssistantTranscriptionOut,
+)
+async def transcribe_stage_audio(
+    audio: UploadFile = File(...),
+    user_id: int = Depends(get_current_user_id),
+):
+    del user_id
+    content = await audio.read()
+    pcm_bytes = _extract_pcm_from_upload(audio, content)
+    text = _speechkit_transcribe_lpcm(pcm_bytes)
+    return StageAssistantTranscriptionOut(text=text)
+
+
+@router.post(
+    "/stage-assistant/draft",
+    response_model=StageAssistantDraftOut,
+)
+def create_stage_assistant_draft(
+    payload: StageAssistantDraftRequest,
+    user_id: int = Depends(get_current_user_id),
+):
+    del user_id
+    return _generate_stage_assistant_draft(
+        stage_type=payload.stage_type,
+        source_text=payload.text,
+        route_day=payload.route_day,
+    )
 
 
 @router.post("/", response_model=TripOut)

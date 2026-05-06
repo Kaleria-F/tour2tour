@@ -12,7 +12,6 @@ import '../profile/profile_repo.dart';
 import '../recommendations/recommendations_repo.dart';
 import 'widgets/pdf_memory_preview.dart';
 import 'widgets/yandex_city_map.dart';
-import 'stage_form_page.dart';
 import 'trip_recommendations_tab.dart';
 import 'trips_repo.dart';
 
@@ -388,20 +387,19 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
 
     final presetAddress = (presetAddressFromMap ?? '').trim();
-    final payload = await Navigator.of(context).push<AddStagePayload>(
+    final payload = await Navigator.of(context).push<_AddStagePayload>(
       MaterialPageRoute(
-        builder: (_) => StageFormPage(
+        builder: (_) => _StageFormPage(
           stageTypeLabels: _stageTypeLabels,
           stageSubtypes: _stageSubtypes,
           initialType: _lastStageType,
-          tripsRepo: widget.tripsRepo,
           routeDay: _ensureSelectedRouteDay(
             _selectedRouteDay,
             stages: [..._stages]..sort((a, b) => a.position.compareTo(b.position)),
           ),
           initial: presetAddress.isEmpty
               ? null
-              : AddStagePayload(
+              : _AddStagePayload(
                   stageType: _lastStageType,
                   subtype: _lastStageType == 'transport'
                       ? 'road'
@@ -469,15 +467,14 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   Future<void> _openEditStageDialog(TripStage stage) async {
     if (widget.tripId == null) return;
 
-    final payload = await Navigator.of(context).push<AddStagePayload>(
+    final payload = await Navigator.of(context).push<_AddStagePayload>(
       MaterialPageRoute(
-        builder: (_) => StageFormPage(
+        builder: (_) => _StageFormPage(
           stageTypeLabels: _stageTypeLabels,
           stageSubtypes: _stageSubtypes,
           initialType: stage.stageType,
-          tripsRepo: widget.tripsRepo,
           onUploadDocument: _pickAndUploadDocumentForStage,
-          initial: AddStagePayload(
+          initial: _AddStagePayload(
             stageType: stage.stageType,
             subtype: stage.subtype,
             title: stage.title,
@@ -756,7 +753,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
   String _prettySubtype(String subtype) {
     const labels = <String, String>{
-      'road': 'Дорога',
+      'road': '������',
       'airplane': 'Самолет',
       'train': 'Поезд',
       'car': 'Авто',
@@ -2735,7 +2732,7 @@ class _StageFormPage extends StatefulWidget {
 
 class _StageFormPageState extends State<_StageFormPage> {
   static const Map<String, String> _subtypeLabels = <String, String>{
-    'road': 'Дорога',
+    'road': '������',
     'airplane': 'Самолет',
     'train': 'Поезд',
     'car': 'Автомобиль',
@@ -2792,6 +2789,7 @@ class _StageFormPageState extends State<_StageFormPage> {
   final _startTimeCtrl = TextEditingController();
   final _endTimeCtrl = TextEditingController();
   bool _uploadingStageDocument = false;
+  bool _showAdvanced = false;
   bool _titleEdited = false;
   String _transportTimeMode = 'duration';
 
@@ -2806,6 +2804,8 @@ class _StageFormPageState extends State<_StageFormPage> {
         (_stageType == 'transport'
             ? 'road'
             : (widget.stageSubtypes[_stageType]?.first ?? ''));
+    _showAdvanced = widget.initial != null;
+
     final initial = widget.initial;
     if (initial != null) {
       _transportTimeMode = initial.endTime != null ? 'range' : 'duration';
@@ -2876,22 +2876,11 @@ class _StageFormPageState extends State<_StageFormPage> {
     return _subtypeLabels[subtype] ?? subtype;
   }
 
-  String _defaultStageTitle() {
-    if (_subtype.trim().isEmpty) {
-      return '';
-    }
-    if (_stageType == 'transport' && _subtype == 'road') {
-      return 'Дорога';
+  String _defaultTransportTitle() {
+    if (_subtype.trim().isEmpty || _subtype == 'road') {
+      return '������';
     }
     return _prettySubtype(_subtype);
-  }
-
-  String _startTimeLabel() {
-    return _stageType == 'transport' ? 'Время отправления' : 'Время начала';
-  }
-
-  String _endTimeLabel() {
-    return _stageType == 'transport' ? 'Время прибытия' : 'Время окончания';
   }
 
   DateTime _defaultCalendarDateTime() {
@@ -2901,13 +2890,20 @@ class _StageFormPageState extends State<_StageFormPage> {
   }
 
   void _applyTransportDefaultsIfNeeded({bool forceTitle = false}) {
-    final autoTitle = _defaultStageTitle();
-    if (autoTitle.isNotEmpty &&
-        (forceTitle || !_titleEdited || _titleCtrl.text.trim().isEmpty)) {
+    if (_stageType != 'transport') return;
+    final autoTitle = _defaultTransportTitle();
+    if (forceTitle || !_titleEdited || _titleCtrl.text.trim().isEmpty) {
       _titleCtrl.text = autoTitle;
     }
     if (_durationCtrl.text.trim().isEmpty) {
       _durationCtrl.text = '60';
+    }
+    if (_startTimeCtrl.text.trim().isEmpty) {
+      _startTimeCtrl.text = _formatTimeOnly(_defaultCalendarDateTime());
+    }
+    if (_transportTimeMode == 'range' && _endTimeCtrl.text.trim().isEmpty) {
+      final end = _defaultCalendarDateTime().add(const Duration(hours: 1));
+      _endTimeCtrl.text = _formatTimeOnly(end);
     }
   }
 
@@ -3136,6 +3132,9 @@ class _StageFormPageState extends State<_StageFormPage> {
     final isShopping = _stageType == 'shopping';
     final isActivity = _stageType == 'activity';
     final isDocument = _stageType == 'document';
+    final needsReference =
+        (isTransport && const {'airplane', 'train', 'bus'}.contains(_subtype)) ||
+        isStay;
     if (!subtypes.contains(_subtype) && subtypes.isNotEmpty) {
       _subtype = isTransport && subtypes.contains('road') ? 'road' : subtypes.first;
     }
@@ -3186,12 +3185,15 @@ class _StageFormPageState extends State<_StageFormPage> {
                               filled: true,
                               fillColor: Colors.white.withOpacity(0.06),
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                borderSide: BorderSide.none,
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.white.withOpacity(0.20)),
                               ),
                               focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                borderSide: BorderSide.none,
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: cs.primary.withOpacity(0.8),
+                                  width: 1.4,
+                                ),
                               ),
                             ),
                           ),
@@ -3224,23 +3226,21 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         ),
                                         backgroundColor: const Color(0xFF2B2B2B),
                                         selectedColor: const Color(0xFF222715),
-                                        side: selected
-                                            ? const BorderSide(
-                                                color: Color(0xFFD7E37A),
-                                                width: 1.4,
-                                              )
-                                            : BorderSide.none,
+                                        side: BorderSide(
+                                          color: selected
+                                              ? const Color(0xFFD7E37A).withOpacity(0.6)
+                                              : Colors.white.withOpacity(0.3),
+                                        ),
                                         onSelected: (_) {
                                           setState(() {
                                             _stageType = entry.key;
                                             _subtype = entry.key == 'transport'
                                                 ? 'road'
                                                 : (widget.stageSubtypes[entry.key]?.first ?? '');
-                                            _transportTimeMode = 'duration';
-                                            _applyTransportDefaultsIfNeeded(
-                                              forceTitle: !_titleEdited ||
-                                                  _titleCtrl.text.trim().isEmpty,
-                                            );
+                                            if (_stageType == 'transport') {
+                                              _transportTimeMode = 'duration';
+                                              _applyTransportDefaultsIfNeeded(forceTitle: true);
+                                            }
                                           });
                                         },
                                       );
@@ -3252,7 +3252,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                     controller: _titleCtrl,
                                     onChanged: (value) {
                                       final normalized = value.trim();
-                                      final autoTitle = _defaultStageTitle();
+                                      final autoTitle = _defaultTransportTitle();
                                       _titleEdited = normalized.isNotEmpty && normalized != autoTitle;
                                     },
                                     style: const TextStyle(
@@ -3299,91 +3299,141 @@ class _StageFormPageState extends State<_StageFormPage> {
                                     ),
                                   ],
                                   const SizedBox(height: 8),
-                                  SegmentedButton<String>(
-                                    segments: const [
-                                      ButtonSegment<String>(
-                                        value: 'duration',
-                                        label: Text('Продолжительность'),
+                                  if (isTransport) ...[
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        ChoiceChip(
+                                          selected: _transportTimeMode == 'duration',
+                                          label: const Text('�����������������'),
+                                          onSelected: (_) => setState(() {
+                                            _transportTimeMode = 'duration';
+                                            if (_durationCtrl.text.trim().isEmpty) {
+                                              _durationCtrl.text = '60';
+                                            }
+                                            if (_startTimeCtrl.text.trim().isEmpty) {
+                                              _startTimeCtrl.text =
+                                                  _formatTimeOnly(_defaultCalendarDateTime());
+                                            }
+                                          }),
+                                        ),
+                                        ChoiceChip(
+                                          selected: _transportTimeMode == 'range',
+                                          label: const Text('����������'),
+                                          onSelected: (_) => setState(() {
+                                            _transportTimeMode = 'range';
+                                            if (_startTimeCtrl.text.trim().isEmpty) {
+                                              _startTimeCtrl.text =
+                                                  _formatTimeOnly(_defaultCalendarDateTime());
+                                            }
+                                            if (_endTimeCtrl.text.trim().isEmpty) {
+                                              _endTimeCtrl.text = _formatTimeOnly(
+                                                _defaultCalendarDateTime()
+                                                    .add(const Duration(hours: 1)),
+                                              );
+                                            }
+                                          }),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    if (_transportTimeMode == 'duration') ...[
+                                      _timeField('����� �����������', _startTimeCtrl),
+                                      const SizedBox(height: 8),
+                                      TextFormField(
+                                        controller: _durationCtrl,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          labelText: '�����������������, ���',
+                                        ),
+                                        keyboardType: TextInputType.number,
                                       ),
-                                      ButtonSegment<String>(
-                                        value: 'range',
-                                        label: Text('Промежуток'),
+                                    ] else ...[
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: _timeField(
+                                              '����� �����������',
+                                              _startTimeCtrl,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: _timeField(
+                                              '����� ��������',
+                                              _endTimeCtrl,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
-                                    selected: {_transportTimeMode},
-                                    showSelectedIcon: false,
-                                    style: ButtonStyle(
-                                      backgroundColor: WidgetStateProperty.resolveWith((states) {
-                                        if (states.contains(WidgetState.selected)) {
-                                          return const Color(0xFF222715);
-                                        }
-                                        return const Color(0xFF2B2B2B);
-                                      }),
-                                      foregroundColor: WidgetStateProperty.resolveWith((states) {
-                                        if (states.contains(WidgetState.selected)) {
-                                          return const Color(0xFFD7E37A);
-                                        }
-                                        return Colors.white;
-                                      }),
-                                      side: WidgetStateProperty.resolveWith((states) {
-                                        if (states.contains(WidgetState.selected)) {
-                                          return BorderSide(
-                                            color: const Color(0xFFD7E37A).withOpacity(0.6),
-                                          );
-                                        }
-                                        return BorderSide(
-                                          color: Colors.white.withOpacity(0.24),
-                                        );
-                                      }),
-                                    ),
-                                    onSelectionChanged: (selection) {
-                                      final nextMode = selection.first;
-                                      setState(() {
-                                        _transportTimeMode = nextMode;
-                                        if (nextMode == 'duration' &&
-                                            _durationCtrl.text.trim().isEmpty) {
-                                          _durationCtrl.text = '60';
-                                        }
-                                      });
-                                    },
-                                  ),
-                                  const SizedBox(height: 8),
-                                  if (_transportTimeMode == 'duration') ...[
-                                    _timeField(_startTimeLabel(), _startTimeCtrl),
-                                    const SizedBox(height: 8),
-                                    TextFormField(
-                                      controller: _durationCtrl,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      decoration: const InputDecoration(
-                                        labelText: 'Продолжительность, мин',
-                                      ),
-                                      keyboardType: TextInputType.number,
-                                    ),
                                   ] else ...[
                                     Row(
                                       children: [
                                         Expanded(
-                                          child: _timeField(
-                                            _startTimeLabel(),
-                                            _startTimeCtrl,
-                                          ),
+                                          child: _timeField('�����', _startTimeCtrl),
                                         ),
                                         const SizedBox(width: 8),
                                         Expanded(
-                                          child: _timeField(
-                                            _endTimeLabel(),
-                                            _endTimeCtrl,
-                                          ),
+                                          child: _timeField('��', _endTimeCtrl),
                                         ),
                                       ],
                                     ),
                                   ],
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      _quickTimeChip(
+                                        '09:00',
+                                        _startTimeCtrl,
+                                        9,
+                                        0,
+                                      ),
+                                      _quickTimeChip(
+                                        '12:00',
+                                        _startTimeCtrl,
+                                        12,
+                                        0,
+                                      ),
+                                      _quickTimeChip(
+                                        '15:00',
+                                        _startTimeCtrl,
+                                        15,
+                                        0,
+                                      ),
+                                      _quickTimeChip(
+                                        '18:00',
+                                        _startTimeCtrl,
+                                        18,
+                                        0,
+                                      ),
+                                    ],
+                                  ),
                                 ], Colors.cyan),
                                 const SizedBox(height: 2),
-                                _bubble('Детали', [
+                                TextButton.icon(
+                                  onPressed: () => setState(() => _showAdvanced = !_showAdvanced),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFFD7E37A),
+                                    padding: EdgeInsets.zero,
+                                  ),
+                                  icon: Icon(
+                                    _showAdvanced
+                                        ? Icons.keyboard_arrow_up_rounded
+                                        : Icons.keyboard_arrow_down_rounded,
+                                  ),
+                                  label: Text(
+                                    _showAdvanced ? 'Скрыть дополнительное' : 'Дополнительно',
+                                  ),
+                                ),
+                                if (_showAdvanced)
+                                  _bubble('Детали', [
                                     if (subtypes.isNotEmpty) ...[
                                       DropdownButtonFormField<String>(
                                         value: (_subtype.isNotEmpty && subtypes.contains(_subtype))
@@ -3400,29 +3450,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                             .map(
                                               (e) => DropdownMenuItem(
                                                 value: e,
-                                                child: Text(
-                                                  _prettySubtype(e),
-                                                  style: const TextStyle(
-                                                    fontFamily: 'Geologica',
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                              ),
-                                            )
-                                            .toList(),
-                                        selectedItemBuilder: (context) => subtypes
-                                            .map(
-                                              (e) => Align(
-                                                alignment: Alignment.centerLeft,
-                                                child: Text(
-                                                  _prettySubtype(e),
-                                                  style: const TextStyle(
-                                                    fontFamily: 'Geologica',
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
+                                                child: Text(_prettySubtype(e)),
                                               ),
                                             )
                                             .toList(),
@@ -3430,12 +3458,25 @@ class _StageFormPageState extends State<_StageFormPage> {
                                           if (value == null) return;
                                           setState(() {
                                             _subtype = value;
-                                            _applyTransportDefaultsIfNeeded(
-                                              forceTitle: !_titleEdited ||
-                                                  _titleCtrl.text.trim().isEmpty,
-                                            );
+                                            if (_stageType == 'transport') {
+                                              _applyTransportDefaultsIfNeeded(
+                                                forceTitle: !_titleEdited ||
+                                                    _titleCtrl.text.trim().isEmpty,
+                                              );
+                                            }
                                           });
                                         },
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (!isTransport) ...[
+                                      TextFormField(
+                                        controller: _addressCtrl,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: const InputDecoration(labelText: 'Точный адрес'),
                                       ),
                                       const SizedBox(height: 8),
                                     ],
@@ -3447,14 +3488,38 @@ class _StageFormPageState extends State<_StageFormPage> {
                                           fontWeight: FontWeight.w600,
                                         ),
                                         decoration: InputDecoration(
-                                          labelText: isFood ? 'Сколько потрачу, руб' : 'Стоимость, руб',
+                                          labelText: isFood ? 'Средний чек, руб' : 'Стоимость, руб',
                                         ),
                                         keyboardType:
                                             const TextInputType.numberWithOptions(decimal: true),
                                       ),
                                       const SizedBox(height: 8),
                                     ],
-                                    if (isTransport || isStay || isPlace || isDocument) ...[
+                                    if (needsReference) ...[
+                                      TextFormField(
+                                        controller: _refCtrl,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          labelText: 'Номер рейса / брони',
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (isPlace) ...[
+                                      TextFormField(
+                                        controller: _websiteCtrl,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        decoration: const InputDecoration(labelText: 'Сайт'),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (isTransport || isStay || isDocument) ...[
                                       SizedBox(
                                         width: double.infinity,
                                         child: OutlinedButton.icon(
@@ -3481,8 +3546,8 @@ class _StageFormPageState extends State<_StageFormPage> {
                                               : const Icon(Icons.upload_file_rounded),
                                           label: Text(
                                             _docCtrl.text.trim().isEmpty
-                                                ? 'Загрузить документ'
-                                                : 'Документ загружен',
+                                                ? '��������� ��������'
+                                                : '�������� ��������',
                                           ),
                                         ),
                                       ),
@@ -3497,7 +3562,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                       decoration: const InputDecoration(labelText: 'Комментарий'),
                                       maxLines: 3,
                                     ),
-                                ], Colors.greenAccent),
+                                  ], Colors.greenAccent),
                                 const SizedBox(height: 8),
                                 SizedBox(
                                   height: 46,
@@ -3507,9 +3572,10 @@ class _StageFormPageState extends State<_StageFormPage> {
                                       final resolvedSubtype = _stageType == 'transport'
                                           ? (_subtype.trim().isEmpty ? 'road' : _subtype.trim())
                                           : _subtype.trim();
-                                      final fallbackTitle = _defaultStageTitle();
-                                      final resolvedTitle = _titleCtrl.text.trim().isEmpty
-                                          ? fallbackTitle
+                                      final resolvedTitle = _stageType == 'transport'
+                                          ? (_titleCtrl.text.trim().isEmpty
+                                              ? _defaultTransportTitle()
+                                              : _titleCtrl.text.trim())
                                           : _titleCtrl.text.trim();
                                       final fallbackStart = _defaultCalendarDateTime();
                                       DateTime? resolvedStartTime = _parseTime(
@@ -3524,25 +3590,27 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         _durationCtrl.text.trim(),
                                       );
 
-                                      resolvedStartTime ??= fallbackStart;
-                                      if (_transportTimeMode == 'duration') {
-                                        resolvedDurationMinutes ??= 60;
-                                        resolvedEndTime = null;
-                                      } else {
-                                        if (resolvedStartTime == null && resolvedEndTime == null) {
-                                          resolvedStartTime = fallbackStart;
-                                          resolvedEndTime =
-                                              fallbackStart.add(const Duration(hours: 1));
-                                        } else if (resolvedStartTime != null &&
-                                            resolvedEndTime == null) {
-                                          resolvedEndTime =
-                                              resolvedStartTime.add(const Duration(hours: 1));
-                                        } else if (resolvedStartTime == null &&
-                                            resolvedEndTime != null) {
-                                          resolvedStartTime =
-                                              resolvedEndTime.subtract(const Duration(hours: 1));
+                                      if (_stageType == 'transport') {
+                                        resolvedStartTime ??= fallbackStart;
+                                        if (_transportTimeMode == 'duration') {
+                                          resolvedDurationMinutes ??= 60;
+                                          resolvedEndTime = null;
+                                        } else {
+                                          if (resolvedStartTime == null && resolvedEndTime == null) {
+                                            resolvedStartTime = fallbackStart;
+                                            resolvedEndTime =
+                                                fallbackStart.add(const Duration(hours: 1));
+                                          } else if (resolvedStartTime != null &&
+                                              resolvedEndTime == null) {
+                                            resolvedEndTime =
+                                                resolvedStartTime.add(const Duration(hours: 1));
+                                          } else if (resolvedStartTime == null &&
+                                              resolvedEndTime != null) {
+                                            resolvedStartTime =
+                                                resolvedEndTime.subtract(const Duration(hours: 1));
+                                          }
+                                          resolvedDurationMinutes = null;
                                         }
-                                        resolvedDurationMinutes = null;
                                       }
                                       Navigator.of(context).pop(
                                         _AddStagePayload(
@@ -3570,11 +3638,15 @@ class _StageFormPageState extends State<_StageFormPage> {
                                                 .replaceAll('\u00A0', '')
                                                 .replaceAll(',', '.'),
                                           ),
-                                          referenceNumber: null,
+                                          referenceNumber: _refCtrl.text.trim().isEmpty
+                                              ? null
+                                              : _refCtrl.text.trim(),
                                           notes: _notesCtrl.text.trim().isEmpty
                                               ? null
                                               : _notesCtrl.text.trim(),
-                                          websiteUrl: null,
+                                          websiteUrl: _websiteCtrl.text.trim().isEmpty
+                                              ? null
+                                              : _websiteCtrl.text.trim(),
                                           rating: widget.initial?.rating,
                                           documentKey: _docCtrl.text.trim().isEmpty
                                               ? null
@@ -3645,12 +3717,12 @@ class _StageFormPageState extends State<_StageFormPage> {
                               filled: true,
                               fillColor: Colors.white.withOpacity(0.06),
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                borderSide: BorderSide.none,
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.white.withOpacity(0.20)),
                               ),
                               focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(18),
-                                borderSide: BorderSide.none,
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: cs.primary.withOpacity(0.8), width: 1.4),
                               ),
                             ),
                           ),
@@ -3688,29 +3760,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                       .map(
                                         (e) => DropdownMenuItem(
                                           value: e,
-                                          child: Text(
-                                            _prettySubtype(e),
-                                            style: const TextStyle(
-                                              fontFamily: 'Geologica',
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                                  selectedItemBuilder: (context) => subtypes
-                                      .map(
-                                        (e) => Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: Text(
-                                            _prettySubtype(e),
-                                            style: const TextStyle(
-                                              fontFamily: 'Geologica',
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
+                                          child: Text(_prettySubtype(e)),
                                         ),
                                       )
                                       .toList(),
@@ -3763,10 +3813,25 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   TextFormField(
                                     controller: _costCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: InputDecoration(labelText: isFood ? 'Сколько потрачу, руб' : 'Стоимость, руб'),
+                                    decoration: InputDecoration(labelText: isFood ? 'Средний чек, руб' : 'Стоимость, руб'),
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                   ),
                                   const SizedBox(height: 8),
+                                ],
+                                if (needsReference) ...[
+                                  TextFormField(
+                                    controller: _refCtrl,
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                                    decoration: const InputDecoration(labelText: 'Номер рейса / брони'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                ],
+                                if (isPlace) ...[
+                                  TextFormField(
+                                    controller: _websiteCtrl,
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                                    decoration: const InputDecoration(labelText: 'Сайт'),
+                                  ),
                                 ],
                               ], Colors.greenAccent),
                               _bubble('Файлы и заметки', [
@@ -3842,9 +3907,9 @@ class _StageFormPageState extends State<_StageFormPage> {
                                               .replaceAll('\u00A0', '')
                                               .replaceAll(',', '.'),
                                         ),
-                                        referenceNumber: null,
+                                        referenceNumber: _refCtrl.text.trim().isEmpty ? null : _refCtrl.text.trim(),
                                         notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
-                                        websiteUrl: null,
+                                        websiteUrl: _websiteCtrl.text.trim().isEmpty ? null : _websiteCtrl.text.trim(),
                                         rating: widget.initial?.rating,
                                         documentKey: _docCtrl.text.trim().isEmpty ? null : _docCtrl.text.trim(),
                                       ),
@@ -4846,6 +4911,8 @@ class _StageDetailsPage extends StatelessWidget {
                                 _line('Откуда', stage.startLocation),
                                 _line('Куда', stage.endLocation),
                                 _line('Стоимость', stage.costRub == null ? null : '${stage.costRub} руб.'),
+                                _line('Номер рейса / брони', stage.referenceNumber),
+                                _line('Сайт', stage.websiteUrl),
                                 _line('Комментарий', stage.notes),
                                 if ((stage.documentKey ?? '').isNotEmpty) ...[
                                   const SizedBox(height: 8),
@@ -4925,7 +4992,6 @@ class _NightPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
-
 
 
 

@@ -149,7 +149,7 @@ class _AccountPageState extends State<AccountPage> {
                             child: Text(
                               _me?.displayName?.trim().isNotEmpty == true
                                   ? _me!.displayName!
-                                  : 'Путешественник',
+                                  : '',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 30,

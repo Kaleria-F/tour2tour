@@ -146,6 +146,8 @@ services:
       DATABASE_URL: postgresql+psycopg://trips:trips@trips-db:5432/trips
       JWT_SECRET: dev_secret
       JWT_ALG: HS256
+      YANDEX_API_KEY: ${YANDEX_API_KEY}
+      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID}
     expose:
       - "8000"
     restart: unless-stopped

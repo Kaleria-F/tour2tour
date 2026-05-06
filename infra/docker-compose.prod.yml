@@ -94,6 +94,8 @@ services:
       DATABASE_URL: postgresql+psycopg://trips:${TRIPS_DB_PASSWORD}@trips-db:5432/trips
       JWT_SECRET: ${JWT_SECRET}
       JWT_ALG: HS256
+      YANDEX_API_KEY: ${YANDEX_API_KEY}
+      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID}
     ports:
       - "8002:8000"
     depends_on:

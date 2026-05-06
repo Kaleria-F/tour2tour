@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+
 import '../../api/api_client.dart';
 
 DateTime _parseDateOrEpoch(dynamic raw) {
@@ -329,6 +333,66 @@ class StageSuggestion {
   }
 }
 
+class StageAssistantDraft {
+  final String stageType;
+  final String subtype;
+  final String title;
+  final String? startLocation;
+  final String? endLocation;
+  final String? address;
+  final String? startTimeText;
+  final String? endTimeText;
+  final int? durationMinutes;
+  final double? costRub;
+  final String? notes;
+  final String timeMode;
+  final String sourceText;
+
+  StageAssistantDraft({
+    required this.stageType,
+    required this.subtype,
+    required this.title,
+    required this.startLocation,
+    required this.endLocation,
+    required this.address,
+    required this.startTimeText,
+    required this.endTimeText,
+    required this.durationMinutes,
+    required this.costRub,
+    required this.notes,
+    required this.timeMode,
+    required this.sourceText,
+  });
+
+  factory StageAssistantDraft.fromJson(Map<String, dynamic> json) {
+    int? parseInt(dynamic raw) {
+      if (raw == null) return null;
+      return int.tryParse(raw.toString());
+    }
+
+    double? parseDouble(dynamic raw) {
+      if (raw == null) return null;
+      return double.tryParse(raw.toString());
+    }
+
+    return StageAssistantDraft(
+      stageType: (json['stage_type'] ?? '').toString(),
+      subtype: (json['subtype'] ?? '').toString(),
+      title: (json['title'] ?? '').toString(),
+      startLocation: json['start_location']?.toString(),
+      endLocation: json['end_location']?.toString(),
+      address: json['address']?.toString(),
+      startTimeText: json['start_time_text']?.toString(),
+      endTimeText: json['end_time_text']?.toString(),
+      durationMinutes: parseInt(json['duration_minutes']),
+      costRub: parseDouble(json['cost_rub']),
+      notes: json['notes']?.toString(),
+      timeMode: (json['time_mode'] ?? 'duration').toString(),
+      sourceText: (json['source_text'] ?? '').toString(),
+    );
+  }
+}
+
 class TripsRepo {
   final ApiClient api;
   TripsRepo(this.api);
@@ -603,5 +667,44 @@ class TripsRepo {
     final data = res.data;
     if (data is! Map<String, dynamic>) return null;
     return TripStage.fromJson(data);
+  }
+
+  Future<String?> transcribeStageAudio({
+    required Uint8List audioBytes,
+    String filename = 'stage-voice.raw',
+  }) async {
+    final formData = FormData.fromMap({
+      'audio': MultipartFile.fromBytes(
+        audioBytes,
+        filename: filename,
+      ),
+    });
+    final res = await api.dio.post(
+      '/trips/stage-assistant/transcribe',
+      data: formData,
+    );
+    final data = res.data;
+    if (data is! Map<String, dynamic>) return null;
+    final text = data['text']?.toString().trim();
+    if (text == null || text.isEmpty) return null;
+    return text;
+  }
+
+  Future<StageAssistantDraft?> createStageDraftFromText({
+    required String stageType,
+    required String text,
+    DateTime? routeDay,
+  }) async {
+    final res = await api.dio.post(
+      '/trips/stage-assistant/draft',
+      data: {
+        'stage_type': stageType,
+        'text': text,
+        'route_day': routeDay?.toIso8601String().split('T').first,
+      },
+    );
+    final data = res.data;
+    if (data is! Map<String, dynamic>) return null;
+    return StageAssistantDraft.fromJson(data);
   }
 }
