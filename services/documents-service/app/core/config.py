@@ -1,4 +1,6 @@
-from pydantic import Field
+import json
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Annotated
 
@@ -24,6 +26,20 @@ class Settings(BaseSettings):
     enable_upload_scan: bool = Field(default=False, alias="ENABLE_UPLOAD_SCAN")
 
     model_config = SettingsConfigDict(extra="ignore")
+
+    @field_validator("s3_cors_allowed_origins", mode="before")
+    @classmethod
+    def parse_s3_cors_allowed_origins(cls, value: object) -> object:
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            raw = value.strip()
+            if not raw:
+                return ["*"]
+            if raw.startswith("["):
+                return json.loads(raw)
+            return [item.strip() for item in raw.split(",") if item.strip()]
+        return value
 
 
 settings = Settings()
