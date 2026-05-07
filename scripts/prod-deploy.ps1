@@ -6,6 +6,7 @@ param(
   [string]$FlutterProjectPath = "frontend/tour2tour_app",
   [string]$WebRoot = "/var/www/tour2tour/web",
   [string]$KeyPath = "",
+  [string]$PremiumCheckoutUrl = "",
   [switch]$SkipFrontend
 )
 
@@ -36,7 +37,21 @@ if (-not $SkipFrontend) {
   Push-Location $FlutterProjectPath
   try {
     flutter pub get
-    flutter build web --release --dart-define=API_BASE_URL=https://api.24tour2tour.ru
+    $resolvedPremiumCheckoutUrl = if (-not [string]::IsNullOrWhiteSpace($PremiumCheckoutUrl)) {
+      $PremiumCheckoutUrl
+    } else {
+      $env:PREMIUM_CHECKOUT_URL
+    }
+    $flutterBuildArgs = @(
+      "build",
+      "web",
+      "--release",
+      "--dart-define=API_BASE_URL=https://api.24tour2tour.ru"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($resolvedPremiumCheckoutUrl)) {
+      $flutterBuildArgs += "--dart-define=PREMIUM_CHECKOUT_URL=$resolvedPremiumCheckoutUrl"
+    }
+    flutter @flutterBuildArgs
   } finally {
     Pop-Location
   }

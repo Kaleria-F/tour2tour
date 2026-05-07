@@ -179,9 +179,11 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final viewer = Stack(
+            fit: StackFit.expand,
+            children: [
           story.imageUrl.trim().isEmpty
               ? _StoryViewerPlaceholder(title: story.title)
               : Image.network(
@@ -399,7 +401,22 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
               );
             },
           ),
-        ],
+            ],
+          );
+          if (constraints.maxWidth <= 520) {
+            return viewer;
+          }
+          return Center(
+            child: SizedBox(
+              width: 430,
+              height: constraints.maxHeight,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(32),
+                child: viewer,
+              ),
+            ),
+          );
+        },
       ),
     );
   }

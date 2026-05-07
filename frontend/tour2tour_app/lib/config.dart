@@ -6,6 +6,8 @@ class Config {
   static const _webLocal = 'http://127.0.0.1:8888';
   static const _apiOverride =
       String.fromEnvironment('API_BASE_URL', defaultValue: '');
+  static const _premiumCheckoutOverride =
+      String.fromEnvironment('PREMIUM_CHECKOUT_URL', defaultValue: '');
 
   static String get apiBaseUrl {
     if (_apiOverride.isNotEmpty) {
@@ -13,4 +15,6 @@ class Config {
     }
     return kIsWeb ? _webLocal : _androidEmulator;
   }
+
+  static String get premiumCheckoutUrl => _premiumCheckoutOverride;
 }

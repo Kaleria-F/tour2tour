@@ -108,22 +108,35 @@ class _FavoritesPageState extends State<FavoritesPage> {
   Future<void> _removeFavorite(FavoritePlace item) async {
     final userId = _currentUserId;
     if (userId == null) return;
-    await widget.interactionsRepo.trackEvent(
-      userId: userId,
-      placeId: item.placeId,
-      action: 'dismissed',
-      weight: -2,
-      metadata: _metadata(item),
-    );
-    if (!mounted) return;
     _removeLocal(item.placeId);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          '\u0423\u0431\u0440\u0430\u043d\u043e \u0438\u0437 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0433\u043e',
+    try {
+      await widget.interactionsRepo.trackEvent(
+        userId: userId,
+        placeId: item.placeId,
+        action: 'dismissed',
+        weight: -2,
+        metadata: _metadata(item),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '\u0423\u0431\u0440\u0430\u043d\u043e \u0438\u0437 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0433\u043e',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (_) {
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u043c\u0435\u0441\u0442\u043e \u0438\u0437 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0433\u043e',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _addToTrip(FavoritePlace item) async {
@@ -166,6 +179,127 @@ class _FavoritesPageState extends State<FavoritesPage> {
       SnackBar(
         content: Text(
           '\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u043e \u0432 \u043c\u0430\u0440\u0448\u0440\u0443\u0442: ${item.title}',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openFavoriteDetails(FavoritePlace item) async {
+    final userId = _currentUserId;
+    if (userId != null) {
+      try {
+        await widget.interactionsRepo.trackEvent(
+          userId: userId,
+          placeId: item.placeId,
+          action: 'opened',
+          weight: 2,
+          metadata: _metadata(item),
+        );
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF1D1D1D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    item.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _MetaChip(icon: Icons.location_on_rounded, label: item.city),
+                      if ((item.address ?? '').isNotEmpty)
+                        _MetaChip(
+                          icon: Icons.place_outlined,
+                          label: item.address!,
+                        ),
+                      if (item.rating != null)
+                        _MetaChip(
+                          icon: Icons.star_rounded,
+                          label: item.rating!.toStringAsFixed(1),
+                        ),
+                      if ((item.subcategory ?? '').isNotEmpty)
+                        _MetaChip(
+                          icon: Icons.auto_awesome_rounded,
+                          label: item.subcategory!,
+                        )
+                      else if ((item.category ?? '').isNotEmpty)
+                        _MetaChip(
+                          icon: Icons.auto_awesome_rounded,
+                          label: item.category!,
+                        ),
+                    ],
+                  ),
+                  if ((item.description ?? '').isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    Text(
+                      item.description!,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.84),
+                        height: 1.45,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      if (widget.tripsRepo != null &&
+                          (widget.tripId ?? item.tripId) != null) ...[
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () async {
+                              Navigator.of(context).pop();
+                              await _addToTrip(item);
+                            },
+                            icon: const Icon(Icons.route_rounded),
+                            label: const Text('В маршрут'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                      ],
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            Navigator.of(context).pop();
+                            await _removeFavorite(item);
+                          },
+                          icon: const Icon(Icons.bookmark_remove_outlined),
+                          label: const Text('Убрать'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
         ),
       ),
     );
@@ -330,18 +464,24 @@ class _FavoritesPageState extends State<FavoritesPage> {
                       ),
                     )
                   : hasCityFilter
-                      ? ListView.separated(
+                      ? GridView.builder(
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 14,
+                            mainAxisSpacing: 14,
+                            mainAxisExtent: 340,
+                          ),
                           itemCount: filteredItems.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 10),
-                          itemBuilder: (_, index) =>
-                              _FavoritePlaceTile(
-                                key: ValueKey(filteredItems[index].placeId),
-                                item: filteredItems[index],
-                                canAddToTrip: widget.tripsRepo != null &&
-                                    (widget.tripId ?? filteredItems[index].tripId) != null,
-                                onAddToTrip: () => _addToTrip(filteredItems[index]),
-                                onRemove: () => _removeFavorite(filteredItems[index]),
-                              ),
+                          itemBuilder: (_, index) => _FavoritePlaceTile(
+                            key: ValueKey(filteredItems[index].placeId),
+                            item: filteredItems[index],
+                            onTap: () => _openFavoriteDetails(filteredItems[index]),
+                            canAddToTrip: widget.tripsRepo != null &&
+                                (widget.tripId ?? filteredItems[index].tripId) != null,
+                            onAddToTrip: () => _addToTrip(filteredItems[index]),
+                            onRemove: () => _removeFavorite(filteredItems[index]),
+                          ),
                         )
                       : GridView.builder(
                           gridDelegate:
@@ -363,6 +503,131 @@ class _FavoritesPageState extends State<FavoritesPage> {
   }
 
   Future<void> _openFolder(FavoriteCityGroup group) async {
+    final visibleItems = List<FavoritePlace>.from(group.items);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.78,
+          maxChildSize: 0.92,
+          minChildSize: 0.45,
+          builder: (sheetContext, controller) {
+            return StatefulBuilder(
+              builder: (sheetContext, modalSetState) {
+                return ClipRRect(
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(30)),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 430),
+                        child: Container(
+                          color: const Color(0xFF1C1C1C).withOpacity(0.92),
+                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Center(
+                                child: Container(
+                                  width: 42,
+                                  height: 4,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.22),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                group.city,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${visibleItems.length} сохраненных мест',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.64),
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Expanded(
+                                child: GridView.builder(
+                                  controller: controller,
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    crossAxisSpacing: 14,
+                                    mainAxisSpacing: 14,
+                                    mainAxisExtent: 340,
+                                  ),
+                                  itemCount: visibleItems.length,
+                                  itemBuilder: (_, index) {
+                                    final item = visibleItems[index];
+                                    return _FavoritePlaceTile(
+                                      key: ValueKey(item.placeId),
+                                      item: item,
+                                      onTap: () async {
+                                        await _openFavoriteDetails(item);
+                                        if (!mounted) return;
+                                        final latestItems = _groups
+                                            .where((entry) => entry.city == group.city)
+                                            .expand((entry) => entry.items)
+                                            .toList();
+                                        modalSetState(() {
+                                          visibleItems
+                                            ..clear()
+                                            ..addAll(latestItems);
+                                        });
+                                        if (visibleItems.isEmpty) {
+                                          Navigator.of(sheetContext).pop();
+                                        }
+                                      },
+                                      canAddToTrip: widget.tripsRepo != null &&
+                                          (widget.tripId ?? item.tripId) != null,
+                                      onAddToTrip: () => _addToTrip(item),
+                                      onRemove: () async {
+                                        modalSetState(() {
+                                          visibleItems.removeWhere(
+                                            (entry) =>
+                                                entry.placeId == item.placeId,
+                                          );
+                                        });
+                                        await _removeFavorite(item);
+                                        if (!mounted) return;
+                                        if (visibleItems.isEmpty) {
+                                          Navigator.of(sheetContext).pop();
+                                        }
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ignore: unused_element
+  Future<void> _openFolderLegacy(FavoriteCityGroup group) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -379,10 +644,13 @@ class _FavoritesPageState extends State<FavoritesPage> {
                   const BorderRadius.vertical(top: Radius.circular(30)),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                child: Container(
-                  color: const Color(0xFF1C1C1C).withOpacity(0.92),
-                  padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-                  child: Column(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 430),
+                    child: Container(
+                      color: const Color(0xFF1C1C1C).withOpacity(0.92),
+                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+                      child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Center(
@@ -414,16 +682,22 @@ class _FavoritesPageState extends State<FavoritesPage> {
                       ),
                       const SizedBox(height: 14),
                       Expanded(
-                        child: ListView.separated(
+                        child: GridView.builder(
                           controller: controller,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 14,
+                            mainAxisSpacing: 14,
+                            mainAxisExtent: 340,
+                          ),
                           itemCount: group.items.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 10),
                           itemBuilder: (_, index) {
                             final item = group.items[index];
                             return _FavoritePlaceTile(
                               key: ValueKey(item.placeId),
                               item: item,
+                              onTap: () => _openFavoriteDetails(item),
                               canAddToTrip: widget.tripsRepo != null &&
                                   (widget.tripId ?? item.tripId) != null,
                               onAddToTrip: () => _addToTrip(item),
@@ -433,6 +707,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         ),
                       ),
                     ],
+                  ),
+                ),
                   ),
                 ),
               ),
@@ -700,12 +976,14 @@ class _FavoritePlaceTile extends StatelessWidget {
   const _FavoritePlaceTile({
     super.key,
     required this.item,
+    required this.onTap,
     required this.onRemove,
     required this.onAddToTrip,
     required this.canAddToTrip,
   });
 
   final FavoritePlace item;
+  final VoidCallback onTap;
   final VoidCallback onRemove;
   final VoidCallback onAddToTrip;
   final bool canAddToTrip;
@@ -726,144 +1004,185 @@ class _FavoritePlaceTile extends StatelessWidget {
         child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFE7B0A4)),
       ),
       onDismissed: (_) => onRemove(),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withOpacity(0.06)),
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: SizedBox(
-                width: 64,
-                height: 64,
-                child: item.imageUrl != null && item.imageUrl!.isNotEmpty
-                    ? Image.network(
-                        item.imageUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            _FavoriteThumbFallback(city: item.city),
-                      )
-                    : _FavoriteThumbFallback(city: item.city),
-              ),
+          onTap: onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              color: const Color(0xFF1C1C1C),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 184,
+                  width: double.infinity,
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(28),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  if ((item.address ?? '').isNotEmpty)
-                    Text(
-                      item.address!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.68),
-                        fontSize: 12.5,
-                      ),
-                    ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      if (canAddToTrip)
-                        Expanded(
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: onAddToTrip,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFD7E37A).withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFFD7E37A).withOpacity(0.35),
-                                ),
-                              ),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.route_rounded,
-                                    size: 14,
-                                    color: Color(0xFFD7E37A),
-                                  ),
-                                  SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      '\u0412 \u043c\u0430\u0440\u0448\u0440\u0443\u0442',
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: Color(0xFFD7E37A),
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        item.imageUrl != null && item.imageUrl!.isNotEmpty
+                            ? Image.network(
+                                item.imageUrl!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    _FavoriteThumbFallback(city: item.city),
+                              )
+                            : _FavoriteThumbFallback(city: item.city),
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                Colors.black.withOpacity(0.45),
+                                Colors.transparent,
+                              ],
                             ),
                           ),
                         ),
-                      if ((item.tripTitle ?? '').isNotEmpty) ...[
-                        if (canAddToTrip) const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFD7E37A).withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            item.tripTitle!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFFD7E37A),
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w600,
+                        Positioned(
+                          right: 12,
+                          bottom: 12,
+                          child: IconButton(
+                            onPressed: onRemove,
+                            style: IconButton.styleFrom(
+                              backgroundColor: const Color(0xFFD7E37A),
+                              foregroundColor: const Color(0xFF171717),
                             ),
+                            icon: const Icon(Icons.bookmark_remove_outlined),
                           ),
                         ),
                       ],
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            if (item.rating != null)
-              Column(
-                children: [
-                  const Icon(Icons.star_rounded,
-                      color: Color(0xFFD7E37A), size: 18),
-                  const SizedBox(height: 4),
-                  Text(
-                    item.rating!.toStringAsFixed(1),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ],
-              ),
-          ],
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'Geologica',
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        (item.description ?? '').trim().isEmpty
+                            ? (item.address ?? item.city)
+                            : item.description!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: 'Geologica',
+                          color: Colors.white.withOpacity(0.72),
+                          fontSize: 12.5,
+                          height: 1.35,
+                          fontWeight: FontWeight.w300,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _MetaChip(
+                            icon: Icons.location_on_outlined,
+                            label: item.city,
+                          ),
+                          if (item.rating != null)
+                            _MetaChip(
+                              icon: Icons.star_rounded,
+                              label: item.rating!.toStringAsFixed(1),
+                            ),
+                          if ((item.tripTitle ?? '').isNotEmpty)
+                            _MetaChip(
+                              icon: Icons.route_rounded,
+                              label: item.tripTitle!,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          if (canAddToTrip)
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: onAddToTrip,
+                                icon: const Icon(Icons.route_rounded, size: 16),
+                                label: const Text('В маршрут'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFD7E37A),
+                                  foregroundColor: const Color(0xFF171717),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFFD7E37A)),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Geologica',
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

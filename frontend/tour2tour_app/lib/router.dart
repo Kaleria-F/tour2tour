@@ -23,6 +23,7 @@ import 'features/profile/profile_page.dart';
 import 'features/profile/account_page.dart';
 import 'features/profile/complete_profile_page.dart';
 import 'features/profile/edit_account_page.dart';
+import 'features/profile/premium_page.dart';
 import 'features/shared/travel_app_shell.dart';
 import 'features/stories/stories_repo.dart';
 import 'features/stories/story_viewer_page.dart';
@@ -161,6 +162,10 @@ GoRouter buildRouter() {
       GoRoute(
         path: '/edit-account',
         builder: (_, __) => EditAccountPage(profileRepo: profile),
+      ),
+      GoRoute(
+        path: '/premium',
+        builder: (_, __) => PremiumPage(profileRepo: profile),
       ),
       GoRoute(
         path: '/favorites',

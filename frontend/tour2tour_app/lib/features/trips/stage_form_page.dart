@@ -3,6 +3,9 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:go_router/go_router.dart';
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:record/record.dart';
 
 import 'trips_repo.dart';
@@ -181,6 +184,7 @@ class StageFormPage extends StatefulWidget {
   final Map<String, List<String>> stageSubtypes;
   final String initialType;
   final TripsRepo tripsRepo;
+  final bool isPremium;
   final DateTime? routeDay;
   final AddStagePayload? initial;
   final String submitLabel;
@@ -192,6 +196,7 @@ class StageFormPage extends StatefulWidget {
     required this.stageSubtypes,
     required this.initialType,
     required this.tripsRepo,
+    required this.isPremium,
     this.routeDay,
     this.onUploadDocument,
     this.initial,
@@ -203,6 +208,11 @@ class StageFormPage extends StatefulWidget {
 }
 
 class _StageFormPageState extends State<StageFormPage> {
+  static const int _assistantTrialLimit = 5;
+  static const String _assistantTrialUsedKey =
+      'stage_form_assistant_trial_used_v1';
+  static const FlutterSecureStorage _assistantTrialStorage =
+      FlutterSecureStorage();
   static const Map<String, String> _subtypeLabels = <String, String>{
     'road': 'Дорога',
     'airplane': 'Самолет',
@@ -269,9 +279,12 @@ class _StageFormPageState extends State<StageFormPage> {
   bool _uploadingStageDocument = false;
   bool _processingAssistant = false;
   bool _recordingVoice = false;
+  bool _loadingAssistantTrial = true;
   bool _titleEdited = false;
   String _transportTimeMode = 'duration';
   int _recordSecondsLeft = 30;
+  int _assistantTrialUsed = 0;
+  bool _assistantLimitPopupShown = false;
 
   late String _stageType;
   late String _subtype;
@@ -282,6 +295,7 @@ class _StageFormPageState extends State<StageFormPage> {
     _assistantFocusNode.addListener(() {
       if (mounted) setState(() {});
     });
+    _loadAssistantTrialState();
     _stageType = widget.initial?.stageType ?? widget.initialType;
     _subtype = widget.initial?.subtype ??
         (_stageType == 'transport'
@@ -398,6 +412,165 @@ class _StageFormPageState extends State<StageFormPage> {
   }
 
   bool get _assistantHasText => _assistantCtrl.text.trim().isNotEmpty;
+  int get _assistantTrialsLeft => (_assistantTrialLimit - _assistantTrialUsed)
+      .clamp(0, _assistantTrialLimit)
+      .toInt();
+  bool get _assistantLocked =>
+      !widget.isPremium && !_loadingAssistantTrial && _assistantTrialsLeft <= 0;
+
+  Future<void> _loadAssistantTrialState() async {
+    if (widget.isPremium) {
+      if (!mounted) return;
+      setState(() => _loadingAssistantTrial = false);
+      return;
+    }
+    try {
+      final rawUsed = await _assistantTrialStorage.read(
+        key: _assistantTrialUsedKey,
+      );
+      final used = int.tryParse(rawUsed ?? '') ?? 0;
+      if (!mounted) return;
+      setState(() {
+        _assistantTrialUsed = used.clamp(0, _assistantTrialLimit).toInt();
+        _loadingAssistantTrial = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingAssistantTrial = false);
+    }
+  }
+
+  Future<void> _consumeAssistantTrial() async {
+    if (widget.isPremium) return;
+    final nextUsed =
+        (_assistantTrialUsed + 1).clamp(0, _assistantTrialLimit).toInt();
+    setState(() => _assistantTrialUsed = nextUsed);
+    try {
+      await _assistantTrialStorage.write(
+        key: _assistantTrialUsedKey,
+        value: nextUsed.toString(),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _showAssistantPremiumPopup() async {
+    if (!mounted || _assistantLimitPopupShown) return;
+    _assistantLimitPopupShown = true;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 44),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 320),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            color: const Color(0xFF1D1D1D),
+            border: Border.all(
+              color: const Color(0xFFB6A1FF).withOpacity(0.28),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFB6A1FF).withOpacity(0.22),
+                blurRadius: 28,
+                offset: const Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFB6A1FF).withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFFB6A1FF).withOpacity(0.32),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.workspace_premium_rounded,
+                      color: Color(0xFFB6A1FF),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Пробные запросы закончились',
+                      style: TextStyle(
+                        fontFamily: 'Geologica',
+                        color: Colors.white.withOpacity(0.96),
+                        fontSize: 18,
+                        height: 1.15,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Продолжить быстрый ввод можно в подписке Тур2Тур Pro.',
+                style: TextStyle(
+                  fontFamily: 'Geologica',
+                  color: Colors.white.withOpacity(0.74),
+                  fontSize: 13,
+                  height: 1.42,
+                  fontWeight: FontWeight.w300,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(
+                          color: Colors.white.withOpacity(0.14),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('Позже'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFB6A1FF),
+                        foregroundColor: const Color(0xFF17131F),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.of(dialogContext).pop();
+                        context.push('/premium');
+                      },
+                      child: const Text('Pro'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    _assistantLimitPopupShown = false;
+  }
 
   void _applyAssistantDraft(StageAssistantDraft draft) {
     setState(() {
@@ -458,9 +631,14 @@ class _StageFormPageState extends State<StageFormPage> {
   Future<void> _fillFieldsFromAssistantText({String? sourceText}) async {
     final resolvedText = (sourceText ?? _assistantCtrl.text).trim();
     if (resolvedText.isEmpty || _processingAssistant) return;
+    if (_assistantLocked) {
+      await _showAssistantPremiumPopup();
+      return;
+    }
     FocusScope.of(context).unfocus();
     setState(() => _processingAssistant = true);
     try {
+      await _consumeAssistantTrial();
       final draft = await widget.tripsRepo.createStageDraftFromText(
         stageType: _stageType,
         text: resolvedText,
@@ -474,6 +652,9 @@ class _StageFormPageState extends State<StageFormPage> {
         return;
       }
       _applyAssistantDraft(draft);
+      if (_assistantLocked) {
+        await _showAssistantPremiumPopup();
+      }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -487,6 +668,10 @@ class _StageFormPageState extends State<StageFormPage> {
   }
 
   Future<void> _startVoiceRecording() async {
+    if (_assistantLocked) {
+      await _showAssistantPremiumPopup();
+      return;
+    }
     if (_processingAssistant || _recordingVoice || _assistantHasText) return;
     final hasPermission = await _audioRecorder.hasPermission();
     if (!hasPermission) {
@@ -603,192 +788,268 @@ class _StageFormPageState extends State<StageFormPage> {
     final progress = ((30 - _recordSecondsLeft) / 30).clamp(0.0, 1.0);
     final composerHeight = 48.0;
     final showHint = !hasText && !_assistantFocusNode.hasFocus;
+    final accentColor = const Color(0xFFB6A1FF);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.07),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: _recordingVoice
-              ? const Color(0xFFB6A1FF).withOpacity(0.65)
-              : Colors.white.withOpacity(0.10),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.16),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (!widget.isPremium && !_loadingAssistantTrial)
+          Padding(
+            padding: const EdgeInsets.only(left: 12, bottom: 8),
+            child: Text(
+              _assistantLocked
+                  ? 'Пробные запросы закончились'
+                  : 'Осталось $_assistantTrialsLeft из $_assistantTrialLimit пробных запросов',
+              style: TextStyle(
+                fontFamily: 'Geologica',
+                color: Colors.white.withOpacity(0.60),
+                fontSize: 11,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
           ),
-        ],
-      ),
-      child: SizedBox(
-        height: composerHeight,
-        child: Row(
+        Stack(
           children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: Container(
-                key: const ValueKey('assistant-prefix'),
-                margin: const EdgeInsets.only(right: 6),
-                child: ShaderMask(
-                  shaderCallback: (bounds) {
-                    return const LinearGradient(
-                      colors: [Color(0xFFD87DFF), Color(0xFF9A7CFF)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ).createShader(bounds);
-                  },
-                  child: const Icon(
-                    Icons.auto_awesome_rounded,
-                    size: 20,
-                    color: Colors.white,
-                  ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.07),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: _recordingVoice
+                      ? accentColor.withOpacity(0.65)
+                      : Colors.white.withOpacity(0.10),
                 ),
-              ),
-            ),
-            Expanded(
-              child: AnimatedSize(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                child: TextField(
-                  controller: _assistantCtrl,
-                  focusNode: _assistantFocusNode,
-                  onChanged: (_) => setState(() {}),
-                  style: const TextStyle(
-                    fontFamily: 'Geologica',
-                    color: Colors.white,
-                    fontWeight: FontWeight.w300,
-                    fontSize: 14,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.16),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
                   ),
-                  minLines: 1,
-                  maxLines: 1,
-                  decoration: InputDecoration.collapsed(
-                    hintText: showHint ? 'быстрый ввод' : '',
-                    hintStyle: TextStyle(
-                      color: Colors.white.withOpacity(0.52),
-                      fontSize: 11,
-                      fontFamily: 'Geologica',
-                      fontWeight: FontWeight.w100,
-                    ),
-                  ),
-                ),
+                ],
               ),
-            ),
-            const SizedBox(width: 8),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: hasText
-                  ? Container(
-                      key: const ValueKey('assistant-send'),
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFB6A1FF),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFB6A1FF).withOpacity(0.35),
-                            blurRadius: 16,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: IconButton(
-                        onPressed: _processingAssistant ? null : _fillFieldsFromAssistantText,
-                        icon: _processingAssistant
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : const Icon(
-                                Icons.arrow_upward_rounded,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                      ),
-                    )
-                  : GestureDetector(
-                      key: const ValueKey('assistant-mic'),
-                      onLongPressStart: (_) => _startVoiceRecording(),
-                      onLongPressEnd: (_) => _stopVoiceRecordingIfNeeded(),
-                      onLongPressCancel: _stopVoiceRecordingIfNeeded,
-                      child: AnimatedScale(
-                        duration: const Duration(milliseconds: 120),
-                        scale: _recordingVoice ? 1.12 : 1,
-                        child: SizedBox(
-                          width: 46,
-                          height: 46,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              SizedBox(
-                                width: 46,
-                                height: 46,
-                                child: CircularProgressIndicator(
-                                  value: _recordingVoice ? progress : 0,
-                                  strokeWidth: 3,
-                                  backgroundColor: Colors.white.withOpacity(0.12),
-                                  valueColor: const AlwaysStoppedAnimation<Color>(
-                                    Color(0xFFB6A1FF),
-                                  ),
-                                ),
-                              ),
-                              Container(
-                                width: 38,
-                                height: 38,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFB6A1FF),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFB6A1FF).withOpacity(0.30),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 6),
-                                    ),
-                                  ],
-                                ),
-                                child: Stack(
-                                  alignment: Alignment.center,
-                                  children: [
-                                    Icon(
-                                      _recordingVoice
-                                          ? Icons.graphic_eq_rounded
-                                          : Icons.mic_rounded,
-                                      color: Colors.white,
-                                      size: 18,
-                                    ),
-                                    if (_recordingVoice)
-                                      Positioned(
-                                        bottom: 2,
-                                        child: Text(
-                                          '$_recordSecondsLeft',
-                                          style: const TextStyle(
-                                            fontFamily: 'Geologica',
-                                            color: Colors.white,
-                                            fontSize: 8,
-                                            fontWeight: FontWeight.w300,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ],
+              child: SizedBox(
+                height: composerHeight,
+                child: Row(
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: Container(
+                        key: const ValueKey('assistant-prefix'),
+                        margin: const EdgeInsets.only(right: 6),
+                        child: ShaderMask(
+                          shaderCallback: (bounds) {
+                            return const LinearGradient(
+                              colors: [Color(0xFFD87DFF), Color(0xFF9A7CFF)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ).createShader(bounds);
+                          },
+                          child: const Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 20,
+                            color: Colors.white,
                           ),
                         ),
                       ),
                     ),
+                    Expanded(
+                      child: AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        child: TextField(
+                          controller: _assistantCtrl,
+                          focusNode: _assistantFocusNode,
+                          onChanged: (_) => setState(() {}),
+                          style: const TextStyle(
+                            fontFamily: 'Geologica',
+                            color: Colors.white,
+                            fontWeight: FontWeight.w300,
+                            fontSize: 14,
+                          ),
+                          minLines: 1,
+                          maxLines: 1,
+                          decoration: InputDecoration.collapsed(
+                            hintText: showHint ? 'быстрый ввод' : '',
+                            hintStyle: TextStyle(
+                              color: Colors.white.withOpacity(0.52),
+                              fontSize: 11,
+                              fontFamily: 'Geologica',
+                              fontWeight: FontWeight.w100,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: hasText
+                          ? Container(
+                              key: const ValueKey('assistant-send'),
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: accentColor,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: accentColor.withOpacity(0.35),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: IconButton(
+                                onPressed: _processingAssistant
+                                    ? null
+                                    : _fillFieldsFromAssistantText,
+                                icon: _processingAssistant
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                            Colors.white,
+                                          ),
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.arrow_upward_rounded,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                              ),
+                            )
+                          : GestureDetector(
+                              key: const ValueKey('assistant-mic'),
+                              onLongPressStart: (_) => _startVoiceRecording(),
+                              onLongPressEnd: (_) => _stopVoiceRecordingIfNeeded(),
+                              onLongPressCancel: _stopVoiceRecordingIfNeeded,
+                              child: AnimatedScale(
+                                duration: const Duration(milliseconds: 120),
+                                scale: _recordingVoice ? 1.12 : 1,
+                                child: SizedBox(
+                                  width: 46,
+                                  height: 46,
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      SizedBox(
+                                        width: 46,
+                                        height: 46,
+                                        child: CircularProgressIndicator(
+                                          value: _recordingVoice ? progress : 0,
+                                          strokeWidth: 3,
+                                          backgroundColor:
+                                              Colors.white.withOpacity(0.12),
+                                          valueColor:
+                                              const AlwaysStoppedAnimation<Color>(
+                                            Color(0xFFB6A1FF),
+                                          ),
+                                        ),
+                                      ),
+                                      Container(
+                                        width: 38,
+                                        height: 38,
+                                        decoration: BoxDecoration(
+                                          color: accentColor,
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: accentColor.withOpacity(0.30),
+                                              blurRadius: 12,
+                                              offset: const Offset(0, 6),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Stack(
+                                          alignment: Alignment.center,
+                                          children: [
+                                            Icon(
+                                              _recordingVoice
+                                                  ? Icons.graphic_eq_rounded
+                                                  : Icons.mic_rounded,
+                                              color: Colors.white,
+                                              size: 18,
+                                            ),
+                                            if (_recordingVoice)
+                                              Positioned(
+                                                bottom: 2,
+                                                child: Text(
+                                                  '$_recordSecondsLeft',
+                                                  style: const TextStyle(
+                                                    fontFamily: 'Geologica',
+                                                    color: Colors.white,
+                                                    fontSize: 8,
+                                                    fontWeight: FontWeight.w300,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
             ),
+            if (_assistantLocked)
+              Positioned.fill(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: _showAssistantPremiumPopup,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC7B7B7B),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: accentColor.withOpacity(0.20),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.workspace_premium_rounded,
+                              color: Color(0xFFB6A1FF),
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Pro',
+                            style: TextStyle(
+                              fontFamily: 'Geologica',
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
-      ),
+      ],
     );
   }
 

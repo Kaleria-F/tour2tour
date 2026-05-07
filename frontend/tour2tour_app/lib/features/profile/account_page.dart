@@ -180,12 +180,76 @@ class _AccountPageState extends State<AccountPage> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      TravelCard(
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFFB6A1FF).withOpacity(0.18),
+                              const Color(0xFFB6A1FF).withOpacity(0.08),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(
+                            color: const Color(0xFFB6A1FF).withOpacity(0.34),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFB6A1FF).withOpacity(0.16),
+                              blurRadius: 28,
+                              offset: const Offset(0, 12),
+                            ),
+                          ],
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _sectionTitle('Подписка'),
-                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFB6A1FF).withOpacity(0.18),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: const Icon(
+                                    Icons.workspace_premium_rounded,
+                                    color: Color(0xFFB6A1FF),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Тур2Тур Pro',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        _me?.isPremium == true
+                                            ? 'Подписка уже активна'
+                                            : 'Быстрый ввод и умное заполнение этапов',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.72),
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 14),
                             Wrap(
                               spacing: 10,
                               runSpacing: 10,
@@ -197,32 +261,31 @@ class _AccountPageState extends State<AccountPage> {
                                     vertical: 6,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF2B2B2B),
+                                    color: const Color(0xFFB6A1FF).withOpacity(0.18),
                                     borderRadius: BorderRadius.circular(999),
                                     border: Border.all(
-                                      color: Colors.white.withOpacity(0.12),
+                                      color: const Color(0xFFB6A1FF).withOpacity(0.34),
                                     ),
                                   ),
-                                  child: const Text(
-                                    'Нет Premium',
-                                    style: TextStyle(
-                                      color: Colors.white,
+                                  child: Text(
+                                    _me?.isPremium == true
+                                        ? 'Подключена'
+                                        : 'Не подключена',
+                                    style: const TextStyle(
+                                      color: Color(0xFFB6A1FF),
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),
                                 ElevatedButton.icon(
-                                  onPressed: () {},
-                                  icon: const Icon(Icons.info_outline_rounded),
+                                  onPressed: () => context.push('/premium'),
+                                  icon: const Icon(Icons.workspace_premium_rounded),
                                   label: const Text('Оплата и подписка'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF2B2B2B),
-                                    foregroundColor: Colors.white70,
+                                    backgroundColor: const Color(0xFFB6A1FF),
+                                    foregroundColor: const Color(0xFF1C1627),
                                     elevation: 0,
-                                    side: BorderSide(
-                                      color: Colors.white.withOpacity(0.14),
-                                    ),
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 12,
                                       vertical: 10,

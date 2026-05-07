@@ -1,5 +1,7 @@
 ﻿
 import 'package:flutter/material.dart';
+import 'dart:async';
+
 import 'package:go_router/go_router.dart';
 
 import '../interactions/interactions_repo.dart';
@@ -33,6 +35,8 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  static const Duration _premiumPopupDelay = Duration(seconds: 150);
+
   UserMe? _me;
   SurveyProfile? _surveyProfile;
   List<TripSummary> _trips = const [];
@@ -43,11 +47,19 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _loading = true;
   bool _recommendationsLoading = false;
   String? _error;
+  Timer? _premiumPopupTimer;
+  bool _premiumPopupShown = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _premiumPopupTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -75,6 +87,7 @@ class _ProfilePageState extends State<ProfilePage> {
         _trips = results[1] as List<TripSummary>;
         _surveyProfile = profile;
       });
+      _schedulePremiumPopup();
 
       await _loadStories();
       await _loadSavedRecommendations();
@@ -145,6 +158,94 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       setState(() => _recommendationsLoading = false);
     }
+  }
+
+  void _schedulePremiumPopup() {
+    _premiumPopupTimer?.cancel();
+    if (_me?.isPremium == true || _premiumPopupShown) return;
+    _premiumPopupTimer = Timer(_premiumPopupDelay, () {
+      if (!mounted || _me?.isPremium == true || _premiumPopupShown) return;
+      _premiumPopupShown = true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Container(
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1D1D1D),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD7E37A).withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome_rounded,
+                        color: Color(0xFFD7E37A),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Тур2Тур Pro',
+                        style: TextStyle(
+                          fontFamily: 'Geologica',
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w300,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Быстрый ввод этапов голосом и текстом. Просто продиктуйте мысль, а приложение заполнит маршрут за вас.',
+                  style: TextStyle(
+                    fontFamily: 'Geologica',
+                    color: Colors.white.withOpacity(0.72),
+                    fontSize: 14,
+                    height: 1.45,
+                    fontWeight: FontWeight.w300,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      context.push('/premium');
+                    },
+                    child: const Text('Подробнее'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    });
   }
 
   Map<String, dynamic> _metadata(RecommendationItem item) => {
@@ -386,7 +487,7 @@ class _ProfilePageState extends State<ProfilePage> {
           : _error != null
               ? _ErrorState(message: _error!, onRetry: _load)
               : SingleChildScrollView(
-                  child: Column(
+                child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (_stories.isNotEmpty) ...[
@@ -544,7 +645,7 @@ class _StoriesRow extends StatelessWidget {
                       gradient: viewed
                           ? null
                           : const LinearGradient(
-                              colors: [Color(0xFFD7E37A), Color(0xFFF2B879)],
+                              colors: [Color(0xFFD7E37A), Color(0xFFD7E37A)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -782,8 +883,12 @@ class _RecommendationCarouselCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 12),
-                            IconButton.filledTonal(
+                            IconButton(
                               onPressed: onSave,
+                              style: IconButton.styleFrom(
+                                backgroundColor: const Color(0xFFD7E37A),
+                                foregroundColor: const Color(0xFF171717),
+                              ),
                               icon: Icon(
                                 saved
                                     ? Icons.bookmark_rounded

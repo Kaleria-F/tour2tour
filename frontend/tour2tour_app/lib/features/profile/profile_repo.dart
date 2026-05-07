@@ -7,6 +7,7 @@ class UserMe {
   final String? phone;
   final String? displayName;
   final String? avatarUrl;
+  final bool isPremium;
   final String role;
   final bool is2faEnabled;
   final bool totpEnabled;
@@ -18,6 +19,7 @@ class UserMe {
     required this.phone,
     required this.displayName,
     required this.avatarUrl,
+    required this.isPremium,
     required this.role,
     required this.is2faEnabled,
     required this.totpEnabled,
@@ -31,6 +33,7 @@ class UserMe {
       phone: json['phone'] as String?,
       displayName: json['display_name'] as String?,
       avatarUrl: json['avatar_url'] as String?,
+      isPremium: (json['is_premium'] ?? false) as bool,
       role: (json['role'] ?? '').toString(),
       is2faEnabled: (json['is_2fa_enabled'] ?? false) as bool,
       totpEnabled: (json['totp_enabled'] ?? false) as bool,

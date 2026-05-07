@@ -9,6 +9,7 @@ class UserMeOut(BaseModel):
     phone: str | None
     display_name: str | None
     avatar_url: str | None
+    is_premium: bool
     role: str
     is_2fa_enabled: bool
     totp_enabled: bool

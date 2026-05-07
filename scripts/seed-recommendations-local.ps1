@@ -18,9 +18,9 @@ from app.models.user import User
 from app.core.security import hash_password
 
 USERS = [
-    {"email": "reco.tester@example.com", "phone": "+79000000001", "password": "Test1234!", "role": "traveler"},
-    {"email": "family.tester@example.com", "phone": "+79000000002", "password": "Test1234!", "role": "traveler"},
-    {"email": "admin.seed@example.com", "phone": "+79000000003", "password": "Admin1234!", "role": "admin"},
+    {"email": "reco.tester@example.com", "phone": "+79000000001", "password": "Test1234!", "role": "traveler", "is_premium": True},
+    {"email": "family.tester@example.com", "phone": "+79000000002", "password": "Test1234!", "role": "traveler", "is_premium": False},
+    {"email": "admin.seed@example.com", "phone": "+79000000003", "password": "Admin1234!", "role": "admin", "is_premium": False},
 ]
 
 db = SessionLocal()
@@ -33,6 +33,7 @@ try:
                 phone=payload["phone"],
                 password_hash=hash_password(payload["password"]),
                 role=payload["role"],
+                is_premium=payload["is_premium"],
                 is_2fa_enabled=False,
                 totp_enabled=False,
                 passkey_enabled=False,
@@ -43,6 +44,7 @@ try:
             user.phone = payload["phone"]
             user.password_hash = hash_password(payload["password"])
             user.role = payload["role"]
+            user.is_premium = payload["is_premium"]
             user.is_2fa_enabled = False
             user.totp_enabled = False
             user.passkey_enabled = False

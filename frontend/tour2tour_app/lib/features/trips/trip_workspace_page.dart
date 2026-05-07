@@ -78,6 +78,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   String _sortMode = 'none';
   String _categoryFilter = 'all';
   String _lastStageType = 'place';
+  bool _hasPremium = false;
 
   List<TripDocument> _documents = const [];
   bool _documentsLoading = false;
@@ -150,10 +151,19 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     _tripStartDate = widget.startDate;
     _tripEndDate = widget.endDate;
     _tripPlannedDays = widget.plannedDays;
+    _loadPremiumStatus();
     if (widget.tripId != null) {
       _loadExpenses();
       _loadStages();
     }
+  }
+
+  Future<void> _loadPremiumStatus() async {
+    try {
+      final me = await widget.profileRepo.getMe();
+      if (!mounted) return;
+      setState(() => _hasPremium = me.isPremium);
+    } catch (_) {}
   }
 
   int _totalTripDays({
@@ -395,6 +405,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           stageSubtypes: _stageSubtypes,
           initialType: _lastStageType,
           tripsRepo: widget.tripsRepo,
+          isPremium: _hasPremium,
           routeDay: _ensureSelectedRouteDay(
             _selectedRouteDay,
             stages: [..._stages]..sort((a, b) => a.position.compareTo(b.position)),
@@ -476,6 +487,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           stageSubtypes: _stageSubtypes,
           initialType: stage.stageType,
           tripsRepo: widget.tripsRepo,
+          isPremium: _hasPremium,
           onUploadDocument: _pickAndUploadDocumentForStage,
           initial: AddStagePayload(
             stageType: stage.stageType,

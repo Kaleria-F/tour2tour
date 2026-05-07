@@ -24,6 +24,8 @@ class EditAccountPage extends StatefulWidget {
 }
 
 class _EditAccountPageState extends State<EditAccountPage> {
+  static const _primaryColor = Color(0xFFD7E37A);
+
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _phone = TextEditingController();
@@ -221,6 +223,7 @@ class _EditAccountPageState extends State<EditAccountPage> {
                         const SizedBox(height: 10),
                         OutlinedButton.icon(
                           onPressed: _pickAvatar,
+                          style: _outlinedButtonStyle(),
                           icon: const Icon(Icons.add_a_photo_outlined),
                           label: const Text('Изменить фото'),
                         ),
@@ -250,6 +253,7 @@ class _EditAccountPageState extends State<EditAccountPage> {
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: _saving ? null : _saveProfile,
+                          style: _filledButtonStyle(),
                           child: Text(
                             _saving ? 'Сохраняем...' : 'Сохранить данные',
                           ),
@@ -272,6 +276,7 @@ class _EditAccountPageState extends State<EditAccountPage> {
                         width: double.infinity,
                         child: OutlinedButton(
                           onPressed: _requestingCode ? null : _requestEmailCode,
+                          style: _outlinedButtonStyle(),
                           child: Text(
                             _requestingCode
                                 ? 'Отправляем...'
@@ -294,6 +299,7 @@ class _EditAccountPageState extends State<EditAccountPage> {
                           child: ElevatedButton(
                             onPressed:
                                 _confirmingCode ? null : _confirmEmailCode,
+                            style: _filledButtonStyle(),
                             child: Text(
                               _confirmingCode
                                   ? 'Подтверждаем...'
@@ -349,7 +355,42 @@ class _EditAccountPageState extends State<EditAccountPage> {
       ),
       focusedBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.all(Radius.circular(16)),
-        borderSide: BorderSide(color: Color(0xFFD7E37A)),
+        borderSide: BorderSide(color: _primaryColor),
+      ),
+    );
+  }
+
+  ButtonStyle _filledButtonStyle() {
+    return ElevatedButton.styleFrom(
+      backgroundColor: _primaryColor,
+      foregroundColor: const Color(0xFF171717),
+      disabledBackgroundColor: _primaryColor.withOpacity(0.55),
+      disabledForegroundColor: const Color(0xFF171717).withOpacity(0.72),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      textStyle: const TextStyle(
+        fontFamily: 'Geologica',
+        fontWeight: FontWeight.w300,
+        fontSize: 15,
+      ),
+      elevation: 0,
+    );
+  }
+
+  ButtonStyle _outlinedButtonStyle() {
+    return OutlinedButton.styleFrom(
+      foregroundColor: _primaryColor,
+      side: BorderSide(color: _primaryColor.withOpacity(0.42)),
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      textStyle: const TextStyle(
+        fontFamily: 'Geologica',
+        fontWeight: FontWeight.w300,
+        fontSize: 15,
       ),
     );
   }

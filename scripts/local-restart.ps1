@@ -166,12 +166,24 @@ $apiBaseUrl = if ($healthResult.Url -like "*:8888/*") {
 if ($RunWeb) {
     $flutterDir = Join-Path $root "frontend\tour2tour_app"
     Write-Host "Starting Flutter Web in a new terminal..."
+    $premiumCheckoutUrl = ""
+    $composeEnvPath = Join-Path $root "infra\.env"
+    if (Test-Path $composeEnvPath) {
+        $premiumLine = Get-Content $composeEnvPath | Where-Object { $_ -match '^PREMIUM_CHECKOUT_URL=' } | Select-Object -First 1
+        if ($premiumLine) {
+            $premiumCheckoutUrl = ($premiumLine -replace '^PREMIUM_CHECKOUT_URL=', '').Trim()
+        }
+    }
+    $flutterCommand = "Set-Location '$flutterDir'; flutter pub get; flutter run -d chrome --dart-define=API_BASE_URL=$apiBaseUrl"
+    if (-not [string]::IsNullOrWhiteSpace($premiumCheckoutUrl)) {
+        $flutterCommand += " --dart-define=PREMIUM_CHECKOUT_URL=$premiumCheckoutUrl"
+    }
     Start-Process powershell -ArgumentList @(
         "-NoExit",
         "-ExecutionPolicy",
         "Bypass",
         "-Command",
-        "Set-Location '$flutterDir'; flutter pub get; flutter run -d chrome --dart-define=API_BASE_URL=$apiBaseUrl"
+        $flutterCommand
     )
     Assert-LastExitCode "Starting Flutter Web terminal"
 }

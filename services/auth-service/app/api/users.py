@@ -56,6 +56,7 @@ def get_me(me: User = Depends(get_current_user)):
         phone=me.phone,
         display_name=me.display_name,
         avatar_url=me.avatar_url,
+        is_premium=me.is_premium,
         role=me.role,
         is_2fa_enabled=me.is_2fa_enabled,
         totp_enabled=me.totp_enabled,
