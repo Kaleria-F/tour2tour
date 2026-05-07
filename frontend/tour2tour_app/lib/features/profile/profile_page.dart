@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:go_router/go_router.dart';
 
+import '../../core/widgets/cors_safe_network_image.dart';
 import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
 import '../recommendations/recommendations_repo.dart';
@@ -816,10 +817,11 @@ class _RecommendationCarouselCard extends StatelessWidget {
                         : Stack(
                             fit: StackFit.expand,
                             children: [
-                              Image.network(
-                                item.imageUrl,
+                              CorsSafeNetworkImage(
+                                url: item.imageUrl,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const _RecommendationPlaceholderArt(),
+                                fallback:
+                                    const _RecommendationPlaceholderArt(),
                               ),
                               DecoratedBox(
                                 decoration: BoxDecoration(
@@ -1194,10 +1196,10 @@ class _StoryImage extends StatelessWidget {
       );
     }
 
-    return Image.network(
-      url,
+    return CorsSafeNetworkImage(
+      url: url,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => const DecoratedBox(
+      fallback: const DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [Color(0xFF3C3C3C), Color(0xFF1D1D1D)],

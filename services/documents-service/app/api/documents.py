@@ -328,3 +328,4 @@ def download_url(
         download_url=_rewrite_presigned_url(download_url_value),
         expires_in=settings.s3_presign_ttl_seconds,
     )
+#новая

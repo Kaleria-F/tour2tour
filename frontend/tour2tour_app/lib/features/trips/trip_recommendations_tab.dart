@@ -1,6 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/widgets/cors_safe_network_image.dart';
+
 import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
 import '../profile/profile_repo.dart';
@@ -608,11 +610,10 @@ class _SwipeCard extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     item.imageUrl.isNotEmpty
-                        ? Image.network(
-                            item.imageUrl,
+                        ? CorsSafeNetworkImage(
+                            url: item.imageUrl,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                _CardPlaceholder(city: item.city),
+                            fallback: _CardPlaceholder(city: item.city),
                           )
                         : _CardPlaceholder(city: item.city),
                     Container(

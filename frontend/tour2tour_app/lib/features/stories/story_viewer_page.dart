@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/widgets/cors_safe_network_image.dart';
+
 import '../interactions/interactions_repo.dart';
 import '../profile/profile_repo.dart';
 import 'stories_repo.dart';
@@ -186,11 +188,10 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
             children: [
           story.imageUrl.trim().isEmpty
               ? _StoryViewerPlaceholder(title: story.title)
-              : Image.network(
-                  story.imageUrl,
+              : CorsSafeNetworkImage(
+                  url: story.imageUrl,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
-                      _StoryViewerPlaceholder(title: story.title),
+                  fallback: _StoryViewerPlaceholder(title: story.title),
                 ),
           DecoratedBox(
             decoration: BoxDecoration(

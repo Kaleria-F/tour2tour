@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../core/widgets/cors_safe_network_image.dart';
 import '../interactions/interactions_repo.dart';
 import '../profile/profile_repo.dart';
 import '../shared/travel_app_shell.dart';
@@ -830,22 +831,22 @@ class _FolderPreviewSheet extends StatelessWidget {
               offset: const Offset(0, 10),
             ),
           ],
-          image: item?.imageUrl != null && item!.imageUrl!.isNotEmpty
-              ? DecorationImage(
-                  image: NetworkImage(item!.imageUrl!),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: item?.imageUrl != null && item!.imageUrl!.isNotEmpty
+              ? CorsSafeNetworkImage(
+                  url: item!.imageUrl!,
                   fit: BoxFit.cover,
                 )
-              : null,
-        ),
-        child: item?.imageUrl == null || item!.imageUrl!.isEmpty
-            ? Center(
-                child: Icon(
-                  Icons.photo_rounded,
-                  color: Colors.black.withOpacity(0.28),
-                  size: 28,
+              : Center(
+                  child: Icon(
+                    Icons.photo_rounded,
+                    color: Colors.black.withOpacity(0.28),
+                    size: 28,
+                  ),
                 ),
-              )
-            : null,
+        ),
       ),
     );
   }
@@ -1029,10 +1030,10 @@ class _FavoritePlaceTile extends StatelessWidget {
                       fit: StackFit.expand,
                       children: [
                         item.imageUrl != null && item.imageUrl!.isNotEmpty
-                            ? Image.network(
-                                item.imageUrl!,
+                            ? CorsSafeNetworkImage(
+                                url: item.imageUrl!,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) =>
+                                fallback:
                                     _FavoriteThumbFallback(city: item.city),
                               )
                             : _FavoriteThumbFallback(city: item.city),
