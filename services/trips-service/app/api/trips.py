@@ -9,6 +9,7 @@ from datetime import timedelta
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -73,6 +74,29 @@ _DEFAULT_SUBTYPE_BY_TYPE: dict[str, str] = {
 }
 
 _TIME_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+ORS_MODES = {
+    "driving-car",
+    "foot-walking",
+    "cycling-regular",
+}
+
+
+class OrsPoint(BaseModel):
+    lon: float = Field(..., ge=-180, le=180)
+    lat: float = Field(..., ge=-90, le=90)
+
+
+class OrsRouteRequest(BaseModel):
+    mode: str = Field(default="driving-car")
+    points: list[OrsPoint] = Field(..., min_length=2, max_length=25)
+
+
+class OrsRouteResponse(BaseModel):
+    mode: str
+    distance_m: float
+    duration_s: float
+    geometry: dict
 
 
 @router.get("/", response_model=list[TripOut])
@@ -984,6 +1008,57 @@ def _fetch_recommendations_for_stage(stage: Stage) -> list[dict]:
     if not isinstance(items, list):
         return []
     return [item for item in items if isinstance(item, dict)]
+
+
+@router.post("/routing/ors/route", response_model=OrsRouteResponse)
+def build_ors_route(payload: OrsRouteRequest):
+    api_key = (settings.ors_api_key or "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="ORS routing is not configured")
+
+    mode = payload.mode.strip().lower()
+    if mode not in ORS_MODES:
+        raise HTTPException(status_code=400, detail="Unsupported routing mode")
+
+    endpoint = f"{settings.ors_base_url.rstrip('/')}/{mode}/geojson"
+    body = {
+        "coordinates": [[point.lon, point.lat] for point in payload.points],
+    }
+    request = urllib.request.Request(
+        endpoint,
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": api_key,
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise HTTPException(status_code=502, detail=f"ORS request failed: {detail}") from exc
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail="ORS request failed") from exc
+
+    features = data.get("features")
+    if not isinstance(features, list) or not features:
+        raise HTTPException(status_code=422, detail="Route not found")
+    feature = features[0]
+    geometry = feature.get("geometry")
+    summary = ((feature.get("properties") or {}).get("summary") or {})
+    distance = summary.get("distance")
+    duration = summary.get("duration")
+    if not isinstance(geometry, dict) or distance is None or duration is None:
+        raise HTTPException(status_code=422, detail="Invalid ORS route payload")
+
+    return OrsRouteResponse(
+        mode=mode,
+        distance_m=float(distance),
+        duration_s=float(duration),
+        geometry=geometry,
+    )
 
 
 @router.get(

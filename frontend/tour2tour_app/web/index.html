@@ -32,6 +32,11 @@
       const mapState = new WeakMap();
       const retryState = new WeakMap();
       const syncQueue = new WeakMap();
+      function resolveApiBaseUrl() {
+        const host = (window.location && window.location.hostname) || '';
+        if (host.endsWith('24tour2tour.ru')) return 'https://api.24tour2tour.ru';
+        return 'http://127.0.0.1:8888';
+      }
 
       async function ensureYmaps() {
         const maxAttempts = 60;
@@ -183,6 +188,15 @@
           } catch (_) {}
         });
         state.markers = [];
+        state.selectedPointIndexes = [];
+      }
+
+      function clearRoute(state) {
+        if (!state || !state.map || !state.routeFeature) return;
+        try {
+          state.map.removeChild(state.routeFeature);
+        } catch (_) {}
+        state.routeFeature = null;
       }
 
       function clearSelectedSuggestionMarker(state) {
@@ -274,6 +288,176 @@
           markerElement.textContent = label;
         }
         return markerElement;
+      }
+
+      function updateMarkerSelectionVisual(state) {
+        if (!state || !Array.isArray(state.markersMeta)) return;
+        state.markersMeta.forEach((meta, index) => {
+          if (!meta || !meta.element) return;
+          const selected = (state.selectedPointIndexes || []).includes(index);
+          meta.element.style.border = selected
+            ? '2px solid #ffffff'
+            : (meta.isPrimary ? '2px solid #151515' : '2px solid #151515');
+          meta.element.style.boxShadow = selected
+            ? '0 0 0 5px rgba(255,255,255,.2)'
+            : (meta.isPrimary
+                ? '0 0 0 4px rgba(215,227,122,.24)'
+                : '0 0 0 3px rgba(126,166,255,.22)');
+        });
+      }
+
+      function ensureRoutePanel(state) {
+        if (!state || !state.container) return null;
+        if (state.routePanel) return state.routePanel;
+        const panel = document.createElement('div');
+        panel.style.position = 'absolute';
+        panel.style.left = '12px';
+        panel.style.bottom = '12px';
+        panel.style.zIndex = '7';
+        panel.style.pointerEvents = 'auto';
+        panel.style.padding = '8px 10px';
+        panel.style.border = '1px solid rgba(255,255,255,.2)';
+        panel.style.borderRadius = '14px';
+        panel.style.background = 'rgba(19,24,41,.92)';
+        panel.style.color = '#dfe6ff';
+        panel.style.fontFamily = '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        panel.style.fontSize = '12px';
+
+        const tabs = document.createElement('div');
+        tabs.style.display = 'flex';
+        tabs.style.gap = '6px';
+        tabs.style.marginBottom = '6px';
+
+        function mkBtn(label, mode) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = label;
+          btn.dataset.mode = mode;
+          btn.style.border = '1px solid rgba(255,255,255,.24)';
+          btn.style.borderRadius = '999px';
+          btn.style.padding = '5px 10px';
+          btn.style.background = 'transparent';
+          btn.style.color = '#dfe6ff';
+          btn.style.cursor = 'pointer';
+          btn.style.fontSize = '12px';
+          btn.addEventListener('click', async () => {
+            state.routeMode = mode;
+            updateRouteModeVisual(state);
+            await buildRouteIfReady(state);
+          });
+          return btn;
+        }
+
+        const btnCar = mkBtn('Авто', 'driving-car');
+        const btnWalk = mkBtn('Пешком', 'foot-walking');
+        const btnBike = mkBtn('Вело', 'cycling-regular');
+        tabs.appendChild(btnCar);
+        tabs.appendChild(btnWalk);
+        tabs.appendChild(btnBike);
+
+        const info = document.createElement('div');
+        info.textContent = 'Выберите 2 точки на карте';
+        info.style.color = 'rgba(223,230,255,.9)';
+
+        panel.appendChild(tabs);
+        panel.appendChild(info);
+        state.container.appendChild(panel);
+        state.routePanel = panel;
+        state.routeInfo = info;
+        state.routeModeButtons = [btnCar, btnWalk, btnBike];
+        return panel;
+      }
+
+      function updateRouteModeVisual(state) {
+        const mode = state.routeMode || 'driving-car';
+        (state.routeModeButtons || []).forEach((btn) => {
+          const selected = btn.dataset.mode === mode;
+          btn.style.background = selected ? 'rgba(215,227,122,.18)' : 'transparent';
+          btn.style.borderColor = selected ? '#d7e37a' : 'rgba(255,255,255,.24)';
+          btn.style.color = selected ? '#d7e37a' : '#dfe6ff';
+        });
+      }
+
+      function setRouteInfo(state, text) {
+        if (state && state.routeInfo) {
+          state.routeInfo.textContent = text;
+        }
+      }
+
+      function formatDistance(meters) {
+        if (meters >= 1000) return `${(meters / 1000).toFixed(1)} км`;
+        return `${Math.round(meters)} м`;
+      }
+
+      function formatDuration(sec) {
+        const mins = Math.round(sec / 60);
+        if (mins < 60) return `${mins} мин`;
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return m ? `${h} ч ${m} мин` : `${h} ч`;
+      }
+
+      async function buildRouteIfReady(state) {
+        if (!state) return;
+        clearRoute(state);
+        const idxs = state.selectedPointIndexes || [];
+        if (idxs.length !== 2) {
+          setRouteInfo(state, 'Выберите 2 точки на карте');
+          return;
+        }
+        const p1 = state.markersMeta[idxs[0]];
+        const p2 = state.markersMeta[idxs[1]];
+        if (!p1 || !p2 || !p1.coords || !p2.coords) return;
+        setRouteInfo(state, 'Строим маршрут...');
+        try {
+          const mode = state.routeMode || 'driving-car';
+          const resp = await fetch(`${resolveApiBaseUrl()}/trips/routing/ors/route`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              mode: mode,
+              points: [
+                { lon: p1.coords[0], lat: p1.coords[1] },
+                { lon: p2.coords[0], lat: p2.coords[1] },
+              ],
+            }),
+          });
+          if (!resp.ok) {
+            setRouteInfo(state, 'Маршрут недоступен');
+            return;
+          }
+          const data = await resp.json();
+          const geometry = data && data.geometry;
+          const distance = data && data.distance_m;
+          const duration = data && data.duration_s;
+          if (!geometry || !Array.isArray(geometry.coordinates)) {
+            setRouteInfo(state, 'Маршрут не найден');
+            return;
+          }
+          const routeFeature = new window.ymaps3.YMapFeature({
+            geometry: {
+              type: 'LineString',
+              coordinates: geometry.coordinates,
+            },
+            style: {
+              stroke: [{ width: 5, color: 'rgba(114,172,255,0.95)' }],
+            },
+          });
+          state.map.addChild(routeFeature);
+          state.routeFeature = routeFeature;
+          if (distance != null && duration != null) {
+            setRouteInfo(
+              state,
+              `Маршрут: ${formatDuration(duration)} · ${formatDistance(distance)}`,
+            );
+          } else {
+            setRouteInfo(state, 'Маршрут построен');
+          }
+        } catch (_) {
+          setRouteInfo(state, 'Маршрут недоступен');
+        }
       }
 
       function createSelectedSuggestionMarkerElement() {
@@ -426,13 +610,22 @@
             markersMeta: [],
             selectedSuggestionMarker: null,
             addRouteButton: null,
+            routePanel: null,
+            routeInfo: null,
+            routeModeButtons: [],
+            routeMode: 'driving-car',
+            selectedPointIndexes: [],
+            routeFeature: null,
           };
           mapState.set(container, state);
           ensureAddRouteButton(state);
+          ensureRoutePanel(state);
+          updateRouteModeVisual(state);
         }
 
         clearMarkers(state);
         clearSelectedSuggestionMarker(state);
+        clearRoute(state);
         state.markersMeta = [];
         const center = points.length ? averageCenter(points) : focusCoords;
         const zoom = points.length > 1 ? 10 : 11;
@@ -445,6 +638,21 @@
             isPrimary: point.isPrimary,
             label: point.isPrimary ? '' : String(point.markerOrder || ''),
           });
+          markerElement.style.cursor = 'pointer';
+          markerElement.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            const arr = state.selectedPointIndexes || [];
+            const existing = arr.indexOf(pointIndex);
+            if (existing >= 0) {
+              arr.splice(existing, 1);
+            } else {
+              if (arr.length >= 2) arr.shift();
+              arr.push(pointIndex);
+            }
+            state.selectedPointIndexes = arr;
+            updateMarkerSelectionVisual(state);
+            await buildRouteIfReady(state);
+          });
           markerElement.title = point.title || '';
           const marker = new YMapMarker(
             { coordinates: point.coords },
@@ -455,8 +663,13 @@
           state.markersMeta.push({
             isPrimary: point.isPrimary,
             element: markerElement,
+            coords: point.coords,
           });
         });
+        updateMarkerSelectionVisual(state);
+        ensureRoutePanel(state);
+        updateRouteModeVisual(state);
+        setRouteInfo(state, 'Выберите 2 точки на карте');
         await renderAddressSearchMarker(state, searchText, city);
       }
 

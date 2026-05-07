@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     )
     yandex_api_key: str | None = Field(default=None, alias="YANDEX_API_KEY")
     yandex_folder_id: str | None = Field(default=None, alias="YANDEX_FOLDER_ID")
+    ors_api_key: str | None = Field(default=None, alias="ORS_API_KEY")
+    ors_base_url: str = Field(
+        default="https://api.openrouteservice.org/v2/directions",
+        alias="ORS_BASE_URL",
+    )
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_PATH),

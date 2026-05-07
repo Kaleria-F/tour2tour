@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 
 import 'dart:async';
 import 'dart:typed_data';
@@ -183,6 +184,7 @@ class StageFormPage extends StatefulWidget {
   final Map<String, String> stageTypeLabels;
   final Map<String, List<String>> stageSubtypes;
   final String initialType;
+  final String? destinationCity;
   final TripsRepo tripsRepo;
   final bool isPremium;
   final DateTime? routeDay;
@@ -195,6 +197,7 @@ class StageFormPage extends StatefulWidget {
     required this.stageTypeLabels,
     required this.stageSubtypes,
     required this.initialType,
+    this.destinationCity,
     required this.tripsRepo,
     required this.isPremium,
     this.routeDay,
@@ -208,6 +211,8 @@ class StageFormPage extends StatefulWidget {
 }
 
 class _StageFormPageState extends State<StageFormPage> {
+  static const String _yandexSuggestApiKey = 'e0dc35bf-6cce-44bf-a462-8f7bab2f8b92';
+  static const String _yandexGeocoderApiKey = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
   static const int _assistantTrialLimit = 5;
   static const String _assistantTrialUsedKey =
       'stage_form_assistant_trial_used_v1';
@@ -256,6 +261,7 @@ class _StageFormPageState extends State<StageFormPage> {
 
   final _formKey = GlobalKey<FormState>();
   final _titleCtrl = TextEditingController();
+  final _titleFocusNode = FocusNode();
   final _startLocationCtrl = TextEditingController();
   final _endLocationCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
@@ -272,6 +278,12 @@ class _StageFormPageState extends State<StageFormPage> {
   final _docCtrl = TextEditingController();
   final _startTimeCtrl = TextEditingController();
   final _endTimeCtrl = TextEditingController();
+  final Dio _orgSuggestDio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 8),
+    ),
+  );
   final AudioRecorder _audioRecorder = AudioRecorder();
   StreamSubscription<Uint8List>? _audioStreamSub;
   Timer? _recordTimer;
@@ -285,6 +297,14 @@ class _StageFormPageState extends State<StageFormPage> {
   int _recordSecondsLeft = 30;
   int _assistantTrialUsed = 0;
   bool _assistantLimitPopupShown = false;
+  Timer? _orgSuggestDebounce;
+  bool _orgSuggestLoading = false;
+  String _lastOrgSuggestQuery = '';
+  List<_OrgSuggestItem> _orgSuggestions = const [];
+  bool _titleSelectAllOnNextTap = false;
+  String? _orgSuggestBbox;
+  bool _orgSuggestEnabled = true;
+  bool _isPickingOrgSuggestion = false;
 
   late String _stageType;
   late String _subtype;
@@ -325,14 +345,22 @@ class _StageFormPageState extends State<StageFormPage> {
       _durationCtrl.text = '60';
       _applyTransportDefaultsIfNeeded(forceTitle: true);
     }
+    _titleCtrl.addListener(_onOrgSuggestTitleChanged);
+    _titleFocusNode.addListener(_onTitleFocusChanged);
+    _resolveOrgSuggestBounds();
   }
 
   @override
   void dispose() {
+    _orgSuggestDebounce?.cancel();
+    _orgSuggestDio.close(force: true);
+    _titleCtrl.removeListener(_onOrgSuggestTitleChanged);
+    _titleFocusNode.removeListener(_onTitleFocusChanged);
     _recordTimer?.cancel();
     _audioStreamSub?.cancel();
     _audioRecorder.dispose();
     _titleCtrl.dispose();
+    _titleFocusNode.dispose();
     _startLocationCtrl.dispose();
     _endLocationCtrl.dispose();
     _addressCtrl.dispose();
@@ -352,6 +380,224 @@ class _StageFormPageState extends State<StageFormPage> {
     super.dispose();
   }
 
+  void _onOrgSuggestTitleChanged() {
+    if (!_titleFocusNode.hasFocus || !_orgSuggestEnabled) {
+      if (_orgSuggestions.isNotEmpty || _orgSuggestLoading) {
+        setState(() {
+          _orgSuggestions = const [];
+          _orgSuggestLoading = false;
+        });
+      }
+      return;
+    }
+    if (_stageType == 'transport') {
+      if (_orgSuggestions.isNotEmpty || _orgSuggestLoading) {
+        setState(() {
+          _orgSuggestions = const [];
+          _orgSuggestLoading = false;
+        });
+      }
+      return;
+    }
+    final query = _titleCtrl.text.trim();
+    _orgSuggestDebounce?.cancel();
+    _orgSuggestDebounce = Timer(const Duration(milliseconds: 280), () {
+      _loadOrgSuggestions(query);
+    });
+  }
+
+  void _onTitleFocusChanged() {
+    if (_titleFocusNode.hasFocus) {
+      _orgSuggestEnabled = true;
+      final query = _titleCtrl.text.trim();
+      if (query.length >= 2) {
+        _orgSuggestDebounce?.cancel();
+        _orgSuggestDebounce = Timer(
+          const Duration(milliseconds: 120),
+          () => _loadOrgSuggestions(query),
+        );
+      }
+      return;
+    }
+    if (_isPickingOrgSuggestion) return;
+    if (_orgSuggestions.isNotEmpty || _orgSuggestLoading) {
+      setState(() {
+        _orgSuggestions = const [];
+        _orgSuggestLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadOrgSuggestions(String query) async {
+    final normalized = query.trim();
+    if (normalized.length < 2) {
+      if (!mounted) return;
+      setState(() {
+        _orgSuggestions = const [];
+        _orgSuggestLoading = false;
+        _lastOrgSuggestQuery = '';
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _orgSuggestLoading = true;
+      _lastOrgSuggestQuery = normalized;
+    });
+
+    try {
+      final response = await _orgSuggestDio.get(
+        'https://suggest-maps.yandex.ru/v1/suggest',
+        queryParameters: <String, dynamic>{
+          'apikey': _yandexSuggestApiKey,
+          'text': normalized,
+          'lang': 'ru_RU',
+          'results': 4,
+          'types': 'biz',
+          'print_address': 1,
+          if ((_orgSuggestBbox ?? '').isNotEmpty) 'bbox': _orgSuggestBbox,
+          if ((_orgSuggestBbox ?? '').isNotEmpty) 'strict_bounds': 1,
+        },
+      );
+
+      final data = response.data;
+      final results = (data is Map<String, dynamic> ? data['results'] : null);
+      final parsed = <_OrgSuggestItem>[];
+      if (results is List) {
+        for (final raw in results) {
+          if (raw is! Map) continue;
+          final map = raw.cast<dynamic, dynamic>();
+          String title = '';
+          String subtitle = '';
+
+          final titleRaw = map['title'];
+          if (titleRaw is Map && titleRaw['text'] != null) {
+            title = '${titleRaw['text']}';
+          } else if (titleRaw != null) {
+            title = '$titleRaw';
+          }
+
+          final subtitleRaw = map['subtitle'];
+          if (subtitleRaw is Map && subtitleRaw['text'] != null) {
+            subtitle = '${subtitleRaw['text']}';
+          } else if (subtitleRaw != null) {
+            subtitle = '$subtitleRaw';
+          }
+
+          title = _normalizeSuggestText(title);
+          subtitle = _normalizeSuggestText(subtitle);
+          if (title.isEmpty && subtitle.isEmpty) continue;
+          parsed.add(_OrgSuggestItem(title: title, subtitle: subtitle));
+          if (parsed.length >= 4) break;
+        }
+      }
+
+      if (!mounted || _lastOrgSuggestQuery != normalized) return;
+      setState(() {
+        _orgSuggestions = parsed;
+        _orgSuggestLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || _lastOrgSuggestQuery != normalized) return;
+      setState(() {
+        _orgSuggestions = const [];
+        _orgSuggestLoading = false;
+      });
+    }
+  }
+
+  String _normalizeSuggestText(String input) {
+    return input
+        .replaceAll('\u00A0', ' ')
+        .replaceAll('\u202F', ' ')
+        .replaceAll('\u200E', '')
+        .replaceAll('\u200F', '')
+        .replaceAll('\u202A', '')
+        .replaceAll('\u202B', '')
+        .replaceAll('\u202C', '')
+        .replaceAll('\u202D', '')
+        .replaceAll('\u202E', '')
+        .replaceAll('\u2066', '')
+        .replaceAll('\u2067', '')
+        .replaceAll('\u2068', '')
+        .replaceAll('\u2069', '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  String _addressFromSubtitle(String subtitle) {
+    final clean = _normalizeSuggestText(subtitle);
+    if (clean.contains('·')) {
+      final parts = clean.split('·').map((e) => _normalizeSuggestText(e)).toList();
+      if (parts.isNotEmpty) {
+        final tail = parts.last;
+        if (tail.isNotEmpty) return tail;
+      }
+    }
+    return clean;
+  }
+
+  void _onOrgSuggestionTap(_OrgSuggestItem item) {
+    _isPickingOrgSuggestion = true;
+    _applyOrgSuggestion(item);
+    _titleFocusNode.unfocus();
+    Future<void>.delayed(const Duration(milliseconds: 100), () {
+      _isPickingOrgSuggestion = false;
+    });
+  }
+
+  void _applyOrgSuggestion(_OrgSuggestItem item) {
+    final orgName = _normalizeSuggestText(item.title);
+    final addr = _addressFromSubtitle(item.subtitle);
+    setState(() {
+      _titleCtrl.text = orgName;
+      _titleCtrl.selection = TextSelection.collapsed(offset: _titleCtrl.text.length);
+      if (addr.isNotEmpty) {
+        _addressCtrl.text = addr;
+      }
+      _orgSuggestions = const [];
+      _orgSuggestLoading = false;
+      _orgSuggestEnabled = false;
+      _titleEdited = orgName.isNotEmpty;
+    });
+  }
+
+  Future<void> _resolveOrgSuggestBounds() async {
+    final city = (widget.destinationCity ?? '').trim();
+    if (city.isEmpty) return;
+    try {
+      final response = await _orgSuggestDio.get(
+        'https://geocode-maps.yandex.ru/v1/',
+        queryParameters: <String, dynamic>{
+          'apikey': _yandexGeocoderApiKey,
+          'geocode': city,
+          'format': 'json',
+          'results': 1,
+          'lang': 'ru_RU',
+        },
+      );
+      final data = response.data;
+      if (data is! Map<String, dynamic>) return;
+      final members = (((data['response'] as Map?)?['GeoObjectCollection'] as Map?)
+              ?['featureMember'])
+          as List?;
+      if (members == null || members.isEmpty) return;
+      final geoObject = ((members.first as Map?)?['GeoObject']) as Map?;
+      final envelope = (((geoObject?['boundedBy'] as Map?)?['Envelope']) as Map?);
+      final lowerCorner = _normalizeSuggestText('${envelope?['lowerCorner'] ?? ''}');
+      final upperCorner = _normalizeSuggestText('${envelope?['upperCorner'] ?? ''}');
+      if (lowerCorner.isEmpty || upperCorner.isEmpty) return;
+      final lower = lowerCorner.split(' ');
+      final upper = upperCorner.split(' ');
+      if (lower.length != 2 || upper.length != 2) return;
+      if (!mounted) return;
+      setState(() {
+        _orgSuggestBbox = '${lower[0]},${lower[1]}~${upper[0]},${upper[1]}';
+      });
+    } catch (_) {
+      // Fallback: suggest without area bounds.
+    }
+  }
   String _formatTimeOnly(DateTime? date) {
     if (date == null) return '';
     final h = date.hour.toString().padLeft(2, '0');
@@ -405,10 +651,19 @@ class _StageFormPageState extends State<StageFormPage> {
     if (autoTitle.isNotEmpty &&
         (forceTitle || !_titleEdited || _titleCtrl.text.trim().isEmpty)) {
       _titleCtrl.text = autoTitle;
+      _titleSelectAllOnNextTap = true;
     }
     if (_durationCtrl.text.trim().isEmpty) {
       _durationCtrl.text = '60';
     }
+  }
+
+  void _handleTitleTap() {
+    if (!_titleSelectAllOnNextTap) return;
+    final text = _titleCtrl.text;
+    if (text.isEmpty) return;
+    _titleCtrl.selection = TextSelection(baseOffset: 0, extentOffset: text.length);
+    _titleSelectAllOnNextTap = false;
   }
 
   bool get _assistantHasText => _assistantCtrl.text.trim().isNotEmpty;
@@ -1448,10 +1703,15 @@ class _StageFormPageState extends State<StageFormPage> {
                                 _bubble('Основное', [
                                   TextFormField(
                                     controller: _titleCtrl,
+                                    focusNode: _titleFocusNode,
+                                    onTap: _handleTitleTap,
                                     onChanged: (value) {
                                       final normalized = value.trim();
                                       final autoTitle = _defaultStageTitle();
                                       _titleEdited = normalized.isNotEmpty && normalized != autoTitle;
+                                      if (_titleEdited) {
+                                        _titleSelectAllOnNextTap = false;
+                                      }
                                     },
                                     style: const TextStyle(
                                       fontFamily: 'Geologica',
@@ -1462,6 +1722,107 @@ class _StageFormPageState extends State<StageFormPage> {
                                     validator: (v) =>
                                         (v ?? '').trim().isEmpty ? 'Введите название' : null,
                                   ),
+                                  if (_stageType != 'transport' &&
+                                      (_orgSuggestLoading || _orgSuggestions.isNotEmpty)) ...[
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.04),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.white.withOpacity(0.12)),
+                                      ),
+                                      child: _orgSuggestLoading
+                                          ? const Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                                vertical: 8,
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  SizedBox(
+                                                    width: 14,
+                                                    height: 14,
+                                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                                  ),
+                                                  SizedBox(width: 8),
+                                                  Text(
+                                                    'Ищем организации...',
+                                                    style: TextStyle(
+                                                      color: Colors.white70,
+                                                      fontSize: 12,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            )
+                                          : Column(
+                                              children: [
+                                                for (var i = 0; i < _orgSuggestions.length; i++) ...[
+                                                  Material(
+                                                    color: Colors.transparent,
+                                                    child: GestureDetector(
+                                                      behavior: HitTestBehavior.opaque,
+                                                      onTapDown: (_) =>
+                                                          _onOrgSuggestionTap(_orgSuggestions[i]),
+                                                      child: Padding(
+                                                        padding: const EdgeInsets.symmetric(
+                                                          horizontal: 10,
+                                                          vertical: 8,
+                                                        ),
+                                                        child: Align(
+                                                          alignment: Alignment.centerLeft,
+                                                          child: Column(
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment.start,
+                                                            children: [
+                                                              Text(
+                                                                _orgSuggestions[i].title,
+                                                                textAlign: TextAlign.left,
+                                                                textDirection: TextDirection.ltr,
+                                                                maxLines: 1,
+                                                                overflow: TextOverflow.ellipsis,
+                                                                style: const TextStyle(
+                                                                  fontFamily: 'Geologica',
+                                                                  color: Colors.white,
+                                                                  fontSize: 14,
+                                                                  fontWeight: FontWeight.w300,
+                                                                ),
+                                                              ),
+                                                              if (_orgSuggestions[i]
+                                                                  .subtitle
+                                                                  .trim()
+                                                                  .isNotEmpty)
+                                                                Text(
+                                                                  _orgSuggestions[i].subtitle,
+                                                                  textAlign: TextAlign.left,
+                                                                  textDirection: TextDirection.ltr,
+                                                                  maxLines: 1,
+                                                                  overflow: TextOverflow.ellipsis,
+                                                                  style: TextStyle(
+                                                                    fontFamily: 'Geologica',
+                                                                    color: Colors.white
+                                                                        .withOpacity(0.7),
+                                                                    fontSize: 12,
+                                                                    fontWeight: FontWeight.w300,
+                                                                  ),
+                                                                ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (i < _orgSuggestions.length - 1)
+                                                    Divider(
+                                                      height: 1,
+                                                      thickness: 1,
+                                                      color: Colors.white.withOpacity(0.08),
+                                                    ),
+                                                ],
+                                              ],
+                                            ),
+                                    ),
+                                  ],
                                   const SizedBox(height: 8),
                                   if (isTransport) ...[
                                     TextFormField(
@@ -1832,6 +2193,16 @@ class _StageFormPageState extends State<StageFormPage> {
   }
 }
 
+class _OrgSuggestItem {
+  final String title;
+  final String subtitle;
+
+  const _OrgSuggestItem({
+    required this.title,
+    required this.subtitle,
+  });
+}
+
 class _Logo extends StatelessWidget {
   final ColorScheme cs;
   const _Logo({required this.cs});
@@ -1884,4 +2255,11 @@ class _NightPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+
+
+
+
+
+
 

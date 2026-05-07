@@ -8,6 +8,17 @@ ENV_FILE="${ENV_FILE:-infra/.env.prod}"
 
 cd "$REPO_PATH"
 
+require_env() {
+  local key="$1"
+  if ! grep -qE "^${key}=" "$ENV_FILE"; then
+    echo "[deploy] ERROR: Missing $key in $ENV_FILE"
+    exit 1
+  fi
+}
+
+echo "[deploy] Validating required env keys"
+require_env "ORS_API_KEY"
+
 echo "[deploy] Updating branch: $BRANCH"
 git fetch origin
 git checkout "$BRANCH"

@@ -159,6 +159,8 @@ services:
       JWT_ALG: HS256
       YANDEX_API_KEY: ${YANDEX_API_KEY:-}
       YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
+      ORS_API_KEY: ${ORS_API_KEY:-}
+      ORS_BASE_URL: ${ORS_BASE_URL:-https://api.openrouteservice.org/v2/directions}
     expose:
       - "8000"
     restart: unless-stopped

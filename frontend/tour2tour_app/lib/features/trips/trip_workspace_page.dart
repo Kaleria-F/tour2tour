@@ -1,5 +1,7 @@
 ﻿import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -404,6 +406,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           stageTypeLabels: _stageTypeLabels,
           stageSubtypes: _stageSubtypes,
           initialType: _lastStageType,
+          destinationCity: widget.destinationCity,
           tripsRepo: widget.tripsRepo,
           isPremium: _hasPremium,
           routeDay: _ensureSelectedRouteDay(
@@ -486,6 +489,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           stageTypeLabels: _stageTypeLabels,
           stageSubtypes: _stageSubtypes,
           initialType: stage.stageType,
+          destinationCity: widget.destinationCity,
           tripsRepo: widget.tripsRepo,
           isPremium: _hasPremium,
           onUploadDocument: _pickAndUploadDocumentForStage,
@@ -500,6 +504,89 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
             longitude: stage.longitude,
             startTime: stage.startTime,
             endTime: stage.endTime,
+            durationMinutes: stage.durationMinutes,
+            costRub: stage.costRub,
+            referenceNumber: stage.referenceNumber,
+            notes: stage.notes,
+            websiteUrl: stage.websiteUrl,
+            rating: stage.rating,
+            documentKey: stage.documentKey,
+          ),
+          submitLabel: 'Сохранить',
+        ),
+      ),
+    );
+    if (payload == null) return;
+
+    try {
+      await widget.tripsRepo.updateStage(
+        tripId: widget.tripId!,
+        stageId: stage.id,
+        patch: {
+          'stage_type': payload.stageType,
+          'subtype': payload.subtype,
+          'title': payload.title,
+          'start_location': payload.startLocation,
+          'end_location': payload.endLocation,
+          'address': payload.address,
+          'latitude': payload.latitude,
+          'longitude': payload.longitude,
+          'start_time': payload.startTime?.toIso8601String(),
+          'end_time': payload.endTime?.toIso8601String(),
+          'duration_minutes': payload.durationMinutes,
+          'cost_rub': payload.costRub?.toStringAsFixed(2),
+          'reference_number': payload.referenceNumber,
+          'notes': payload.notes,
+          'website_url': payload.websiteUrl,
+          'rating': payload.rating,
+          'document_key': payload.documentKey,
+        },
+      );
+      await _loadStages();
+      await _loadExpenses();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось обновить этап')),
+      );
+    }
+  }
+
+  Future<void> _openEditStageDialogWithTimes(
+    TripStage stage, {
+    required int startMin,
+    required int endMin,
+  }) async {
+    if (widget.tripId == null) return;
+    final base = stage.startTime ?? stage.endTime ?? _selectedRouteDay ?? DateTime.now();
+    DateTime atMinutes(int minutes) {
+      final clamped = minutes.clamp(0, 24 * 60) as int;
+      final h = (clamped ~/ 60).clamp(0, 23);
+      final m = clamped % 60;
+      return DateTime(base.year, base.month, base.day, h, m);
+    }
+
+    final payload = await Navigator.of(context).push<AddStagePayload>(
+      MaterialPageRoute(
+        builder: (_) => StageFormPage(
+          stageTypeLabels: _stageTypeLabels,
+          stageSubtypes: _stageSubtypes,
+          initialType: stage.stageType,
+          destinationCity: widget.destinationCity,
+          tripsRepo: widget.tripsRepo,
+          isPremium: _hasPremium,
+          onUploadDocument: _pickAndUploadDocumentForStage,
+          initial: AddStagePayload(
+            stageType: stage.stageType,
+            subtype: stage.subtype,
+            title: stage.title,
+            startLocation: stage.startLocation,
+            endLocation: stage.endLocation,
+            address: stage.address,
+            latitude: stage.latitude,
+            longitude: stage.longitude,
+            startTime: atMinutes(startMin),
+            endTime: atMinutes(endMin),
             durationMinutes: stage.durationMinutes,
             costRub: stage.costRub,
             referenceNumber: stage.referenceNumber,
@@ -1644,6 +1731,12 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                   items: timed,
                   onTapStage: (stage) => _openStageDetails(stage),
                   onLongPressStage: (stage) => _showStageActions(stage),
+                  onDragStageEnd: (stage, startMin, endMin) =>
+                      _openEditStageDialogWithTimes(
+                    stage,
+                    startMin: startMin,
+                    endMin: endMin,
+                  ),
                 ),
         ),
       ],
@@ -3993,26 +4086,109 @@ class _TimelineStageItem {
   });
 }
 
-class _RouteTimeline extends StatelessWidget {
+class _RouteTimeline extends StatefulWidget {
   final List<_TimelineStageItem> items;
   final ValueChanged<TripStage> onTapStage;
   final ValueChanged<TripStage> onLongPressStage;
+  final Future<void> Function(TripStage stage, int startMin, int endMin)?
+      onDragStageEnd;
 
   const _RouteTimeline({
     required this.items,
     required this.onTapStage,
     required this.onLongPressStage,
+    this.onDragStageEnd,
   });
 
+  @override
+  State<_RouteTimeline> createState() => _RouteTimelineState();
+}
+
+class _RouteTimelineState extends State<_RouteTimeline> {
   static const int _startHour = 0;
   static const int _endHour = 24;
   static const double _pxPerHour = 56;
   static const double _timeColumnWidth = 52;
+  static const double _dragSnapMinutes = 15;
+
+  final Map<int, int> _dragOffsetByStageId = <int, int>{};
+  final Map<int, double> _dragRawOffsetMinutesByStageId = <int, double>{};
+  final Set<int> _draggingStageIds = <int>{};
+  final ScrollController _scrollController = ScrollController();
+  String _itemsSignature = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _itemsSignature = _buildItemsSignature(widget.items);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToFirstStage(animate: false);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _RouteTimeline oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextSig = _buildItemsSignature(widget.items);
+    if (nextSig != _itemsSignature) {
+      _itemsSignature = nextSig;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToFirstStage(animate: false);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   String _hhmm(int minutes) {
     final h = (minutes ~/ 60).toString().padLeft(2, '0');
     final m = (minutes % 60).toString().padLeft(2, '0');
     return '$h:$m';
+  }
+
+  int _snapToQuarterHour(int minutes) {
+    final snapped = (minutes / _dragSnapMinutes).round() * _dragSnapMinutes;
+    return snapped.toInt();
+  }
+
+  ({int start, int end}) _windowWithOffset(_TimelineStageItem item) {
+    final offset = _dragOffsetByStageId[item.stage.id] ?? 0;
+    final duration = (item.endMin - item.startMin).clamp(15, 24 * 60);
+    var start = item.startMin + offset;
+    start = start.clamp(0, 24 * 60 - duration);
+    final end = (start + duration).clamp(start + 15, 24 * 60);
+    return (start: start, end: end);
+  }
+
+  String _buildItemsSignature(List<_TimelineStageItem> items) {
+    if (items.isEmpty) return 'empty';
+    final sorted = [...items]..sort((a, b) => a.stage.id.compareTo(b.stage.id));
+    return sorted
+        .map((e) => '${e.stage.id}:${e.startMin}:${e.endMin}')
+        .join('|');
+  }
+
+  void _scrollToFirstStage({required bool animate}) {
+    if (!_scrollController.hasClients || widget.items.isEmpty) return;
+    final starts = widget.items.map((e) => _windowWithOffset(e).start).toList()..sort();
+    final firstStart = starts.first;
+    const verticalInset = 8.0;
+    final target = (verticalInset + (firstStart / 60.0) * _pxPerHour - 8).clamp(0.0, double.infinity);
+    final max = _scrollController.position.maxScrollExtent;
+    final offset = target > max ? max : target;
+    if (animate) {
+      _scrollController.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      _scrollController.jumpTo(offset);
+    }
   }
 
   @override
@@ -4021,10 +4197,15 @@ class _RouteTimeline extends StatelessWidget {
     final dayEnd = _endHour * 60;
     const verticalInset = 8.0;
 
-    final visible = items.where((item) {
-      return item.endMin > dayStart && item.startMin < dayEnd;
+    final visible = widget.items.where((item) {
+      final win = _windowWithOffset(item);
+      return win.end > dayStart && win.start < dayEnd;
     }).toList()
-      ..sort((a, b) => a.startMin.compareTo(b.startMin));
+      ..sort((a, b) {
+        final aw = _windowWithOffset(a);
+        final bw = _windowWithOffset(b);
+        return aw.start.compareTo(bw.start);
+      });
 
     final layout = <_TimelineStageItem, int>{};
     final clusterByItem = <_TimelineStageItem, int>{};
@@ -4033,7 +4214,11 @@ class _RouteTimeline extends StatelessWidget {
     var clusterId = -1;
 
     for (final item in visible) {
-      active.removeWhere((a) => a.endMin <= item.startMin);
+      final iw = _windowWithOffset(item);
+      active.removeWhere((a) {
+        final aw = _windowWithOffset(a);
+        return aw.end <= iw.start;
+      });
 
       if (active.isEmpty) {
         clusterId += 1;
@@ -4068,6 +4253,7 @@ class _RouteTimeline extends StatelessWidget {
         border: Border.all(color: Colors.white.withOpacity(0.08)),
       ),
       child: SingleChildScrollView(
+        controller: _scrollController,
         child: SizedBox(
           height: canvasHeight,
           child: LayoutBuilder(
@@ -4112,69 +4298,119 @@ class _RouteTimeline extends StatelessWidget {
                         final blockWidth =
                             (contentWidth - gap * (columnsInCluster - 1)) /
                                 columnsInCluster;
+                        final win = _windowWithOffset(item);
                         return Positioned(
                           top: verticalInset +
-                              ((item.startMin - dayStart) / 60) * _pxPerHour +
+                              ((win.start - dayStart) / 60) * _pxPerHour +
                               2,
                           left: contentLeft + (layout[item]! * (blockWidth + gap)),
                           width: blockWidth,
-                          height: (((item.endMin - item.startMin) / 60) * _pxPerHour)
+                          height: (((win.end - win.start) / 60) * _pxPerHour)
                               .clamp(34, timelineHeight),
-                          child: InkWell(
-                        borderRadius: BorderRadius.circular(10),
-                        onTap: () => onTapStage(item.stage),
-                        onLongPress: () => onLongPressStage(item.stage),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: item.color.withOpacity(0.22),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: item.color.withOpacity(0.6)),
-                          ),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final canShowTime = constraints.maxHeight >= 52;
-                              final verticalPadding = canShowTime ? 6.0 : 4.0;
-                              return Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: verticalPadding,
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: canShowTime
-                                      ? MainAxisAlignment.start
-                                      : MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.stage.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        height: 1.15,
-                                      ),
-                                    ),
-                                    if (canShowTime) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${_hhmm(item.startMin)} - ${_hhmm(item.endMin)}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.9),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              );
+                          child: GestureDetector(
+                            onVerticalDragStart: (_) {
+                              setState(() {
+                                _draggingStageIds.add(item.stage.id);
+                                _dragRawOffsetMinutesByStageId[item.stage.id] =
+                                    (_dragOffsetByStageId[item.stage.id] ?? 0).toDouble();
+                              });
                             },
-                          ),
-                        ),
+                            onVerticalDragUpdate: (details) {
+                              final currentRaw =
+                                  _dragRawOffsetMinutesByStageId[item.stage.id] ?? 0.0;
+                              final nextRaw =
+                                  currentRaw + (details.delta.dy / _pxPerHour * 60.0);
+                              final next = _snapToQuarterHour(nextRaw.round());
+                              final duration = (item.endMin - item.startMin).clamp(15, 24 * 60);
+                              final bounded = next.clamp(
+                                -item.startMin,
+                                (24 * 60 - duration) - item.startMin,
+                              );
+                              setState(() {
+                                _dragRawOffsetMinutesByStageId[item.stage.id] = nextRaw;
+                                _dragOffsetByStageId[item.stage.id] = bounded;
+                              });
+                            },
+                            onVerticalDragEnd: (_) async {
+                              final offset = _dragOffsetByStageId[item.stage.id] ?? 0;
+                              final duration = (item.endMin - item.startMin).clamp(15, 24 * 60);
+                              final start = (item.startMin + offset).clamp(0, 24 * 60 - duration);
+                              final end = (start + duration).clamp(start + 15, 24 * 60);
+                              if (widget.onDragStageEnd != null) {
+                                await widget.onDragStageEnd!(item.stage, start, end);
+                              }
+                              setState(() {
+                                _draggingStageIds.remove(item.stage.id);
+                                _dragOffsetByStageId.remove(item.stage.id);
+                                _dragRawOffsetMinutesByStageId.remove(item.stage.id);
+                              });
+                            },
+                            onVerticalDragCancel: () {
+                              setState(() {
+                                _draggingStageIds.remove(item.stage.id);
+                                _dragOffsetByStageId.remove(item.stage.id);
+                                _dragRawOffsetMinutesByStageId.remove(item.stage.id);
+                              });
+                            },
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: () => widget.onTapStage(item.stage),
+                              onLongPress: () => widget.onLongPressStage(item.stage),
+                              child: Opacity(
+                                opacity: _draggingStageIds.contains(item.stage.id) ? 0.9 : 1,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: item.color.withOpacity(0.22),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: item.color.withOpacity(0.6)),
+                                  ),
+                                  child: LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final canShowTime = constraints.maxHeight >= 52;
+                                      final verticalPadding = canShowTime ? 6.0 : 4.0;
+                                      return Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: verticalPadding,
+                                        ),
+                                        child: Column(
+                                          mainAxisAlignment: canShowTime
+                                              ? MainAxisAlignment.start
+                                              : MainAxisAlignment.center,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              item.stage.title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                height: 1.15,
+                                              ),
+                                            ),
+                                            if (canShowTime) ...[
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${_hhmm(win.start)} - ${_hhmm(win.end)}',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: Colors.white.withOpacity(0.9),
+                                                  fontSize: 11,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         );
                       },
@@ -4577,20 +4813,236 @@ class _TripRouteMapPage extends StatefulWidget {
 }
 
 class _TripRouteMapPageState extends State<_TripRouteMapPage> {
+  static const _yandexSuggestApiKey = 'e0dc35bf-6cce-44bf-a462-8f7bab2f8b92';
+  static const _yandexGeocoderApiKey = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
   late final TextEditingController _searchCtrl;
   late String _mapQuery;
+  final Dio _suggestDio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 8),
+    ),
+  );
+  Timer? _suggestDebounce;
+  bool _suggestLoading = false;
+  List<_MapSuggestItem> _suggestions = const [];
+  String _lastSuggestQuery = '';
+  String? _tripBoundsBbox;
 
   @override
   void initState() {
     super.initState();
     _mapQuery = '';
     _searchCtrl = TextEditingController(text: _mapQuery);
+    _searchCtrl.addListener(_onSearchChanged);
+    _resolveTripBounds();
   }
 
   @override
   void dispose() {
+    _searchCtrl.removeListener(_onSearchChanged);
+    _suggestDebounce?.cancel();
     _searchCtrl.dispose();
+    _suggestDio.close(force: true);
     super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchCtrl.text.trim();
+    _suggestDebounce?.cancel();
+    _suggestDebounce = Timer(const Duration(milliseconds: 280), () {
+      _loadSuggest(query);
+    });
+  }
+
+  Future<void> _loadSuggest(String query) async {
+    final normalized = query.trim();
+    if (normalized.length < 2) {
+      if (!mounted) return;
+      setState(() {
+        _suggestions = const [];
+        _suggestLoading = false;
+        _lastSuggestQuery = '';
+      });
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _suggestLoading = true;
+      _lastSuggestQuery = normalized;
+    });
+
+    try {
+      final response = await _suggestDio.get(
+        'https://suggest-maps.yandex.ru/v1/suggest',
+        queryParameters: <String, dynamic>{
+          'apikey': _yandexSuggestApiKey,
+          'text': normalized,
+          'lang': 'ru_RU',
+          'results': 5,
+          'print_address': 1,
+          if ((_tripBoundsBbox ?? '').isNotEmpty) 'bbox': _tripBoundsBbox,
+          if ((_tripBoundsBbox ?? '').isNotEmpty) 'strict_bounds': 1,
+        },
+      );
+
+      final data = response.data;
+      final results = (data is Map<String, dynamic> ? data['results'] : null);
+      final parsed = <_MapSuggestItem>[];
+      if (results is List) {
+        for (final raw in results) {
+          if (raw is! Map) continue;
+          final map = raw.cast<dynamic, dynamic>();
+          String title = '';
+          String subtitle = '';
+
+          final titleRaw = map['title'];
+          if (titleRaw is Map && titleRaw['text'] != null) {
+            title = '${titleRaw['text']}';
+          } else if (titleRaw != null) {
+            title = '$titleRaw';
+          }
+
+          final subtitleRaw = map['subtitle'];
+          if (subtitleRaw is Map && subtitleRaw['text'] != null) {
+            subtitle = '${subtitleRaw['text']}';
+          } else if (subtitleRaw != null) {
+            subtitle = '$subtitleRaw';
+          }
+
+          final displayText = map['display_text'];
+          if ((title).trim().isEmpty && displayText != null) {
+            title = '$displayText';
+          }
+
+          title = _normalizeSuggestText(title);
+          subtitle = _normalizeSuggestText(subtitle);
+          if (title.isEmpty && subtitle.isEmpty) continue;
+          parsed.add(
+            _MapSuggestItem(
+              title: title.isEmpty ? subtitle : title,
+              subtitle: subtitle,
+            ),
+          );
+          if (parsed.length >= 5) break;
+        }
+      }
+
+      if (!mounted || _lastSuggestQuery != normalized) return;
+      setState(() {
+        _suggestions = parsed;
+        _suggestLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || _lastSuggestQuery != normalized) return;
+      setState(() {
+        _suggestions = const [];
+        _suggestLoading = false;
+      });
+    }
+  }
+
+  void _onSuggestionTap(_MapSuggestItem item) {
+    final query = item.searchText;
+    _searchCtrl.text = query;
+    _searchCtrl.selection = TextSelection.collapsed(offset: _searchCtrl.text.length);
+    setState(() {
+      _suggestions = const [];
+      _mapQuery = query;
+    });
+  }
+
+  String _normalizeSuggestText(String input) {
+    var out = input
+        .replaceAll('\u00A0', ' ')
+        .replaceAll('\u202F', ' ')
+        .replaceAll('\u2007', ' ')
+        .replaceAll('\u2009', ' ')
+        .replaceAll('\u200A', ' ')
+        .replaceAll('\u200E', '')
+        .replaceAll('\u200F', '')
+        .replaceAll('\u202A', '')
+        .replaceAll('\u202B', '')
+        .replaceAll('\u202C', '')
+        .replaceAll('\u202D', '')
+        .replaceAll('\u202E', '')
+        .replaceAll('\u2066', '')
+        .replaceAll('\u2067', '')
+        .replaceAll('\u2068', '')
+        .replaceAll('\u2069', '')
+        .replaceAll('\u200B', '')
+        .replaceAll('\u200C', '')
+        .replaceAll('\u200D', '')
+        .replaceAll('\u2060', '')
+        .replaceAll('\uFEFF', '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    // Some suggest rows may still start with hidden unicode separators.
+    while (out.isNotEmpty) {
+      final code = out.codeUnitAt(0);
+      final isAsciiSpace = code <= 0x20;
+      final isUnicodeSpace = code == 0x00A0 ||
+          code == 0x1680 ||
+          (code >= 0x2000 && code <= 0x200A) ||
+          code == 0x2028 ||
+          code == 0x2029 ||
+          code == 0x202F ||
+          code == 0x205F ||
+          code == 0x3000;
+      final isFormat = code == 0x200B ||
+          code == 0x200E ||
+          code == 0x200F ||
+          (code >= 0x202A && code <= 0x202E) ||
+          (code >= 0x2066 && code <= 0x2069) ||
+          code == 0x200C ||
+          code == 0x200D ||
+          code == 0x2060 ||
+          code == 0xFEFF;
+      if (!(isAsciiSpace || isUnicodeSpace || isFormat)) break;
+      out = out.substring(1);
+    }
+    return out;
+  }
+
+  Future<void> _resolveTripBounds() async {
+    final city = widget.destinationCity.trim();
+    if (city.isEmpty) return;
+    try {
+      final response = await _suggestDio.get(
+        'https://geocode-maps.yandex.ru/v1/',
+        queryParameters: <String, dynamic>{
+          'apikey': _yandexGeocoderApiKey,
+          'geocode': city,
+          'format': 'json',
+          'results': 1,
+          'lang': 'ru_RU',
+        },
+      );
+      final data = response.data;
+      if (data is! Map<String, dynamic>) return;
+      final members = (((data['response'] as Map?)?['GeoObjectCollection'] as Map?)
+              ?['featureMember'])
+          as List?;
+      if (members == null || members.isEmpty) return;
+      final geoObject = ((members.first as Map?)?['GeoObject']) as Map?;
+      final envelope = (((geoObject?['boundedBy'] as Map?)?['Envelope']) as Map?);
+      final lowerCorner = _normalizeSuggestText('${envelope?['lowerCorner'] ?? ''}');
+      final upperCorner = _normalizeSuggestText('${envelope?['upperCorner'] ?? ''}');
+      if (lowerCorner.isEmpty || upperCorner.isEmpty) return;
+
+      final lower = lowerCorner.split(' ');
+      final upper = upperCorner.split(' ');
+      if (lower.length != 2 || upper.length != 2) return;
+      final bbox = '${lower[0]},${lower[1]}~${upper[0]},${upper[1]}';
+      if (!mounted) return;
+      setState(() {
+        _tripBoundsBbox = bbox;
+      });
+    } catch (_) {
+      // Fallback: no geo-bound filter for suggest.
+    }
   }
 
   void _submitSearch() {
@@ -4602,6 +5054,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
       return;
     }
     setState(() {
+      _suggestions = const [];
       _mapQuery = value;
     });
   }
@@ -4704,6 +5157,95 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                           ],
                         ),
                       ),
+                      if (_suggestLoading || _suggestions.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.only(top: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A1D27).withOpacity(0.96),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white.withOpacity(0.14)),
+                          ),
+                          child: _suggestLoading
+                              ? const Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        'Ищем подсказки...',
+                                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : Column(
+                                  children: [
+                                    for (var i = 0; i < _suggestions.length; i++) ...[
+                                      Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          onTap: () => _onSuggestionTap(_suggestions[i]),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 10,
+                                            ),
+                                            child: Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    _suggestions[i].title,
+                                                    textAlign: TextAlign.left,
+                                                    textDirection: TextDirection.ltr,
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 14,
+                                                      fontWeight: FontWeight.w700,
+                                                    ),
+                                                  ),
+                                                  if (_suggestions[i]
+                                                      .subtitle
+                                                      .trim()
+                                                      .isNotEmpty)
+                                                    Text(
+                                                      _suggestions[i].subtitle,
+                                                      textAlign: TextAlign.left,
+                                                      textDirection: TextDirection.ltr,
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: Colors.white.withOpacity(0.72),
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      if (i < _suggestions.length - 1)
+                                        Divider(
+                                          height: 1,
+                                          thickness: 1,
+                                          color: Colors.white.withOpacity(0.08),
+                                        ),
+                                    ],
+                                  ],
+                                ),
+                        ),
                       const SizedBox(height: 10),
                       Expanded(
                         child: ClipRRect(
@@ -4728,6 +5270,24 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
         ],
       ),
     );
+  }
+}
+
+class _MapSuggestItem {
+  final String title;
+  final String subtitle;
+
+  const _MapSuggestItem({
+    required this.title,
+    required this.subtitle,
+  });
+
+  String get searchText {
+    final t = title.trim();
+    final s = subtitle.trim();
+    if (t.isEmpty) return s;
+    if (s.isEmpty) return t;
+    return '$t, $s';
   }
 }
 
@@ -4942,6 +5502,8 @@ class _NightPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+
 
 
 
