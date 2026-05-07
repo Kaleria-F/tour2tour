@@ -65,6 +65,17 @@ services:
     volumes:
       - payments_db_data:/var/lib/postgresql/data
 
+  documents-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: documents
+      POSTGRES_USER: documents
+      POSTGRES_PASSWORD: documents
+    ports:
+      - "5439:5432"
+    volumes:
+      - documents_db_data:/var/lib/postgresql/data
+
   redis:
     image: redis:7
     ports:
@@ -146,8 +157,8 @@ services:
       DATABASE_URL: postgresql+psycopg://trips:trips@trips-db:5432/trips
       JWT_SECRET: dev_secret
       JWT_ALG: HS256
-      YANDEX_API_KEY: ${YANDEX_API_KEY}
-      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID}
+      YANDEX_API_KEY: ${YANDEX_API_KEY:-}
+      YANDEX_FOLDER_ID: ${YANDEX_FOLDER_ID:-}
     expose:
       - "8000"
     restart: unless-stopped
@@ -243,6 +254,7 @@ services:
     environment:
       JWT_SECRET: dev_secret
       JWT_ALG: HS256
+      DATABASE_URL: postgresql+psycopg://documents:documents@documents-db:5432/documents
       S3_ENDPOINT: http://minio:9000
       S3_PUBLIC_ENDPOINT: http://127.0.0.1:9000
       S3_REGION: us-east-1
@@ -251,6 +263,11 @@ services:
       S3_BUCKET: tour2tour-documents
       S3_USE_SSL: "false"
       S3_FORCE_PATH_STYLE: "true"
+      S3_PRESIGN_TTL_SECONDS: 300
+      S3_SSE_MODE: AES256
+      S3_CORS_ALLOWED_ORIGINS: '["*"]'
+      MAX_UPLOAD_SIZE_BYTES: 15728640
+      ENABLE_UPLOAD_SCAN: "false"
     expose:
       - "8000"
     restart: unless-stopped
@@ -262,6 +279,7 @@ services:
       start_period: 10s
     depends_on:
       - minio
+      - documents-db
 
 volumes:
   auth_db_data:
@@ -271,4 +289,5 @@ volumes:
   place_images_data:
   interactions_db_data:
   payments_db_data:
+  documents_db_data:
   minio_data:

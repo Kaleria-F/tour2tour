@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.documents import router as documents_router
+from app.db.base import Base
+from app.db.session import engine
+from app.models.document import Document  # noqa: F401
 
 app = FastAPI(title="Tour2Tour Documents Service")
 
@@ -26,6 +29,11 @@ app.add_middleware(
 )
 
 app.include_router(documents_router)
+
+
+@app.on_event("startup")
+def startup() -> None:
+    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/health")

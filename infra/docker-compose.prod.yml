@@ -59,6 +59,16 @@ services:
       - payments_db_data:/var/lib/postgresql/data
     restart: unless-stopped
 
+  documents-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: documents
+      POSTGRES_USER: documents
+      POSTGRES_PASSWORD: ${DOCUMENTS_DB_PASSWORD}
+    volumes:
+      - documents_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   redis:
     image: redis:7
     restart: unless-stopped
@@ -161,6 +171,7 @@ services:
     environment:
       JWT_SECRET: ${JWT_SECRET}
       JWT_ALG: HS256
+      DATABASE_URL: postgresql+psycopg://documents:${DOCUMENTS_DB_PASSWORD}@documents-db:5432/documents
       S3_ENDPOINT: ${S3_ENDPOINT}
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
       S3_REGION: ${S3_REGION}
@@ -169,8 +180,15 @@ services:
       S3_BUCKET: ${S3_BUCKET}
       S3_USE_SSL: ${S3_USE_SSL}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE}
+      S3_PRESIGN_TTL_SECONDS: ${S3_PRESIGN_TTL_SECONDS:-300}
+      S3_SSE_MODE: ${S3_SSE_MODE:-AES256}
+      S3_CORS_ALLOWED_ORIGINS: ${S3_CORS_ALLOWED_ORIGINS}
+      MAX_UPLOAD_SIZE_BYTES: ${MAX_UPLOAD_SIZE_BYTES:-15728640}
+      ENABLE_UPLOAD_SCAN: ${ENABLE_UPLOAD_SCAN:-false}
     ports:
       - "8005:8000"
+    depends_on:
+      - documents-db
     restart: unless-stopped
 
   admin-web:
@@ -192,3 +210,4 @@ volumes:
   place_images_data:
   interactions_db_data:
   payments_db_data:
+  documents_db_data:

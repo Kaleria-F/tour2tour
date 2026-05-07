@@ -51,6 +51,7 @@ class DocumentsRepo {
     required int tripId,
     required String fileName,
     required String contentType,
+    required int fileSizeBytes,
   }) async {
     final res = await api.dio.post(
       '/documents/upload-init',
@@ -58,12 +59,26 @@ class DocumentsRepo {
         'trip_id': tripId,
         'file_name': fileName,
         'content_type': contentType,
+        'file_size_bytes': fileSizeBytes,
       },
     );
     final data = Map<String, dynamic>.from(res.data as Map);
     return UploadInitResult(
       objectKey: (data['object_key'] ?? '').toString(),
       uploadUrl: (data['upload_url'] ?? '').toString(),
+    );
+  }
+
+  Future<void> uploadComplete({
+    required int tripId,
+    required String objectKey,
+  }) async {
+    await api.dio.post(
+      '/documents/upload-complete',
+      data: {
+        'trip_id': tripId,
+        'object_key': objectKey,
+      },
     );
   }
 

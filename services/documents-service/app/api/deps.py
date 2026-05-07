@@ -1,8 +1,10 @@
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.session import SessionLocal
 
 bearer = HTTPBearer(auto_error=False)
 
@@ -22,3 +24,11 @@ def get_current_user_id(
         return int(sub)
     except (JWTError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token")
+
+
+def get_db() -> Session:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

@@ -1020,11 +1020,16 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         tripId: widget.tripId!,
         fileName: targetFileName,
         contentType: contentType,
+        fileSizeBytes: bytes.length,
       );
       await widget.documentsRepo.uploadBytesToPresigned(
         uploadUrl: init.uploadUrl,
         bytes: bytes,
         contentType: contentType,
+      );
+      await widget.documentsRepo.uploadComplete(
+        tripId: widget.tripId!,
+        objectKey: init.objectKey,
       );
       await _loadDocuments();
       if (!mounted) return null;

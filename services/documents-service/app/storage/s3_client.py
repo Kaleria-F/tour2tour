@@ -52,7 +52,7 @@ def ensure_bucket_cors(s3_client) -> None:
                 "CORSRules": [
                     {
                         "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
-                        "AllowedOrigins": ["*"],
+                        "AllowedOrigins": settings.s3_cors_allowed_origins,
                         "AllowedHeaders": ["*"],
                         "ExposeHeaders": ["ETag", "Content-Length", "Content-Type"],
                         "MaxAgeSeconds": 3600,
