@@ -98,16 +98,18 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     'food': 'Еда',
     'housing': 'Жилье',
     'transport': 'Транспорт',
+    'shopping': 'Покупки',
     'entertainment': 'Развлечения',
     'other': 'Другое',
   };
 
   static const _categoryColors = {
-    'food': Color(0xFFFF8A65),
-    'housing': Color(0xFFFFD54F),
-    'transport': Color(0xFF4FC3F7),
-    'entertainment': Color(0xFFBA68C8),
-    'other': Color(0xFF90A4AE),
+    'food': Color(0xFFE37AA2), // #e37aa2
+    'housing': Color(0xFFE3BA7A), // #e3ba7a
+    'transport': Color(0xFF7AE3BA), // #7ae3ba
+    'shopping': Color(0xFFA3E37A), // #a3e37a
+    'entertainment': Color(0xFFB6A1FF), // #b6a1ff
+    'other': Color(0xFF7AB4E3), // гармоничный 6-й (голубой)
   };
 
   static const _stageTypeLabels = {
@@ -420,9 +422,9 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                   subtype: _lastStageType == 'transport'
                       ? 'road'
                       : (_stageSubtypes[_lastStageType]?.first ?? 'other'),
-                  title: '',
+                  title: presetAddress,
                   address: presetAddress,
-                  notes: presetAddress,
+                  notes: null,
                 ),
           onUploadDocument: _pickAndUploadDocumentForStage,
         ),
@@ -840,51 +842,51 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     switch (stageType) {
       case 'transport':
         return const _StageVisualConfig(
-          iconColor: Color(0xFF65E3D6),
-          backgroundColor: Color(0x1A65E3D6),
-          borderColor: Color(0x3365E3D6),
+          iconColor: Color(0xFF7AE3BA), // #7ae3ba
+          backgroundColor: Color(0x1A7AE3BA),
+          borderColor: Color(0x337AE3BA),
         );
       case 'place':
         return const _StageVisualConfig(
-          iconColor: Color(0xFF9B8CFF),
-          backgroundColor: Color(0x1A9B8CFF),
-          borderColor: Color(0x339B8CFF),
+          iconColor: Color(0xFFB6A1FF), // #b6a1ff
+          backgroundColor: Color(0x1AB6A1FF),
+          borderColor: Color(0x33B6A1FF),
         );
       case 'stay':
         return const _StageVisualConfig(
-          iconColor: Color(0xFFFFC973),
-          backgroundColor: Color(0x1AFFC973),
-          borderColor: Color(0x33FFC973),
+          iconColor: Color(0xFFE3BA7A), // #e3ba7a
+          backgroundColor: Color(0x1AE3BA7A),
+          borderColor: Color(0x33E3BA7A),
         );
       case 'food':
         return const _StageVisualConfig(
-          iconColor: Color(0xFFFF78B2),
-          backgroundColor: Color(0x1AFF78B2),
-          borderColor: Color(0x33FF78B2),
+          iconColor: Color(0xFFE37AA2), // #e37aa2
+          backgroundColor: Color(0x1AE37AA2),
+          borderColor: Color(0x33E37AA2),
         );
       case 'shopping':
         return const _StageVisualConfig(
-          iconColor: Color(0xFFD989FF),
-          backgroundColor: Color(0x1AD989FF),
-          borderColor: Color(0x33D989FF),
+          iconColor: Color(0xFFA3E37A), // #a3e37a
+          backgroundColor: Color(0x1AA3E37A),
+          borderColor: Color(0x33A3E37A),
         );
       case 'activity':
         return const _StageVisualConfig(
-          iconColor: Color(0xFF58B8FF),
-          backgroundColor: Color(0x1A58B8FF),
-          borderColor: Color(0x3358B8FF),
+          iconColor: Color(0xFF7AB4E3), // гармоничный голубой
+          backgroundColor: Color(0x1A7AB4E3),
+          borderColor: Color(0x337AB4E3),
         );
       case 'document':
         return const _StageVisualConfig(
-          iconColor: Color(0xFF9DE46B),
-          backgroundColor: Color(0x1A9DE46B),
-          borderColor: Color(0x339DE46B),
+          iconColor: Color(0xFF7AE3BA), // #7ae3ba
+          backgroundColor: Color(0x1A7AE3BA),
+          borderColor: Color(0x337AE3BA),
         );
       default:
         return const _StageVisualConfig(
-          iconColor: Color(0xFFE9D9FF),
-          backgroundColor: Color(0x1AE9D9FF),
-          borderColor: Color(0x33E9D9FF),
+          iconColor: Color(0xFFB6A1FF), // #b6a1ff
+          backgroundColor: Color(0x1AB6A1FF),
+          borderColor: Color(0x33B6A1FF),
         );
     }
   }
@@ -1886,7 +1888,8 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                    fontFamily: 'Geologica',
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
               ),
@@ -1979,6 +1982,13 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
             height: 44,
             child: ElevatedButton.icon(
               onPressed: _addingExpense ? null : _openAddExpenseDialog,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD7E37A),
+                foregroundColor: const Color(0xFF161616),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
               icon: _addingExpense
                   ? const SizedBox(
                       width: 16,
@@ -2210,6 +2220,13 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
             height: 44,
             child: ElevatedButton.icon(
               onPressed: _uploadingDocument ? null : _pickAndUploadDocument,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD7E37A),
+                foregroundColor: const Color(0xFF161616),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
               icon: _uploadingDocument
                   ? const SizedBox(
                       width: 16,

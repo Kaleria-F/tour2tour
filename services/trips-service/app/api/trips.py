@@ -59,7 +59,7 @@ STAGE_TYPE_TO_EXPENSE_CATEGORY: dict[str, str] = {
     "place": "entertainment",
     "stay": "housing",
     "food": "food",
-    "shopping": "entertainment",
+    "shopping": "shopping",
     "activity": "entertainment",
 }
 
@@ -687,7 +687,7 @@ def create_expense(
 ):
     _get_user_trip_or_404(db=db, trip_id=trip_id, user_id=user_id)
 
-    allowed_categories = {"food", "housing", "transport", "entertainment", "other"}
+    allowed_categories = {"food", "housing", "transport", "shopping", "entertainment", "other"}
     category = payload.category.strip().lower()
     if category not in allowed_categories:
         raise HTTPException(status_code=400, detail="Invalid expense category")
@@ -719,7 +719,7 @@ def update_expense(
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    allowed_categories = {"food", "housing", "transport", "entertainment", "other"}
+    allowed_categories = {"food", "housing", "transport", "shopping", "entertainment", "other"}
 
     if "description" in updates and updates["description"] is not None:
         updates["description"] = updates["description"].strip()

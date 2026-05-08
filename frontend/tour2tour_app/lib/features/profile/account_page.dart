@@ -157,11 +157,6 @@ class _AccountPageState extends State<AccountPage> {
                               ),
                             ),
                           ),
-                          OutlinedButton.icon(
-                            onPressed: _openEditAccount,
-                            icon: const Icon(Icons.edit_outlined),
-                            label: const Text('Изменить'),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 14),

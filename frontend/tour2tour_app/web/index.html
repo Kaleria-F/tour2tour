@@ -220,8 +220,8 @@
         button.type = 'button';
         button.textContent = 'Добавить в маршрут';
         button.style.position = 'absolute';
-        button.style.right = '12px';
-        button.style.bottom = '40px';
+        button.style.right = '10px';
+        button.style.bottom = '34px';
         button.style.zIndex = '7';
         button.style.display = 'none';
         button.style.pointerEvents = 'auto';
@@ -250,6 +250,17 @@
         return button;
       }
 
+      function syncBottomControls(state) {
+        if (!state || !state.container || !state.routePanel || !state.addRouteButton) return;
+        const panel = state.routePanel;
+        const button = state.addRouteButton;
+        const bottom = parseFloat((panel.style.bottom || '34').replace('px', '')) || 34;
+        const panelH = panel.offsetHeight || 0;
+        const buttonH = button.offsetHeight || 0;
+        const buttonBottom = Math.max(12, bottom + panelH - buttonH);
+        button.style.bottom = `${buttonBottom}px`;
+      }
+
       function showAddRouteButton(state, address) {
         const button = ensureAddRouteButton(state);
         if (!button) return;
@@ -261,6 +272,7 @@
         button.dataset.address = cleanAddress;
         button.style.display = 'inline-flex';
         button.style.alignItems = 'center';
+        syncBottomControls(state);
       }
 
       function createMarkerElement(options) {
@@ -312,34 +324,44 @@
         const panel = document.createElement('div');
         panel.style.position = 'absolute';
         panel.style.left = '12px';
-        panel.style.bottom = '12px';
+        panel.style.bottom = '34px';
         panel.style.zIndex = '7';
         panel.style.pointerEvents = 'auto';
-        panel.style.padding = '8px 10px';
+        panel.style.padding = '10px 12px';
         panel.style.border = '1px solid rgba(255,255,255,.2)';
-        panel.style.borderRadius = '14px';
+        panel.style.borderRadius = '16px';
         panel.style.background = 'rgba(19,24,41,.92)';
         panel.style.color = '#dfe6ff';
-        panel.style.fontFamily = '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
-        panel.style.fontSize = '12px';
+        panel.style.fontFamily = '"Geologica", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        panel.style.fontSize = '13px';
+        panel.style.width = 'max-content';
+        panel.style.maxWidth = 'calc(100% - 176px)';
 
         const tabs = document.createElement('div');
         tabs.style.display = 'flex';
         tabs.style.gap = '6px';
         tabs.style.marginBottom = '6px';
 
-        function mkBtn(label, mode) {
+        function mkBtn(icon, mode, title) {
           const btn = document.createElement('button');
           btn.type = 'button';
-          btn.textContent = label;
+          btn.innerHTML = icon;
+          btn.title = title;
+          btn.setAttribute('aria-label', title);
           btn.dataset.mode = mode;
           btn.style.border = '1px solid rgba(255,255,255,.24)';
           btn.style.borderRadius = '999px';
-          btn.style.padding = '5px 10px';
+          btn.style.width = '46px';
+          btn.style.height = '36px';
+          btn.style.padding = '0';
           btn.style.background = 'transparent';
           btn.style.color = '#dfe6ff';
           btn.style.cursor = 'pointer';
-          btn.style.fontSize = '12px';
+          btn.style.fontSize = '18px';
+          btn.style.display = 'inline-flex';
+          btn.style.alignItems = 'center';
+          btn.style.justifyContent = 'center';
+          btn.style.fontFamily = '"Geologica", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
           btn.addEventListener('click', async () => {
             state.routeMode = mode;
             updateRouteModeVisual(state);
@@ -348,9 +370,28 @@
           return btn;
         }
 
-        const btnCar = mkBtn('Авто', 'driving-car');
-        const btnWalk = mkBtn('Пешком', 'foot-walking');
-        const btnBike = mkBtn('Вело', 'cycling-regular');
+        const iconCar =
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+          '<path d="M3.5 14.4V11.8c0-.8.5-1.5 1.3-1.7l2.2-.6 2-3.1c.3-.5.8-.8 1.4-.8h4.7c.6 0 1.1.3 1.4.8l2 3.1 2.2.6c.8.2 1.3.9 1.3 1.7v2.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '<path d="M3.5 14.4h17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
+          '<circle cx="7" cy="15.8" r="1.8" fill="currentColor"/>' +
+          '<circle cx="17" cy="15.8" r="1.8" fill="currentColor"/>' +
+          '</svg>';
+        const iconWalk =
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+          '<circle cx="12" cy="4.2" r="2.1" fill="currentColor"/>' +
+          '<path d="M11 8.2l2.5 2.3 1.7 3.3M11 8.2l-2.4 2.5M11.4 11.1l-1.2 3.5-2.7 2.3M13.1 10.4l.2 4.2 2.8 3.2M10.9 14.1l2.5 1.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '</svg>';
+        const iconBike =
+          '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+          '<circle cx="6.2" cy="17.2" r="3.2" stroke="currentColor" stroke-width="1.8"/>' +
+          '<circle cx="18" cy="17.2" r="3.2" stroke="currentColor" stroke-width="1.8"/>' +
+          '<path d="M10.1 17.2l3.1-5h3.2M9.2 9.2h3.4l2 3m-4-3 2.6 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '</svg>';
+
+        const btnCar = mkBtn(iconCar, 'driving-car', 'Авто');
+        const btnWalk = mkBtn(iconWalk, 'foot-walking', 'Пешком');
+        const btnBike = mkBtn(iconBike, 'cycling-regular', 'Вело');
         tabs.appendChild(btnCar);
         tabs.appendChild(btnWalk);
         tabs.appendChild(btnBike);
@@ -358,6 +399,9 @@
         const info = document.createElement('div');
         info.textContent = 'Выберите 2 точки на карте';
         info.style.color = 'rgba(223,230,255,.9)';
+        info.style.fontFamily = '"Geologica", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        info.style.fontSize = '13px';
+        info.style.lineHeight = '1.2';
 
         panel.appendChild(tabs);
         panel.appendChild(info);
@@ -365,6 +409,7 @@
         state.routePanel = panel;
         state.routeInfo = info;
         state.routeModeButtons = [btnCar, btnWalk, btnBike];
+        syncBottomControls(state);
         return panel;
       }
 
@@ -374,7 +419,7 @@
           const selected = btn.dataset.mode === mode;
           btn.style.background = selected ? 'rgba(215,227,122,.18)' : 'transparent';
           btn.style.borderColor = selected ? '#d7e37a' : 'rgba(255,255,255,.24)';
-          btn.style.color = selected ? '#d7e37a' : '#dfe6ff';
+          btn.style.color = '#d7e37a';
         });
       }
 
