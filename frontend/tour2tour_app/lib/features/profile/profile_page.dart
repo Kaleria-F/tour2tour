@@ -453,6 +453,10 @@ class _ProfilePageState extends State<ProfilePage> {
     final today = DateTime(now.year, now.month, now.day);
     final activeTrips = _trips
         .where((trip) {
+          if (trip.plannedDays != null && trip.plannedDays! > 0) {
+            // "Количество дней" = даты еще не зафиксированы, такие поездки всегда считаем активными.
+            return true;
+          }
           final tripEnd = DateTime(
             trip.endDate.year,
             trip.endDate.month,
@@ -506,8 +510,10 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: activeTrips.isEmpty
                             ? _EmptyStrip(
                                 title: 'Пока нет поездок',
-                                subtitle: 'Создайте первое путешествие, и здесь появятся ваши маршруты.',
+                                subtitle: 'Создайте путешествие, и здесь появятся ваши маршруты.',
                                 actionLabel: 'Создать путешествие',
+                                centered: true,
+                                purpleAction: true,
                                 onAction: () => context.go('/create-trip'),
                               )
                             : ListView.separated(
@@ -701,7 +707,13 @@ class _TripCarouselCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final city = (trip.destinationCity ?? '').trim();
-    final dateLabel = '${_twoDigits(trip.startDate.day)}.${_twoDigits(trip.startDate.month)} - ${_twoDigits(trip.endDate.day)}.${_twoDigits(trip.endDate.month)}';
+    final hasPlannedDays = trip.plannedDays != null && trip.plannedDays! > 0;
+    final sameDay = trip.startDate.year == trip.endDate.year &&
+        trip.startDate.month == trip.endDate.month &&
+        trip.startDate.day == trip.endDate.day;
+    final dateLabel = sameDay
+        ? '${_twoDigits(trip.startDate.day)}.${_twoDigits(trip.startDate.month)}'
+        : '${_twoDigits(trip.startDate.day)}.${_twoDigits(trip.startDate.month)} - ${_twoDigits(trip.endDate.day)}.${_twoDigits(trip.endDate.month)}';
 
     return SizedBox(
       width: 286,
@@ -754,14 +766,15 @@ class _TripCarouselCard extends StatelessWidget {
                           icon: Icons.location_on_outlined,
                           label: city,
                         ),
-                      _MetaChip(
-                        icon: Icons.calendar_today_outlined,
-                        label: dateLabel,
-                      ),
-                      if (trip.plannedDays != null)
+                      if (hasPlannedDays)
                         _MetaChip(
                           icon: Icons.schedule_outlined,
                           label: '${trip.plannedDays} дн.',
+                        )
+                      else
+                        _MetaChip(
+                          icon: Icons.calendar_today_outlined,
+                          label: dateLabel,
                         ),
                     ],
                   ),
@@ -956,12 +969,16 @@ class _EmptyStrip extends StatelessWidget {
   final String subtitle;
   final String actionLabel;
   final VoidCallback onAction;
+  final bool centered;
+  final bool purpleAction;
 
   const _EmptyStrip({
     required this.title,
     required this.subtitle,
     required this.actionLabel,
     required this.onAction,
+    this.centered = false,
+    this.purpleAction = false,
   });
 
   @override
@@ -975,11 +992,13 @@ class _EmptyStrip extends StatelessWidget {
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
             title,
+            textAlign: centered ? TextAlign.center : TextAlign.start,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 22,
@@ -989,16 +1008,36 @@ class _EmptyStrip extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             subtitle,
+            textAlign: centered ? TextAlign.center : TextAlign.start,
             style: TextStyle(
               color: Colors.white.withOpacity(0.72),
               height: 1.45,
             ),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: onAction,
-            child: Text(actionLabel),
-          ),
+          if (purpleAction)
+            ElevatedButton.icon(
+              onPressed: onAction,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFA996FF),
+                foregroundColor: const Color(0xFF1A1530),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text(actionLabel),
+            )
+          else
+            ElevatedButton(
+              onPressed: onAction,
+              child: Text(actionLabel),
+            ),
         ],
       ),
     );

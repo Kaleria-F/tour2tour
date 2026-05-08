@@ -635,6 +635,42 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
   }
 
+  Future<void> _applyStageTimesFromDrag(
+    TripStage stage, {
+    required int startMin,
+    required int endMin,
+  }) async {
+    if (widget.tripId == null) return;
+    final base = stage.startTime ?? stage.endTime ?? _selectedRouteDay ?? DateTime.now();
+    DateTime atMinutes(int minutes) {
+      final clamped = minutes.clamp(0, 24 * 60) as int;
+      final h = (clamped ~/ 60).clamp(0, 23);
+      final m = clamped % 60;
+      return DateTime(base.year, base.month, base.day, h, m);
+    }
+
+    final newStart = atMinutes(startMin);
+    final newEnd = atMinutes(endMin);
+    try {
+      await widget.tripsRepo.updateStage(
+        tripId: widget.tripId!,
+        stageId: stage.id,
+        patch: {
+          'start_time': newStart.toIso8601String(),
+          'end_time': newEnd.toIso8601String(),
+          'duration_minutes': null,
+        },
+      );
+      await _loadStages();
+      await _loadExpenses();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось обновить время этапа')),
+      );
+    }
+  }
+
   Future<void> _deleteStage(TripStage stage) async {
     if (widget.tripId == null) return;
     try {
@@ -1599,7 +1635,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     setState(() {
       _selectedStageId = stage.id;
     });
-    await Navigator.of(context).push(
+    final action = await Navigator.of(context).push<_StageDetailsAction>(
       MaterialPageRoute(
         builder: (_) => _StageDetailsPage(
           stage: stage,
@@ -1612,40 +1648,16 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         ),
       ),
     );
-  }
-
-  Future<void> _showStageActions(TripStage stage) async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit_rounded),
-              title: const Text('Редактировать'),
-              onTap: () => Navigator.of(context).pop('edit'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.copy_rounded),
-              title: const Text('Копировать'),
-              onTap: () => Navigator.of(context).pop('copy'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline_rounded),
-              title: const Text('Удалить'),
-              onTap: () => Navigator.of(context).pop('delete'),
-            ),
-          ],
-        ),
-      ),
-    );
     if (!mounted || action == null) return;
-    if (action == 'edit') {
+    if (action == _StageDetailsAction.edit) {
       await _openEditStageDialog(stage);
-    } else if (action == 'copy') {
+      return;
+    }
+    if (action == _StageDetailsAction.copy) {
       await _copyStage(stage);
-    } else if (action == 'delete') {
+      return;
+    }
+    if (action == _StageDetailsAction.delete) {
       await _deleteStage(stage);
     }
   }
@@ -1696,7 +1708,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
               return InkWell(
                 borderRadius: BorderRadius.circular(10),
                 onTap: () => _openStageDetails(stage),
-                onLongPress: () => _showStageActions(stage),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                   decoration: BoxDecoration(
@@ -1730,9 +1741,8 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
               : _RouteTimeline(
                   items: timed,
                   onTapStage: (stage) => _openStageDetails(stage),
-                  onLongPressStage: (stage) => _showStageActions(stage),
                   onDragStageEnd: (stage, startMin, endMin) =>
-                      _openEditStageDialogWithTimes(
+                      _applyStageTimesFromDrag(
                     stage,
                     startMin: startMin,
                     endMin: endMin,
@@ -4086,17 +4096,17 @@ class _TimelineStageItem {
   });
 }
 
+enum _StageDetailsAction { edit, copy, delete }
+
 class _RouteTimeline extends StatefulWidget {
   final List<_TimelineStageItem> items;
   final ValueChanged<TripStage> onTapStage;
-  final ValueChanged<TripStage> onLongPressStage;
   final Future<void> Function(TripStage stage, int startMin, int endMin)?
       onDragStageEnd;
 
   const _RouteTimeline({
     required this.items,
     required this.onTapStage,
-    required this.onLongPressStage,
     this.onDragStageEnd,
   });
 
@@ -4355,7 +4365,6 @@ class _RouteTimelineState extends State<_RouteTimeline> {
                             child: InkWell(
                               borderRadius: BorderRadius.circular(10),
                               onTap: () => widget.onTapStage(item.stage),
-                              onLongPress: () => widget.onLongPressStage(item.stage),
                               child: Opacity(
                                 opacity: _draggingStageIds.contains(item.stage.id) ? 0.9 : 1,
                                 child: Container(
@@ -5418,6 +5427,34 @@ class _StageDetailsPage extends StatelessWidget {
                                     if (timeRange != null) _infoChip(timeRange!),
                                   ],
                                 ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    _actionIcon(
+                                      context,
+                                      icon: Icons.edit_rounded,
+                                      onTap: () => Navigator.of(context).pop(
+                                        _StageDetailsAction.edit,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _actionIcon(
+                                      context,
+                                      icon: Icons.copy_rounded,
+                                      onTap: () => Navigator.of(context).pop(
+                                        _StageDetailsAction.copy,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _actionIcon(
+                                      context,
+                                      icon: Icons.delete_outline_rounded,
+                                      onTap: () => Navigator.of(context).pop(
+                                        _StageDetailsAction.delete,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                                 const SizedBox(height: 12),
                                 _line('Адрес / место', stage.address),
                                 _line('Откуда', stage.startLocation),
@@ -5445,6 +5482,34 @@ class _StageDetailsPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _actionIcon(
+    BuildContext context, {
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white.withOpacity(0.14)),
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: Colors.white.withOpacity(0.9),
+          ),
+        ),
       ),
     );
   }

@@ -298,6 +298,7 @@ class _StageFormPageState extends State<StageFormPage> {
   int _assistantTrialUsed = 0;
   bool _assistantLimitPopupShown = false;
   Timer? _orgSuggestDebounce;
+  Timer? _orgSuggestHideOnBlurTimer;
   bool _orgSuggestLoading = false;
   String _lastOrgSuggestQuery = '';
   List<_OrgSuggestItem> _orgSuggestions = const [];
@@ -353,6 +354,7 @@ class _StageFormPageState extends State<StageFormPage> {
   @override
   void dispose() {
     _orgSuggestDebounce?.cancel();
+    _orgSuggestHideOnBlurTimer?.cancel();
     _orgSuggestDio.close(force: true);
     _titleCtrl.removeListener(_onOrgSuggestTitleChanged);
     _titleFocusNode.removeListener(_onTitleFocusChanged);
@@ -408,6 +410,7 @@ class _StageFormPageState extends State<StageFormPage> {
 
   void _onTitleFocusChanged() {
     if (_titleFocusNode.hasFocus) {
+      _orgSuggestHideOnBlurTimer?.cancel();
       _orgSuggestEnabled = true;
       final query = _titleCtrl.text.trim();
       if (query.length >= 2) {
@@ -419,13 +422,17 @@ class _StageFormPageState extends State<StageFormPage> {
       }
       return;
     }
-    if (_isPickingOrgSuggestion) return;
-    if (_orgSuggestions.isNotEmpty || _orgSuggestLoading) {
-      setState(() {
-        _orgSuggestions = const [];
-        _orgSuggestLoading = false;
-      });
-    }
+    _orgSuggestHideOnBlurTimer?.cancel();
+    _orgSuggestHideOnBlurTimer = Timer(const Duration(milliseconds: 180), () {
+      if (!mounted) return;
+      if (_titleFocusNode.hasFocus) return;
+      if (_orgSuggestions.isNotEmpty || _orgSuggestLoading) {
+        setState(() {
+          _orgSuggestions = const [];
+          _orgSuggestLoading = false;
+        });
+      }
+    });
   }
 
   Future<void> _loadOrgSuggestions(String query) async {
@@ -485,7 +492,7 @@ class _StageFormPageState extends State<StageFormPage> {
           }
 
           title = _normalizeSuggestText(title);
-          subtitle = _normalizeSuggestText(subtitle);
+          subtitle = _ensureAddressHasTripCity(_normalizeSuggestText(subtitle));
           if (title.isEmpty && subtitle.isEmpty) continue;
           parsed.add(_OrgSuggestItem(title: title, subtitle: subtitle));
           if (parsed.length >= 4) break;
@@ -527,34 +534,48 @@ class _StageFormPageState extends State<StageFormPage> {
 
   String _addressFromSubtitle(String subtitle) {
     final clean = _normalizeSuggestText(subtitle);
+    final withCity = _ensureAddressHasTripCity(clean);
     if (clean.contains('·')) {
       final parts = clean.split('·').map((e) => _normalizeSuggestText(e)).toList();
       if (parts.isNotEmpty) {
         final tail = parts.last;
-        if (tail.isNotEmpty) return tail;
+        if (tail.isNotEmpty) return _ensureAddressHasTripCity(tail);
       }
     }
-    return clean;
+    return withCity;
+  }
+
+  String _ensureAddressHasTripCity(String rawAddress) {
+    final address = _normalizeSuggestText(rawAddress);
+    final tripCity = _normalizeSuggestText(widget.destinationCity ?? '');
+    if (address.isEmpty || tripCity.isEmpty) return address;
+
+    final lowerAddress = address.toLowerCase();
+    final lowerCity = tripCity.toLowerCase();
+    if (lowerAddress.contains(lowerCity)) return address;
+
+    if (address.endsWith(',')) {
+      return '$address $tripCity';
+    }
+    return '$address, $tripCity';
   }
 
   void _onOrgSuggestionTap(_OrgSuggestItem item) {
     _isPickingOrgSuggestion = true;
+    _orgSuggestDebounce?.cancel();
     _applyOrgSuggestion(item);
     _titleFocusNode.unfocus();
-    Future<void>.delayed(const Duration(milliseconds: 100), () {
-      _isPickingOrgSuggestion = false;
-    });
+    _isPickingOrgSuggestion = false;
   }
 
   void _applyOrgSuggestion(_OrgSuggestItem item) {
     final orgName = _normalizeSuggestText(item.title);
     final addr = _addressFromSubtitle(item.subtitle);
+    _titleCtrl.text = orgName;
+    _titleCtrl.selection = TextSelection.collapsed(offset: orgName.length);
+    _addressCtrl.text = addr;
+    _addressCtrl.selection = TextSelection.collapsed(offset: addr.length);
     setState(() {
-      _titleCtrl.text = orgName;
-      _titleCtrl.selection = TextSelection.collapsed(offset: _titleCtrl.text.length);
-      if (addr.isNotEmpty) {
-        _addressCtrl.text = addr;
-      }
       _orgSuggestions = const [];
       _orgSuggestLoading = false;
       _orgSuggestEnabled = false;
@@ -1757,13 +1778,14 @@ class _StageFormPageState extends State<StageFormPage> {
                                             )
                                           : Column(
                                               children: [
-                                                for (var i = 0; i < _orgSuggestions.length; i++) ...[
+                                                for (final entry
+                                                    in _orgSuggestions.asMap().entries) ...[
                                                   Material(
                                                     color: Colors.transparent,
                                                     child: GestureDetector(
                                                       behavior: HitTestBehavior.opaque,
                                                       onTapDown: (_) =>
-                                                          _onOrgSuggestionTap(_orgSuggestions[i]),
+                                                          _onOrgSuggestionTap(entry.value),
                                                       child: Padding(
                                                         padding: const EdgeInsets.symmetric(
                                                           horizontal: 10,
@@ -1776,7 +1798,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                                                 CrossAxisAlignment.start,
                                                             children: [
                                                               Text(
-                                                                _orgSuggestions[i].title,
+                                                                entry.value.title,
                                                                 textAlign: TextAlign.left,
                                                                 textDirection: TextDirection.ltr,
                                                                 maxLines: 1,
@@ -1788,12 +1810,12 @@ class _StageFormPageState extends State<StageFormPage> {
                                                                   fontWeight: FontWeight.w300,
                                                                 ),
                                                               ),
-                                                              if (_orgSuggestions[i]
+                                                              if (entry.value
                                                                   .subtitle
                                                                   .trim()
                                                                   .isNotEmpty)
                                                                 Text(
-                                                                  _orgSuggestions[i].subtitle,
+                                                                  entry.value.subtitle,
                                                                   textAlign: TextAlign.left,
                                                                   textDirection: TextDirection.ltr,
                                                                   maxLines: 1,
@@ -1812,7 +1834,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                                       ),
                                                     ),
                                                   ),
-                                                  if (i < _orgSuggestions.length - 1)
+                                                  if (entry.key < _orgSuggestions.length - 1)
                                                     Divider(
                                                       height: 1,
                                                       thickness: 1,
