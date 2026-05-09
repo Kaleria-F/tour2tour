@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 
 import 'dart:async';
@@ -213,6 +214,7 @@ class StageFormPage extends StatefulWidget {
 class _StageFormPageState extends State<StageFormPage> {
   static const String _yandexSuggestApiKey = 'e0dc35bf-6cce-44bf-a462-8f7bab2f8b92';
   static const String _yandexGeocoderApiKey = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
+  static final RegExp _moneyInputPattern = RegExp(r'^\d*([.,]\d{0,2})?$');
   static const int _assistantTrialLimit = 5;
   static const String _assistantTrialUsedKey =
       'stage_form_assistant_trial_used_v1';
@@ -2039,6 +2041,9 @@ class _StageFormPageState extends State<StageFormPage> {
                                         ),
                                         keyboardType:
                                             const TextInputType.numberWithOptions(decimal: true),
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(_moneyInputPattern),
+                                        ],
                                       ),
                                       const SizedBox(height: 8),
                                     ],

@@ -1,6 +1,9 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../api/api_client.dart';
 
@@ -24,6 +27,10 @@ class TripSummary {
   final DateTime startDate;
   final DateTime endDate;
   final int? plannedDays;
+  final String? cardColor;
+  final String? cardBackground;
+  final String? cardIcon;
+  final bool isArchived;
 
   TripSummary({
     required this.id,
@@ -32,6 +39,10 @@ class TripSummary {
     required this.startDate,
     required this.endDate,
     this.plannedDays,
+    this.cardColor,
+    this.cardBackground,
+    this.cardIcon,
+    this.isArchived = false,
   });
 
   factory TripSummary.fromJson(Map<String, dynamic> json) {
@@ -42,6 +53,10 @@ class TripSummary {
       startDate: _parseDateOrEpoch(json['start_date']),
       endDate: _parseDateOrEpoch(json['end_date']),
       plannedDays: int.tryParse((json['planned_days'] ?? '').toString()),
+      cardColor: json['card_color']?.toString(),
+      cardBackground: json['card_background']?.toString(),
+      cardIcon: json['card_icon']?.toString(),
+      isArchived: json['is_archived'] == true,
     );
   }
 }
@@ -198,6 +213,15 @@ class TripExpense {
       createdAt: _parseDateOrEpoch(json['created_at']),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'trip_id': tripId,
+        'description': description,
+        'amount_rub': amountRub,
+        'category': category,
+        'created_at': createdAt.toIso8601String(),
+      };
 }
 
 class TripStage {
@@ -285,6 +309,29 @@ class TripStage {
       documentKey: json['document_key']?.toString(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'trip_id': tripId,
+        'position': position,
+        'stage_type': stageType,
+        'subtype': subtype,
+        'title': title,
+        'start_location': startLocation,
+        'end_location': endLocation,
+        'address': address,
+        'latitude': latitude,
+        'longitude': longitude,
+        'start_time': startTime?.toIso8601String(),
+        'end_time': endTime?.toIso8601String(),
+        'duration_minutes': durationMinutes,
+        'cost_rub': costRub,
+        'reference_number': referenceNumber,
+        'notes': notes,
+        'website_url': websiteUrl,
+        'rating': rating,
+        'document_key': documentKey,
+      };
 }
 
 class StageSuggestion {
@@ -397,6 +444,152 @@ class TripsRepo {
   final ApiClient api;
   TripsRepo(this.api);
 
+  static const _stagesCachePrefix = 'offline_stages_trip_';
+  static const _expensesCachePrefix = 'offline_expenses_trip_';
+  static const _pendingOpsKey = 'offline_pending_ops_v1';
+  int _offlineIdSeed = -1;
+  bool get _offlineEnabled => !kIsWeb;
+
+  Future<SharedPreferences> _prefs() => SharedPreferences.getInstance();
+
+  Future<void> _saveStagesCache(int tripId, List<TripStage> items) async {
+    if (!_offlineEnabled) return;
+    final prefs = await _prefs();
+    final key = '$_stagesCachePrefix$tripId';
+    final payload = jsonEncode(items.map((e) => e.toJson()).toList());
+    await prefs.setString(key, payload);
+  }
+
+  Future<List<TripStage>> _loadStagesCache(int tripId) async {
+    if (!_offlineEnabled) return const [];
+    final prefs = await _prefs();
+    final raw = prefs.getString('$_stagesCachePrefix$tripId');
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final data = jsonDecode(raw);
+      if (data is! List) return const [];
+      return data
+          .whereType<Map>()
+          .map((m) => TripStage.fromJson(Map<String, dynamic>.from(m)))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _saveExpensesCache(int tripId, List<TripExpense> items) async {
+    if (!_offlineEnabled) return;
+    final prefs = await _prefs();
+    final key = '$_expensesCachePrefix$tripId';
+    final payload = jsonEncode(items.map((e) => e.toJson()).toList());
+    await prefs.setString(key, payload);
+  }
+
+  Future<List<TripExpense>> _loadExpensesCache(int tripId) async {
+    if (!_offlineEnabled) return const [];
+    final prefs = await _prefs();
+    final raw = prefs.getString('$_expensesCachePrefix$tripId');
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final data = jsonDecode(raw);
+      if (data is! List) return const [];
+      return data
+          .whereType<Map>()
+          .map((m) => TripExpense.fromJson(Map<String, dynamic>.from(m)))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadPendingOps() async {
+    if (!_offlineEnabled) return <Map<String, dynamic>>[];
+    final prefs = await _prefs();
+    final raw = prefs.getString(_pendingOpsKey);
+    if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
+    try {
+      final data = jsonDecode(raw);
+      if (data is! List) return <Map<String, dynamic>>[];
+      return data
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    } catch (_) {
+      return <Map<String, dynamic>>[];
+    }
+  }
+
+  Future<void> _savePendingOps(List<Map<String, dynamic>> ops) async {
+    if (!_offlineEnabled) return;
+    final prefs = await _prefs();
+    await prefs.setString(_pendingOpsKey, jsonEncode(ops));
+  }
+
+  int _nextOfflineId() {
+    _offlineIdSeed -= 1;
+    return _offlineIdSeed;
+  }
+
+  Future<void> _enqueueOp(Map<String, dynamic> op) async {
+    final ops = await _loadPendingOps();
+    ops.add(op);
+    await _savePendingOps(ops);
+  }
+
+  bool _isOfflineNetworkError(Object e) {
+    return e is DioException &&
+        (e.type == DioExceptionType.connectionError ||
+            e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.sendTimeout);
+  }
+
+  Future<void> _trySyncPendingOps() async {
+    if (!_offlineEnabled) return;
+    final ops = await _loadPendingOps();
+    if (ops.isEmpty) return;
+    final remained = <Map<String, dynamic>>[];
+    for (final op in ops) {
+      try {
+        final kind = (op['kind'] ?? '').toString();
+        if (kind == 'stage_create') {
+          final tripId = op['trip_id'] as int;
+          final data = Map<String, dynamic>.from(op['data'] as Map);
+          await api.dio.post('/trips/$tripId/stages', data: data);
+        } else if (kind == 'stage_update') {
+          final tripId = op['trip_id'] as int;
+          final stageId = op['stage_id'] as int;
+          final data = Map<String, dynamic>.from(op['data'] as Map);
+          await api.dio.patch('/trips/$tripId/stages/$stageId', data: data);
+        } else if (kind == 'stage_delete') {
+          final tripId = op['trip_id'] as int;
+          final stageId = op['stage_id'] as int;
+          if (stageId > 0) {
+            await api.dio.delete('/trips/$tripId/stages/$stageId');
+          }
+        } else if (kind == 'expense_create') {
+          final tripId = op['trip_id'] as int;
+          final data = Map<String, dynamic>.from(op['data'] as Map);
+          await api.dio.post('/trips/$tripId/expenses', data: data);
+        } else if (kind == 'expense_update') {
+          final tripId = op['trip_id'] as int;
+          final expenseId = op['expense_id'] as int;
+          final data = Map<String, dynamic>.from(op['data'] as Map);
+          await api.dio.patch('/trips/$tripId/expenses/$expenseId', data: data);
+        } else if (kind == 'expense_delete') {
+          final tripId = op['trip_id'] as int;
+          final expenseId = op['expense_id'] as int;
+          if (expenseId > 0) {
+            await api.dio.delete('/trips/$tripId/expenses/$expenseId');
+          }
+        }
+      } catch (_) {
+        remained.add(op);
+      }
+    }
+    await _savePendingOps(remained);
+  }
+
   Future<TripSummary?> createTrip({
     required String title,
     String? description,
@@ -404,6 +597,9 @@ class TripsRepo {
     required DateTime startDate,
     required DateTime endDate,
     int? plannedDays,
+    String? cardColor,
+    String? cardBackground,
+    String? cardIcon,
   }) async {
     final res = await api.dio.post(
       '/trips/',
@@ -414,6 +610,9 @@ class TripsRepo {
         'start_date': startDate.toIso8601String().split('T')[0],
         'end_date': endDate.toIso8601String().split('T')[0],
         'planned_days': plannedDays,
+        'card_color': cardColor,
+        'card_background': cardBackground,
+        'card_icon': cardIcon,
       },
     );
     final data = res.data;
@@ -427,6 +626,10 @@ class TripsRepo {
     DateTime? startDate,
     DateTime? endDate,
     int? plannedDays,
+    String? cardColor,
+    String? cardBackground,
+    String? cardIcon,
+    bool? isArchived,
     bool includePlannedDays = false,
     bool confirmTrim = false,
   }) async {
@@ -439,6 +642,10 @@ class TripsRepo {
       payload['end_date'] = endDate.toIso8601String().split('T')[0];
     }
     if (includePlannedDays) payload['planned_days'] = plannedDays;
+    if (cardColor != null) payload['card_color'] = cardColor;
+    if (cardBackground != null) payload['card_background'] = cardBackground;
+    if (cardIcon != null) payload['card_icon'] = cardIcon;
+    if (isArchived != null) payload['is_archived'] = isArchived;
     if (confirmTrim) payload['confirm_trim'] = true;
     final res = await api.dio.patch('/trips/$tripId', data: payload);
     final data = res.data;
@@ -454,6 +661,10 @@ class TripsRepo {
         .whereType<Map>()
         .map((raw) => TripSummary.fromJson(Map<String, dynamic>.from(raw)))
         .toList();
+  }
+
+  Future<void> deleteTrip(int tripId) async {
+    await api.dio.delete('/trips/$tripId');
   }
 
   Future<List<CitySuggestion>> suggestCities(String query, {int limit = 8}) async {
@@ -475,13 +686,23 @@ class TripsRepo {
   }
 
   Future<List<TripExpense>> listExpenses(int tripId) async {
-    final res = await api.dio.get('/trips/$tripId/expenses');
-    final data = res.data;
-    if (data is! List) return [];
-    return data
-        .whereType<Map>()
-        .map((raw) => TripExpense.fromJson(Map<String, dynamic>.from(raw)))
-        .toList();
+    try {
+      await _trySyncPendingOps();
+      final res = await api.dio.get('/trips/$tripId/expenses');
+      final data = res.data;
+      if (data is! List) return [];
+      final items = data
+          .whereType<Map>()
+          .map((raw) => TripExpense.fromJson(Map<String, dynamic>.from(raw)))
+          .toList();
+      await _saveExpensesCache(tripId, items);
+      return items;
+    } catch (e) {
+      if (_isOfflineNetworkError(e)) {
+        return _loadExpensesCache(tripId);
+      }
+      rethrow;
+    }
   }
 
   Future<TripExpense?> createExpense({
@@ -490,17 +711,34 @@ class TripsRepo {
     required double amountRub,
     required String category,
   }) async {
-    final res = await api.dio.post(
-      '/trips/$tripId/expenses',
-      data: {
-        'description': description,
-        'amount_rub': amountRub.toStringAsFixed(2),
-        'category': category,
-      },
-    );
-    final data = res.data;
-    if (data is! Map<String, dynamic>) return null;
-    return TripExpense.fromJson(data);
+    final payload = {
+      'description': description,
+      'amount_rub': amountRub.toStringAsFixed(2),
+      'category': category,
+    };
+    try {
+      final res = await api.dio.post('/trips/$tripId/expenses', data: payload);
+      final data = res.data;
+      if (data is! Map<String, dynamic>) return null;
+      final created = TripExpense.fromJson(data);
+      final cached = await _loadExpensesCache(tripId);
+      await _saveExpensesCache(tripId, [created, ...cached.where((e) => e.id != created.id)]);
+      return created;
+    } catch (e) {
+      if (!_isOfflineNetworkError(e)) rethrow;
+      final local = TripExpense(
+        id: _nextOfflineId(),
+        tripId: tripId,
+        description: description,
+        amountRub: amountRub,
+        category: category,
+        createdAt: DateTime.now(),
+      );
+      final cached = await _loadExpensesCache(tripId);
+      await _saveExpensesCache(tripId, [local, ...cached]);
+      await _enqueueOp({'kind': 'expense_create', 'trip_id': tripId, 'data': payload});
+      return local;
+    }
   }
 
   Future<TripExpense?> updateExpense({
@@ -515,30 +753,85 @@ class TripsRepo {
     if (amountRub != null) patch['amount_rub'] = amountRub.toStringAsFixed(2);
     if (category != null) patch['category'] = category;
 
-    final res = await api.dio.patch(
-      '/trips/$tripId/expenses/$expenseId',
-      data: patch,
-    );
-    final data = res.data;
-    if (data is! Map<String, dynamic>) return null;
-    return TripExpense.fromJson(data);
+    try {
+      final res = await api.dio.patch('/trips/$tripId/expenses/$expenseId', data: patch);
+      final data = res.data;
+      if (data is! Map<String, dynamic>) return null;
+      final updated = TripExpense.fromJson(data);
+      final cached = await _loadExpensesCache(tripId);
+      final next = cached.map((e) => e.id == updated.id ? updated : e).toList();
+      await _saveExpensesCache(tripId, next);
+      return updated;
+    } catch (e) {
+      if (!_isOfflineNetworkError(e)) rethrow;
+      final cached = await _loadExpensesCache(tripId);
+      final idx = cached.indexWhere((e) => e.id == expenseId);
+      if (idx < 0) return null;
+      final prev = cached[idx];
+      final local = TripExpense(
+        id: prev.id,
+        tripId: prev.tripId,
+        description: description ?? prev.description,
+        amountRub: amountRub ?? prev.amountRub,
+        category: category ?? prev.category,
+        createdAt: prev.createdAt,
+      );
+      cached[idx] = local;
+      await _saveExpensesCache(tripId, cached);
+      if (expenseId > 0) {
+        await _enqueueOp({
+          'kind': 'expense_update',
+          'trip_id': tripId,
+          'expense_id': expenseId,
+          'data': patch,
+        });
+      }
+      return local;
+    }
   }
 
   Future<void> deleteExpense({
     required int tripId,
     required int expenseId,
   }) async {
-    await api.dio.delete('/trips/$tripId/expenses/$expenseId');
+    try {
+      await api.dio.delete('/trips/$tripId/expenses/$expenseId');
+    } catch (e) {
+      if (!_isOfflineNetworkError(e)) rethrow;
+      if (expenseId > 0) {
+        await _enqueueOp({
+          'kind': 'expense_delete',
+          'trip_id': tripId,
+          'expense_id': expenseId,
+        });
+      }
+    } finally {
+      final cached = await _loadExpensesCache(tripId);
+      await _saveExpensesCache(
+        tripId,
+        cached.where((e) => e.id != expenseId).toList(),
+      );
+    }
   }
 
   Future<List<TripStage>> listStages(int tripId) async {
-    final res = await api.dio.get('/trips/$tripId/stages');
-    final data = res.data;
-    if (data is! List) return [];
-    return data
-        .whereType<Map>()
-        .map((raw) => TripStage.fromJson(Map<String, dynamic>.from(raw)))
-        .toList();
+    try {
+      await _trySyncPendingOps();
+      final res = await api.dio.get('/trips/$tripId/stages');
+      final data = res.data;
+      if (data is! List) return [];
+      final items = data
+          .whereType<Map>()
+          .map((raw) => TripStage.fromJson(Map<String, dynamic>.from(raw)))
+          .toList();
+      await _saveStagesCache(tripId, items);
+      return items;
+    } catch (e) {
+      if (_isOfflineNetworkError(e)) {
+        return _loadStagesCache(tripId);
+      }
+      rethrow;
+    }
   }
 
   Future<TripStage?> createStage({
@@ -561,31 +854,66 @@ class TripsRepo {
     double? rating,
     String? documentKey,
   }) async {
-    final res = await api.dio.post(
-      '/trips/$tripId/stages',
-      data: {
-        'stage_type': stageType,
-        'subtype': subtype,
-        'title': title,
-        'start_location': startLocation,
-        'end_location': endLocation,
-        'address': address,
-        'latitude': latitude,
-        'longitude': longitude,
-        'start_time': startTime?.toIso8601String(),
-        'end_time': endTime?.toIso8601String(),
-        'duration_minutes': durationMinutes,
-        'cost_rub': costRub?.toStringAsFixed(2),
-        'reference_number': referenceNumber,
-        'notes': notes,
-        'website_url': websiteUrl,
-        'rating': rating,
-        'document_key': documentKey,
-      },
-    );
-    final data = res.data;
-    if (data is! Map<String, dynamic>) return null;
-    return TripStage.fromJson(data);
+    final payload = {
+      'stage_type': stageType,
+      'subtype': subtype,
+      'title': title,
+      'start_location': startLocation,
+      'end_location': endLocation,
+      'address': address,
+      'latitude': latitude,
+      'longitude': longitude,
+      'start_time': startTime?.toIso8601String(),
+      'end_time': endTime?.toIso8601String(),
+      'duration_minutes': durationMinutes,
+      'cost_rub': costRub?.toStringAsFixed(2),
+      'reference_number': referenceNumber,
+      'notes': notes,
+      'website_url': websiteUrl,
+      'rating': rating,
+      'document_key': documentKey,
+    };
+    try {
+      final res = await api.dio.post('/trips/$tripId/stages', data: payload);
+      final data = res.data;
+      if (data is! Map<String, dynamic>) return null;
+      final created = TripStage.fromJson(data);
+      final cached = await _loadStagesCache(tripId);
+      await _saveStagesCache(
+        tripId,
+        [...cached.where((s) => s.id != created.id), created]
+          ..sort((a, b) => a.position.compareTo(b.position)),
+      );
+      return created;
+    } catch (e) {
+      if (!_isOfflineNetworkError(e)) rethrow;
+      final cached = await _loadStagesCache(tripId);
+      final local = TripStage(
+        id: _nextOfflineId(),
+        tripId: tripId,
+        position: cached.length,
+        stageType: stageType,
+        subtype: subtype,
+        title: title,
+        startLocation: startLocation,
+        endLocation: endLocation,
+        address: address,
+        latitude: latitude,
+        longitude: longitude,
+        startTime: startTime,
+        endTime: endTime,
+        durationMinutes: durationMinutes,
+        costRub: costRub,
+        referenceNumber: referenceNumber,
+        notes: notes,
+        websiteUrl: websiteUrl,
+        rating: rating,
+        documentKey: documentKey,
+      );
+      await _saveStagesCache(tripId, [...cached, local]);
+      await _enqueueOp({'kind': 'stage_create', 'trip_id': tripId, 'data': payload});
+      return local;
+    }
   }
 
   Future<TripStage?> updateStage({
@@ -593,17 +921,106 @@ class TripsRepo {
     required int stageId,
     required Map<String, dynamic> patch,
   }) async {
-    final res = await api.dio.patch(
-      '/trips/$tripId/stages/$stageId',
-      data: patch,
-    );
-    final data = res.data;
-    if (data is! Map<String, dynamic>) return null;
-    return TripStage.fromJson(data);
+    try {
+      final res = await api.dio.patch('/trips/$tripId/stages/$stageId', data: patch);
+      final data = res.data;
+      if (data is! Map<String, dynamic>) return null;
+      final updated = TripStage.fromJson(data);
+      final cached = await _loadStagesCache(tripId);
+      final next = cached.map((s) => s.id == stageId ? updated : s).toList();
+      await _saveStagesCache(tripId, next);
+      return updated;
+    } catch (e) {
+      if (!_isOfflineNetworkError(e)) rethrow;
+      final cached = await _loadStagesCache(tripId);
+      final idx = cached.indexWhere((s) => s.id == stageId);
+      if (idx < 0) return null;
+      final s = cached[idx];
+      final local = TripStage(
+        id: s.id,
+        tripId: s.tripId,
+        position: patch['position'] is int ? patch['position'] as int : s.position,
+        stageType: (patch['stage_type'] ?? s.stageType).toString(),
+        subtype: (patch['subtype'] ?? s.subtype).toString(),
+        title: (patch['title'] ?? s.title).toString(),
+        startLocation: patch['start_location']?.toString() ?? s.startLocation,
+        endLocation: patch['end_location']?.toString() ?? s.endLocation,
+        address: patch['address']?.toString() ?? s.address,
+        latitude: patch['latitude'] is num ? (patch['latitude'] as num).toDouble() : s.latitude,
+        longitude: patch['longitude'] is num ? (patch['longitude'] as num).toDouble() : s.longitude,
+        startTime: patch['start_time'] != null
+            ? DateTime.tryParse(patch['start_time'].toString())
+            : s.startTime,
+        endTime: patch['end_time'] != null
+            ? DateTime.tryParse(patch['end_time'].toString())
+            : s.endTime,
+        durationMinutes: patch['duration_minutes'] is int
+            ? patch['duration_minutes'] as int
+            : s.durationMinutes,
+        costRub: patch['cost_rub'] != null
+            ? double.tryParse(patch['cost_rub'].toString())
+            : s.costRub,
+        referenceNumber: patch['reference_number']?.toString() ?? s.referenceNumber,
+        notes: patch['notes']?.toString() ?? s.notes,
+        websiteUrl: patch['website_url']?.toString() ?? s.websiteUrl,
+        rating: patch['rating'] is num ? (patch['rating'] as num).toDouble() : s.rating,
+        documentKey: patch['document_key']?.toString() ?? s.documentKey,
+      );
+      cached[idx] = local;
+      await _saveStagesCache(tripId, cached);
+      if (stageId > 0) {
+        await _enqueueOp({
+          'kind': 'stage_update',
+          'trip_id': tripId,
+          'stage_id': stageId,
+          'data': patch,
+        });
+      }
+      return local;
+    }
   }
 
   Future<void> deleteStage({required int tripId, required int stageId}) async {
-    await api.dio.delete('/trips/$tripId/stages/$stageId');
+    try {
+      await api.dio.delete('/trips/$tripId/stages/$stageId');
+    } catch (e) {
+      if (!_isOfflineNetworkError(e)) rethrow;
+      if (stageId > 0) {
+        await _enqueueOp({
+          'kind': 'stage_delete',
+          'trip_id': tripId,
+          'stage_id': stageId,
+        });
+      }
+    } finally {
+      final cached = await _loadStagesCache(tripId);
+      final next = cached.where((s) => s.id != stageId).toList();
+      for (var i = 0; i < next.length; i++) {
+        next[i] = TripStage(
+          id: next[i].id,
+          tripId: next[i].tripId,
+          position: i,
+          stageType: next[i].stageType,
+          subtype: next[i].subtype,
+          title: next[i].title,
+          startLocation: next[i].startLocation,
+          endLocation: next[i].endLocation,
+          address: next[i].address,
+          latitude: next[i].latitude,
+          longitude: next[i].longitude,
+          startTime: next[i].startTime,
+          endTime: next[i].endTime,
+          durationMinutes: next[i].durationMinutes,
+          costRub: next[i].costRub,
+          referenceNumber: next[i].referenceNumber,
+          notes: next[i].notes,
+          websiteUrl: next[i].websiteUrl,
+          rating: next[i].rating,
+          documentKey: next[i].documentKey,
+        );
+      }
+      await _saveStagesCache(tripId, next);
+    }
   }
 
   Future<TripStage?> copyStage({

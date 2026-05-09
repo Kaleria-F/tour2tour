@@ -173,6 +173,9 @@
               title: String((point && point.title) || '').trim(),
               address: String((point && point.address) || '').trim(),
               order: String((point && point.order) || '').trim(),
+              time: String((point && point.time) || '').trim(),
+              cost: String((point && point.cost) || '').trim(),
+              notes: String((point && point.notes) || '').trim(),
             }))
             .filter((point) => normalizeQuery(point.address).length > 0);
         } catch (_) {
@@ -429,6 +432,127 @@
         }
       }
 
+      function ensureStageInfoCard(state) {
+        if (!state || !state.container) return null;
+        if (state.stageInfoCard) return state.stageInfoCard;
+        const card = document.createElement('div');
+        card.style.position = 'absolute';
+        card.style.left = '12px';
+        card.style.right = '12px';
+        card.style.bottom = '8px';
+        card.style.zIndex = '8';
+        card.style.display = 'block';
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.transition = 'opacity .18s ease, transform .18s ease';
+        card.style.pointerEvents = 'auto';
+        card.style.padding = '10px 12px';
+        card.style.border = '1px solid rgba(255,255,255,.2)';
+        card.style.borderRadius = '14px';
+        card.style.background = 'rgba(19,24,41,.94)';
+        card.style.color = '#e9eefc';
+        card.style.fontFamily = '"Geologica", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        card.style.fontSize = '13px';
+        card.style.boxShadow = '0 8px 20px rgba(0,0,0,.3)';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.marginBottom = '6px';
+
+        const title = document.createElement('div');
+        title.style.fontWeight = '700';
+        title.style.fontSize = '15px';
+        title.style.color = '#ffffff';
+        title.textContent = 'Этап';
+
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.textContent = '✕';
+        close.style.border = 'none';
+        close.style.background = 'transparent';
+        close.style.color = 'rgba(255,255,255,.82)';
+        close.style.fontSize = '16px';
+        close.style.cursor = 'pointer';
+        close.addEventListener('click', () => hideStageInfo(state));
+
+        header.appendChild(title);
+        header.appendChild(close);
+
+        const body = document.createElement('div');
+        body.style.display = 'grid';
+        body.style.gap = '3px';
+
+        card.appendChild(header);
+        card.appendChild(body);
+        state.container.appendChild(card);
+        state.stageInfoCard = card;
+        state.stageInfoTitle = title;
+        state.stageInfoBody = body;
+        return card;
+      }
+
+      function hideStageInfo(state) {
+        if (!state || !state.stageInfoCard) return;
+        state.stageInfoCard.style.opacity = '0';
+        state.stageInfoCard.style.transform = 'translateY(20px)';
+        state.selectedStageInfo = null;
+      }
+
+      function showStageInfo(state, point) {
+        if (!state || !point) return;
+        ensureStageInfoCard(state);
+        if (!state.stageInfoCard || !state.stageInfoBody || !state.stageInfoTitle) return;
+        state.selectedStageInfo = point;
+        state.stageInfoTitle.textContent = point.title || 'Этап';
+        const lines = [];
+        if (point.time) lines.push(`Время: ${point.time}`);
+        if (point.cost) lines.push(`Стоимость: ${point.cost}`);
+        if (point.address) lines.push(`Адрес: ${point.address}`);
+        if (point.notes) lines.push(`Комментарий: ${point.notes}`);
+        state.stageInfoBody.innerHTML = '';
+        if (!lines.length) {
+          const row = document.createElement('div');
+          row.style.color = 'rgba(223,230,255,.84)';
+          row.textContent = 'Нет дополнительных данных';
+          state.stageInfoBody.appendChild(row);
+        } else {
+          lines.forEach((line) => {
+            const row = document.createElement('div');
+            row.style.color = 'rgba(223,230,255,.92)';
+            row.style.lineHeight = '1.25';
+            row.textContent = line;
+            state.stageInfoBody.appendChild(row);
+          });
+        }
+        state.stageInfoCard.style.opacity = '1';
+        state.stageInfoCard.style.transform = 'translateY(0)';
+      }
+
+      function bindLongPress(element, callback) {
+        let timer = null;
+        const start = () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            timer = null;
+            callback();
+          }, 520);
+        };
+        const cancel = () => {
+          if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
+        };
+        element.addEventListener('mousedown', start);
+        element.addEventListener('touchstart', start, { passive: true });
+        element.addEventListener('mouseup', cancel);
+        element.addEventListener('mouseleave', cancel);
+        element.addEventListener('touchend', cancel);
+        element.addEventListener('touchcancel', cancel);
+      }
+
       function formatDistance(meters) {
         if (meters >= 1000) return `${(meters / 1000).toFixed(1)} км`;
         return `${Math.round(meters)} м`;
@@ -617,6 +741,10 @@
             points.push({
               coords: coords,
               title: point.title || point.address,
+              address: point.address || '',
+              time: point.time || '',
+              cost: point.cost || '',
+              notes: point.notes || '',
               markerOrder: orderCounter,
               isPrimary: false,
             });
@@ -698,6 +826,9 @@
             updateMarkerSelectionVisual(state);
             await buildRouteIfReady(state);
           });
+          bindLongPress(markerElement, () => {
+            showStageInfo(state, point);
+          });
           markerElement.title = point.title || '';
           const marker = new YMapMarker(
             { coordinates: point.coords },
@@ -709,6 +840,7 @@
             isPrimary: point.isPrimary,
             element: markerElement,
             coords: point.coords,
+            point: point,
           });
         });
         updateMarkerSelectionVisual(state);

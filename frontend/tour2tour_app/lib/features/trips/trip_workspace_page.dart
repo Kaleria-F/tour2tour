@@ -1,9 +1,10 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../documents/documents_repo.dart';
@@ -53,6 +54,13 @@ class TripWorkspacePage extends StatefulWidget {
 }
 
 class _TripWorkspacePageState extends State<TripWorkspacePage> {
+  static const Color _popupBg = Color(0xFF1D222A);
+  static const Color _popupBorder = Color(0xFF3A4751);
+  static const Color _popupFieldBg = Color(0xFF2A2F36);
+  static const Color _popupText = Color(0xFFF2F4F8);
+  static const Color _popupSubtleText = Color(0xFFB7BDC8);
+  static const Color _popupAccent = Color(0xFFD7E37A);
+
   static const _accent = Color(0xFFD7E37A);
 
   late String _tripTitle;
@@ -192,6 +200,74 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       ),
     );
     if (result == null) return;
+    if (result.action == _TripSettingsAction.archive) {
+      try {
+        final updated = await widget.tripsRepo.updateTrip(
+          tripId: widget.tripId!,
+          isArchived: true,
+        );
+        if (!mounted) return;
+        if (updated == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Не удалось перенести путешествие в архив')),
+          );
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Путешествие перенесено в архив')),
+        );
+        context.go('/profile');
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось перенести путешествие в архив')),
+        );
+      }
+      return;
+    }
+    if (result.action == _TripSettingsAction.delete) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1F24),
+          title: const Text(
+            'Удалить путешествие?',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            'Путешествие и связанные с ним этапы/расходы будут удалены без возможности восстановления.',
+            style: TextStyle(color: Colors.white70, height: 1.35),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              style: TextButton.styleFrom(foregroundColor: Colors.white70),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(foregroundColor: const Color(0xFFD7E37A)),
+              child: const Text('Удалить'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      try {
+        await widget.tripsRepo.deleteTrip(widget.tripId!);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Путешествие удалено')),
+        );
+        context.go('/profile');
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось удалить путешествие')),
+        );
+      }
+      return;
+    }
 
     final currentStart = _tripStartDate ?? DateTime.now();
     final currentEnd = _tripEndDate ?? currentStart;
@@ -1188,13 +1264,50 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Название документа'),
+          backgroundColor: _popupBg,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+            side: const BorderSide(color: _popupBorder),
+          ),
+          title: const Text(
+            'Название документа',
+            style: TextStyle(
+              color: _popupText,
+              fontFamily: 'Geologica',
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           content: TextField(
             controller: controller,
             autofocus: true,
+            style: const TextStyle(
+              color: _popupText,
+              fontFamily: 'Geologica',
+            ),
             decoration: const InputDecoration(
               labelText: 'Введите название',
               hintText: 'Например: Билет Москва-СПб',
+              labelStyle: TextStyle(
+                color: _popupSubtleText,
+                fontFamily: 'Geologica',
+              ),
+              hintStyle: TextStyle(
+                color: _popupSubtleText,
+                fontFamily: 'Geologica',
+              ),
+              filled: true,
+              fillColor: _popupFieldBg,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(16)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(16)),
+                borderSide: BorderSide(color: _popupBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(16)),
+                borderSide: BorderSide(color: _popupAccent),
+              ),
             ),
             textInputAction: TextInputAction.done,
             onSubmitted: (_) {
@@ -1207,9 +1320,23 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Отмена'),
+              child: const Text(
+                'Отмена',
+                style: TextStyle(
+                  color: _popupSubtleText,
+                  fontFamily: 'Geologica',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _popupAccent,
+                foregroundColor: const Color(0xFF161616),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
               onPressed: () {
                 final value = controller.text.trim();
                 if (value.isEmpty) return;
@@ -1339,13 +1466,41 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
     final stagePoints = <Map<String, String>>[];
     var routeOrder = 1;
+    String fmtHm(DateTime? dt) {
+      if (dt == null) return '';
+      final h = dt.hour.toString().padLeft(2, '0');
+      final m = dt.minute.toString().padLeft(2, '0');
+      return '$h:$m';
+    }
+
+    String stageTimeRange(TripStage stage) {
+      final start = fmtHm(stage.startTime);
+      final end = fmtHm(stage.endTime);
+      if (start.isNotEmpty && end.isNotEmpty) return '$start - $end';
+      if (start.isNotEmpty) return start;
+      if (end.isNotEmpty) return end;
+      return '';
+    }
+
     for (final stage in orderedStages) {
-      final address = (stage.address ?? '').trim();
+      final address = ((stage.address ?? '').trim().isNotEmpty
+              ? (stage.address ?? '').trim()
+              : ((stage.endLocation ?? '').trim().isNotEmpty
+                  ? (stage.endLocation ?? '').trim()
+                  : (stage.startLocation ?? '').trim()))
+          .trim();
       if (address.isEmpty) continue;
+      final time = stageTimeRange(stage);
+      final duration = stage.durationMinutes != null && stage.durationMinutes! > 0
+          ? '${stage.durationMinutes} мин'
+          : '';
       stagePoints.add({
         'title': stage.title.trim(),
         'address': address,
         'order': '$routeOrder',
+        'time': time.isNotEmpty ? time : duration,
+        'cost': stage.costRub == null ? '' : '${stage.costRub!.toStringAsFixed(2)} руб.',
+        'notes': (stage.notes ?? '').trim(),
       });
       routeOrder += 1;
     }
@@ -1912,15 +2067,47 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
             children: [
               PopupMenuButton<String>(
                 tooltip: 'Сортировка',
+                color: _popupBg,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: const BorderSide(color: _popupBorder),
+                ),
                 onSelected: (value) {
                   setState(() {
                     _sortMode = value;
                   });
                 },
                 itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'none', child: Text('Без сортировки')),
-                  PopupMenuItem(value: 'asc', child: Text('По возрастанию')),
-                  PopupMenuItem(value: 'desc', child: Text('По убыванию')),
+                  PopupMenuItem(
+                    value: 'none',
+                    child: Text(
+                      'Без сортировки',
+                      style: TextStyle(
+                        color: _popupText,
+                        fontFamily: 'Geologica',
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'asc',
+                    child: Text(
+                      'По возрастанию',
+                      style: TextStyle(
+                        color: _popupText,
+                        fontFamily: 'Geologica',
+                      ),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'desc',
+                    child: Text(
+                      'По убыванию',
+                      style: TextStyle(
+                        color: _popupText,
+                        fontFamily: 'Geologica',
+                      ),
+                    ),
+                  ),
                 ],
                 child: Container(
                   width: 34,
@@ -1943,24 +2130,44 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                   height: 34,
                   padding: const EdgeInsets.symmetric(horizontal: 10),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.black.withOpacity(0.08)),
+                    color: _popupFieldBg,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _popupBorder),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: _categoryFilter,
+                      dropdownColor: _popupBg,
+                      iconEnabledColor: _popupAccent,
+                      style: const TextStyle(
+                        color: _popupText,
+                        fontFamily: 'Geologica',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                       isExpanded: true,
                       isDense: true,
                       items: [
-                        const DropdownMenuItem(
+                        const DropdownMenuItem<String>(
                           value: 'all',
-                          child: Text('Все категории'),
+                          child: Text(
+                            'Все категории',
+                            style: TextStyle(
+                              color: _popupText,
+                              fontFamily: 'Geologica',
+                            ),
+                          ),
                         ),
                         ..._categories.entries.map(
                           (e) => DropdownMenuItem(
                             value: e.key,
-                            child: Text(e.value),
+                            child: Text(
+                              e.value,
+                              style: const TextStyle(
+                                color: _popupText,
+                                fontFamily: 'Geologica',
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -2390,6 +2597,11 @@ class _DocumentPreviewDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      backgroundColor: const Color(0xFF1D222A),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: const BorderSide(color: Color(0xFF3A4751)),
+      ),
       child: SizedBox(
         width: 900,
         height: MediaQuery.of(context).size.height * 0.8,
@@ -2404,17 +2616,24 @@ class _DocumentPreviewDialog extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        color: Color(0xFFF2F4F8),
+                        fontFamily: 'Geologica',
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Color(0xFFD7E37A),
+                    ),
                   ),
                 ],
               ),
             ),
-            const Divider(height: 1),
+            const Divider(height: 1, color: Color(0xFF3A4751)),
             Expanded(
               child: fileType == 'pdf'
                   ? PdfMemoryPreview(bytes: fileBytes)
@@ -2428,7 +2647,10 @@ class _DocumentPreviewDialog extends StatelessWidget {
                           errorBuilder: (context, error, stackTrace) {
                             return const Text(
                               'Не удалось отобразить изображение',
-                              style: TextStyle(color: Colors.black54),
+                              style: TextStyle(
+                                color: Color(0xFFB7BDC8),
+                                fontFamily: 'Geologica',
+                              ),
                             );
                           },
                         ),
@@ -2569,6 +2791,7 @@ class _AddExpenseDialog extends StatefulWidget {
 }
 
 class _AddExpenseDialogState extends State<_AddExpenseDialog> {
+  static final RegExp _moneyInputPattern = RegExp(r'^\d*([.,]\d{0,2})?$');
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _descriptionCtrl;
   late final TextEditingController _amountCtrl;
@@ -2597,8 +2820,26 @@ class _AddExpenseDialogState extends State<_AddExpenseDialog> {
 
   @override
   Widget build(BuildContext context) {
+    const bg = Color(0xFF1D222A);
+    const border = Color(0xFF3A4751);
+    const fieldBg = Color(0xFF2A2F36);
+    const text = Color(0xFFF2F4F8);
+    const subtle = Color(0xFFB7BDC8);
+    const accent = Color(0xFFD7E37A);
     return AlertDialog(
-      title: Text(widget.title),
+      backgroundColor: bg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(24),
+        side: const BorderSide(color: border),
+      ),
+      title: Text(
+        widget.title,
+        style: const TextStyle(
+          color: text,
+          fontFamily: 'Geologica',
+          fontWeight: FontWeight.w700,
+        ),
+      ),
       content: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -2607,7 +2848,24 @@ class _AddExpenseDialogState extends State<_AddExpenseDialog> {
             children: [
               TextFormField(
                 controller: _descriptionCtrl,
-                decoration: const InputDecoration(labelText: 'Описание'),
+                style: const TextStyle(color: text, fontFamily: 'Geologica'),
+                decoration: const InputDecoration(
+                  labelText: 'Описание',
+                  labelStyle: TextStyle(color: subtle, fontFamily: 'Geologica'),
+                  filled: true,
+                  fillColor: fieldBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                    borderSide: BorderSide(color: border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                    borderSide: BorderSide(color: accent),
+                  ),
+                ),
                 validator: (v) {
                   if ((v ?? '').trim().isEmpty) {
                     return 'Введите описание';
@@ -2621,7 +2879,27 @@ class _AddExpenseDialogState extends State<_AddExpenseDialog> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(labelText: 'Сумма (руб)'),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(_moneyInputPattern),
+                ],
+                style: const TextStyle(color: text, fontFamily: 'Geologica'),
+                decoration: const InputDecoration(
+                  labelText: 'Сумма (руб)',
+                  labelStyle: TextStyle(color: subtle, fontFamily: 'Geologica'),
+                  filled: true,
+                  fillColor: fieldBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                    borderSide: BorderSide(color: border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                    borderSide: BorderSide(color: accent),
+                  ),
+                ),
                 validator: (v) {
                   final raw = (v ?? '').trim().replaceAll(',', '.');
                   final amount = double.tryParse(raw);
@@ -2634,12 +2912,41 @@ class _AddExpenseDialogState extends State<_AddExpenseDialog> {
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 value: _category,
-                decoration: const InputDecoration(labelText: 'Категория'),
+                dropdownColor: bg,
+                style: const TextStyle(
+                  color: text,
+                  fontFamily: 'Geologica',
+                  fontWeight: FontWeight.w500,
+                ),
+                iconEnabledColor: accent,
+                decoration: const InputDecoration(
+                  labelText: 'Категория',
+                  labelStyle: TextStyle(color: subtle, fontFamily: 'Geologica'),
+                  filled: true,
+                  fillColor: fieldBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                    borderSide: BorderSide(color: border),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                    borderSide: BorderSide(color: accent),
+                  ),
+                ),
                 items: widget.categories.entries
                     .map(
                       (e) => DropdownMenuItem<String>(
                         value: e.key,
-                        child: Text(e.value),
+                        child: Text(
+                          e.value,
+                          style: const TextStyle(
+                            color: text,
+                            fontFamily: 'Geologica',
+                          ),
+                        ),
                       ),
                     )
                     .toList(),
@@ -2657,9 +2964,23 @@ class _AddExpenseDialogState extends State<_AddExpenseDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Отмена'),
+          child: const Text(
+            'Отмена',
+            style: TextStyle(
+              color: subtle,
+              fontFamily: 'Geologica',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
         ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: accent,
+            foregroundColor: const Color(0xFF161616),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
           onPressed: () {
             if (!(_formKey.currentState?.validate() ?? false)) return;
             Navigator.pop(
@@ -2871,6 +3192,7 @@ class _StageFormPage extends StatefulWidget {
 }
 
 class _StageFormPageState extends State<_StageFormPage> {
+  static final RegExp _moneyInputPattern = RegExp(r'^\d*([.,]\d{0,2})?$');
   static const Map<String, String> _subtypeLabels = <String, String>{
     'road': 'Дорога',
     'airplane': 'Самолет',
@@ -3588,6 +3910,9 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         ),
                                         keyboardType:
                                             const TextInputType.numberWithOptions(decimal: true),
+                                        inputFormatters: [
+                                          FilteringTextInputFormatter.allow(_moneyInputPattern),
+                                        ],
                                       ),
                                       const SizedBox(height: 8),
                                     ],
@@ -3902,6 +4227,9 @@ class _StageFormPageState extends State<_StageFormPage> {
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                     decoration: InputDecoration(labelText: isFood ? 'Сколько потрачу, руб' : 'Стоимость, руб'),
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.allow(_moneyInputPattern),
+                                    ],
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -4588,18 +4916,22 @@ class _RouteDayStrip extends StatelessWidget {
 }
 
 class _TripSettingsResult {
+  final _TripSettingsAction action;
   final String title;
   final DateTime startDate;
   final DateTime endDate;
   final int? plannedDays;
 
   const _TripSettingsResult({
+    this.action = _TripSettingsAction.save,
     required this.title,
     required this.startDate,
     required this.endDate,
     required this.plannedDays,
   });
 }
+
+enum _TripSettingsAction { save, delete, archive }
 
 class _TripSettingsDialog extends StatefulWidget {
   final String initialTitle;
@@ -4658,9 +4990,119 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
       lastDate: DateTime(2035),
       initialDateRange: DateTimeRange(start: _startDate, end: _endDate),
       locale: const Locale('ru', 'RU'),
-      helpText: 'Выберите период поездки',
+      helpText: 'Период поездки',
       cancelText: 'Отмена',
       saveText: 'ОК',
+      fieldStartLabelText: 'Начало',
+      fieldEndLabelText: 'Окончание',
+      fieldStartHintText: 'дд.мм.гггг',
+      fieldEndHintText: 'дд.мм.гггг',
+      errorFormatText: 'Неверный формат даты',
+      errorInvalidText: 'Неверный диапазон дат',
+      errorInvalidRangeText: 'Дата окончания раньше даты начала',
+      switchToInputEntryModeIcon:
+          const Icon(Icons.edit_outlined, color: Color(0xFFD7E37A)),
+      switchToCalendarEntryModeIcon:
+          const Icon(Icons.calendar_month_rounded, color: Color(0xFFD7E37A)),
+      builder: (dialogContext, child) {
+        final theme = Theme.of(dialogContext);
+        return Theme(
+          data: theme.copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: Color(0xFFD7E37A),
+              onPrimary: Color(0xFF161616),
+              surface: Color(0xFF1E1F24),
+              onSurface: Colors.white,
+            ),
+            textTheme: theme.textTheme.apply(
+              fontFamily: 'Geologica',
+              bodyColor: Colors.white,
+              displayColor: Colors.white,
+            ),
+            scaffoldBackgroundColor: const Color(0xFF1E1F24),
+            canvasColor: const Color(0xFF1E1F24),
+            dialogTheme: DialogThemeData(
+              backgroundColor: const Color(0xFF1E1F24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+                side: BorderSide(color: Colors.white.withOpacity(0.08)),
+              ),
+            ),
+            datePickerTheme: DatePickerThemeData(
+              backgroundColor: const Color(0xFF1E1F24),
+              headerBackgroundColor: const Color(0xFF1E1F24),
+              rangePickerBackgroundColor: const Color(0xFF1E1F24),
+              rangePickerHeaderBackgroundColor: const Color(0xFF1E1F24),
+              surfaceTintColor: Colors.transparent,
+              rangePickerSurfaceTintColor: Colors.transparent,
+              rangeSelectionBackgroundColor:
+                  const Color(0xFFD7E37A).withOpacity(0.20),
+              rangeSelectionOverlayColor: WidgetStateProperty.all(
+                const Color(0xFFD7E37A).withOpacity(0.16),
+              ),
+              dayForegroundColor: WidgetStateColor.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return const Color(0xFF161616);
+                }
+                if (states.contains(WidgetState.disabled)) {
+                  return Colors.white.withOpacity(0.38);
+                }
+                return Colors.white;
+              }),
+              dayStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+              dayBackgroundColor: WidgetStateColor.resolveWith((states) {
+                if (states.contains(WidgetState.selected)) {
+                  return const Color(0xFFD7E37A);
+                }
+                return Colors.transparent;
+              }),
+              todayForegroundColor:
+                  WidgetStateProperty.all(const Color(0xFFD7E37A)),
+              todayBackgroundColor:
+                  WidgetStateProperty.all(const Color(0xFF222715)),
+              headerForegroundColor: Colors.white,
+              rangePickerHeaderForegroundColor: Colors.white,
+              weekdayStyle: TextStyle(
+                color: Colors.white.withOpacity(0.72),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+              yearStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+              dividerColor: Colors.white.withOpacity(0.08),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+                side: BorderSide(color: Colors.white.withOpacity(0.08)),
+              ),
+              rangePickerShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+                side: BorderSide(color: Colors.white.withOpacity(0.08)),
+              ),
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFD7E37A),
+                minimumSize: const Size(44, 34),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: const TextStyle(
+                  fontFamily: 'Geologica',
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          child: SafeArea(child: child ?? const SizedBox.shrink()),
+        );
+      },
     );
     if (picked == null) return;
     setState(() {
@@ -4686,6 +5128,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
 
     Navigator.of(context).pop(
       _TripSettingsResult(
+        action: _TripSettingsAction.save,
         title: title,
         startDate: start,
         endDate: end,
@@ -4696,6 +5139,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final green = const Color(0xFFD7E37A);
     return Dialog(
       backgroundColor: const Color(0xFF1E1F24),
       shape: RoundedRectangleBorder(
@@ -4704,7 +5148,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(
-          maxWidth: 520,
+          maxWidth: 430,
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -4749,15 +5193,15 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                 runSpacing: 8,
                 alignment: WrapAlignment.start,
                 children: [
-                  ChoiceChip(
-                    label: const Text('Точные даты'),
+                  _SettingsChip(
+                    label: 'Точные даты',
                     selected: !_usePlannedDays,
-                    onSelected: (_) => setState(() => _usePlannedDays = false),
+                    onTap: () => setState(() => _usePlannedDays = false),
                   ),
-                  ChoiceChip(
-                    label: const Text('Количество дней'),
+                  _SettingsChip(
+                    label: 'Количество дней',
                     selected: _usePlannedDays,
-                    onSelected: (_) => setState(() => _usePlannedDays = true),
+                    onTap: () => setState(() => _usePlannedDays = true),
                   ),
                 ],
               ),
@@ -4766,6 +5210,9 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                 TextField(
                   controller: _daysCtrl,
                   keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                  ],
                   textAlign: TextAlign.left,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
@@ -4797,21 +5244,182 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                   ),
                 ),
               const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: const Color(0xFF1D222A),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            side: const BorderSide(color: Color(0xFF3A4751)),
+                          ),
+                          title: const Text(
+                            'Архивировать путешествие?',
+                            style: TextStyle(
+                              color: Color(0xFFF2F4F8),
+                              fontFamily: 'Geologica',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          content: const Text(
+                            'Путешествие исчезнет с главной страницы и останется только в списке поездок профиля.',
+                            style: TextStyle(
+                              color: Color(0xFFB7BDC8),
+                              fontFamily: 'Geologica',
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(false),
+                              child: const Text(
+                                'Отмена',
+                                style: TextStyle(
+                                  color: Color(0xFFB7BDC8),
+                                  fontFamily: 'Geologica',
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.of(ctx).pop(true),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFD7E37A),
+                                foregroundColor: const Color(0xFF151515),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: const Text(
+                                'Архивировать',
+                                style: TextStyle(
+                                  fontFamily: 'Geologica',
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm != true || !context.mounted) return;
+                      Navigator.of(context).pop(
+                        _TripSettingsResult(
+                          action: _TripSettingsAction.archive,
+                          title: _titleCtrl.text.trim().isEmpty
+                              ? widget.initialTitle
+                              : _titleCtrl.text.trim(),
+                          startDate: _startDate,
+                          endDate: _endDate,
+                          plannedDays: _usePlannedDays
+                              ? int.tryParse(_daysCtrl.text.trim())
+                              : null,
+                        ),
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: BorderSide(color: Colors.white.withOpacity(0.28)),
+                      backgroundColor: Colors.white.withOpacity(0.04),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: const Icon(Icons.archive_outlined, size: 16),
+                    label: const Text('Архивировать'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pop(
+                        _TripSettingsResult(
+                          action: _TripSettingsAction.delete,
+                          title: widget.initialTitle,
+                          startDate: _startDate,
+                          endDate: _endDate,
+                          plannedDays: widget.initialPlannedDays,
+                        ),
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: BorderSide(color: Colors.white.withOpacity(0.28)),
+                      backgroundColor: Colors.white.withOpacity(0.04),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                    label: const Text('Удалить'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(foregroundColor: Colors.white70),
                     child: const Text('Отмена'),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
                     onPressed: _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: green,
+                      foregroundColor: const Color(0xFF151515),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
                     child: const Text('Сохранить'),
                   ),
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SettingsChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFFD7E37A);
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF222715) : Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? green.withOpacity(0.72) : Colors.white.withOpacity(0.15),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? green : Colors.white.withOpacity(0.82),
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),

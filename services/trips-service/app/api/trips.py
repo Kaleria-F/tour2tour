@@ -81,6 +81,19 @@ ORS_MODES = {
     "cycling-regular",
 }
 
+CARD_COLORS = {
+    "#D7E37A",
+    "#B6A1FF",
+    "#E3BA7A",
+    "#A3E37A",
+    "#E37AA2",
+    "#7AE3BA",
+    "#7AB4E3",
+}
+
+CARD_BACKGROUNDS = {"orbit", "waves", "mountains", "sunset", "aurora"}
+CARD_ICONS = {"luggage", "flight", "terrain", "beach", "car", "forest", "camera"}
+
 
 class OrsPoint(BaseModel):
     lon: float = Field(..., ge=-180, le=180)
@@ -193,6 +206,27 @@ def _validate_time_text(value) -> str | None:
     if not text or not _TIME_RE.fullmatch(text):
         return None
     return text
+
+
+def _normalize_card_color(value: str | None) -> str:
+    raw = (value or "").strip().upper()
+    if raw and raw in CARD_COLORS:
+        return raw
+    return "#D7E37A"
+
+
+def _normalize_card_background(value: str | None) -> str:
+    raw = (value or "").strip().lower()
+    if raw in CARD_BACKGROUNDS:
+        return raw
+    return "orbit"
+
+
+def _normalize_card_icon(value: str | None) -> str:
+    raw = (value or "").strip().lower()
+    if raw in CARD_ICONS:
+        return raw
+    return "luggage"
 
 
 def _default_stage_title(stage_type: str, subtype: str) -> str:
@@ -568,6 +602,10 @@ def create_trip(
         start_date=trip.start_date,
         end_date=trip.end_date,
         planned_days=trip.planned_days,
+        card_color=_normalize_card_color(trip.card_color),
+        card_background=_normalize_card_background(trip.card_background),
+        card_icon=_normalize_card_icon(trip.card_icon),
+        is_archived=bool(trip.is_archived) if trip.is_archived is not None else False,
         user_id=user_id,
     )
     db.add(new_trip)
@@ -606,6 +644,12 @@ def update_trip(
     next_start = updates.get("start_date", trip.start_date)
     next_end = updates.get("end_date", trip.end_date)
     next_planned_days = updates.get("planned_days", trip.planned_days)
+    next_card_color = _normalize_card_color(updates.get("card_color", trip.card_color))
+    next_card_background = _normalize_card_background(
+        updates.get("card_background", trip.card_background)
+    )
+    next_card_icon = _normalize_card_icon(updates.get("card_icon", trip.card_icon))
+    next_is_archived = updates.get("is_archived", trip.is_archived)
 
     if next_end < next_start:
         raise HTTPException(
@@ -657,6 +701,10 @@ def update_trip(
     trip.start_date = next_start
     trip.end_date = next_end
     trip.planned_days = next_planned_days
+    trip.card_color = next_card_color
+    trip.card_background = next_card_background
+    trip.card_icon = next_card_icon
+    trip.is_archived = bool(next_is_archived)
 
     # Keep date range consistent with mode by days.
     if trip.planned_days and trip.planned_days > 0:
@@ -902,6 +950,28 @@ def delete_stage(
     for item in stages_after:
         item.position -= 1
 
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/{trip_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_trip(
+    trip_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    _get_user_trip_or_404(db=db, trip_id=trip_id, user_id=user_id)
+
+    expenses = db.execute(select(Expense).where(Expense.trip_id == trip_id)).scalars().all()
+    for expense in expenses:
+        db.delete(expense)
+
+    stages = db.execute(select(Stage).where(Stage.trip_id == trip_id)).scalars().all()
+    for stage in stages:
+        db.delete(stage)
+
+    trip = _get_user_trip_or_404(db=db, trip_id=trip_id, user_id=user_id)
+    db.delete(trip)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

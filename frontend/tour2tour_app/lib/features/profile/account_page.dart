@@ -507,8 +507,10 @@ class _TripRowCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateText =
-        '${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}';
+    final hasPlannedDays = trip.plannedDays != null && trip.plannedDays! > 0;
+    final dateText = hasPlannedDays
+        ? '${trip.plannedDays} дн.'
+        : '${formatDate(trip.startDate)} - ${formatDate(trip.endDate)}';
 
     return InkWell(
       borderRadius: BorderRadius.circular(18),

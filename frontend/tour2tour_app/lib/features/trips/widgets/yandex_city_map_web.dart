@@ -104,6 +104,9 @@ class _YandexCityMapState extends State<YandexCityMap> {
               'title': (point['title'] ?? '').trim(),
               'address': (point['address'] ?? '').trim(),
               'order': (point['order'] ?? '').trim(),
+              'time': (point['time'] ?? '').trim(),
+              'cost': (point['cost'] ?? '').trim(),
+              'notes': (point['notes'] ?? '').trim(),
             })
         .where((point) => (point['address'] ?? '').isNotEmpty)
         .toList();

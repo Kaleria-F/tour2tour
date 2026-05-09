@@ -453,6 +453,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final today = DateTime(now.year, now.month, now.day);
     final activeTrips = _trips
         .where((trip) {
+          if (trip.isArchived) return false;
           if (trip.plannedDays != null && trip.plannedDays! > 0) {
             // "Количество дней" = даты еще не зафиксированы, такие поездки всегда считаем активными.
             return true;
@@ -715,6 +716,10 @@ class _TripCarouselCard extends StatelessWidget {
         ? '${_twoDigits(trip.startDate.day)}.${_twoDigits(trip.startDate.month)}'
         : '${_twoDigits(trip.startDate.day)}.${_twoDigits(trip.startDate.month)} - ${_twoDigits(trip.endDate.day)}.${_twoDigits(trip.endDate.month)}';
 
+    final cardColor = _parseCardColor(trip.cardColor);
+    final cardBackground = (trip.cardBackground ?? '').trim().toLowerCase();
+    final cardIcon = (trip.cardIcon ?? '').trim().toLowerCase();
+
     return SizedBox(
       width: 286,
       child: Material(
@@ -744,7 +749,13 @@ class _TripCarouselCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Expanded(child: _TripPlaceholderArt()),
+                  Expanded(
+                    child: _TripPlaceholderArt(
+                      color: cardColor,
+                      background: cardBackground,
+                      icon: _iconByKey(cardIcon),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     trip.title,
@@ -785,6 +796,33 @@ class _TripCarouselCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Color _parseCardColor(String? raw) {
+    final hex = (raw ?? '').replaceAll('#', '').trim();
+    final parsed = int.tryParse(hex, radix: 16);
+    if (parsed == null) return const Color(0xFFD7E37A);
+    return Color(0xFF000000 | parsed);
+  }
+
+  IconData _iconByKey(String key) {
+    switch (key) {
+      case 'flight':
+        return Icons.flight_takeoff_rounded;
+      case 'terrain':
+        return Icons.terrain_rounded;
+      case 'beach':
+        return Icons.beach_access_rounded;
+      case 'car':
+        return Icons.directions_car_filled_rounded;
+      case 'forest':
+        return Icons.forest_rounded;
+      case 'camera':
+        return Icons.camera_alt_rounded;
+      case 'luggage':
+      default:
+        return Icons.luggage_rounded;
+    }
   }
 }
 
@@ -1098,75 +1136,210 @@ class _ErrorState extends StatelessWidget {
 }
 
 class _TripPlaceholderArt extends StatelessWidget {
-  const _TripPlaceholderArt();
+  final Color color;
+  final String background;
+  final IconData icon;
+
+  const _TripPlaceholderArt({
+    required this.color,
+    required this.background,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF2F3A1D), Color(0xFF191919)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: LinearGradient(
+            colors: [color.withOpacity(0.38), const Color(0xFF191919)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned(
-            left: -18,
-            top: 24,
-            child: Container(
-              width: 92,
-              height: 92,
-              decoration: BoxDecoration(
-                color: const Color(0xFFD7E37A).withOpacity(0.16),
-                shape: BoxShape.circle,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _backgroundShape(background, color),
+            Positioned(
+              right: 22,
+              top: 18,
+              child: Icon(
+                icon,
+                size: 42,
+                color: Colors.white.withOpacity(0.84),
               ),
             ),
-          ),
-          Positioned(
-            right: 22,
-            top: 18,
-            child: Icon(
-              Icons.luggage_rounded,
-              size: 42,
-              color: Colors.white.withOpacity(0.84),
+            Positioned(
+              left: 22,
+              right: 22,
+              bottom: 22,
+              child: _showTrackForIcon(icon)
+                  ? Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.18),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: color,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
             ),
-          ),
-          Positioned(
-            left: 22,
-            right: 22,
-            bottom: 22,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.18),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFD7E37A),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+
+  Widget _backgroundShape(String key, Color color) {
+    switch (key) {
+      case 'waves':
+        return Positioned(
+          left: -24,
+          top: 12,
+          child: Container(
+            width: 150,
+            height: 84,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color.withOpacity(0.26), Colors.transparent],
+              ),
+              borderRadius: BorderRadius.circular(50),
+            ),
+          ),
+        );
+      case 'mountains':
+        return Positioned.fill(
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: SizedBox(
+              height: 70,
+              width: double.infinity,
+              child: CustomPaint(
+                painter: _MountPainter(color.withOpacity(0.2)),
+              ),
+            ),
+          ),
+        );
+      case 'grid':
+      case 'sunset':
+        return Positioned(
+          left: -8,
+          top: 10,
+          child: Container(
+            width: 86,
+            height: 86,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.26),
+              shape: BoxShape.circle,
+            ),
+          ),
+        );
+      case 'aurora':
+        return Positioned(
+          left: -10,
+          right: -10,
+          top: 0,
+          bottom: 0,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withOpacity(0.30),
+                  const Color(0xFF6D83FF).withOpacity(0.18),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+        );
+      case 'orbit':
+      default:
+        return Positioned(
+          left: -18,
+          top: 24,
+          child: Container(
+            width: 92,
+            height: 92,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.16),
+              shape: BoxShape.circle,
+            ),
+          ),
+        );
+    }
+  }
+
+  bool _showTrackForIcon(IconData iconData) {
+    return true;
+  }
 }
+
+class _GridPainter extends CustomPainter {
+  final Color color;
+  _GridPainter(this.color);
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+    for (double x = 0; x < size.width; x += 16) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), p);
+    }
+    for (double y = 0; y < size.height; y += 16) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GridPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+class _MountPainter extends CustomPainter {
+  final Color color;
+  _MountPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = color;
+    final path = Path()
+      ..moveTo(0, size.height)
+      ..lineTo(size.width * 0.22, size.height * 0.4)
+      ..lineTo(size.width * 0.4, size.height)
+      ..close();
+    final path2 = Path()
+      ..moveTo(size.width * 0.28, size.height)
+      ..lineTo(size.width * 0.55, size.height * 0.28)
+      ..lineTo(size.width * 0.84, size.height)
+      ..close();
+    canvas.drawPath(path, p);
+    canvas.drawPath(path2, p);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MountPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
 
 class _RecommendationPlaceholderArt extends StatelessWidget {
   const _RecommendationPlaceholderArt();
