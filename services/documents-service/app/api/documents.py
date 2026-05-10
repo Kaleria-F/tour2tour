@@ -2,7 +2,7 @@ import uuid
 import logging
 from urllib.parse import quote, urlparse, urlunparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from botocore.exceptions import ClientError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -112,6 +112,32 @@ def _verify_magic(content_type: str, first_bytes: bytes) -> bool:
     if content_type == "image/jpeg":
         return first_bytes.startswith(b"\xff\xd8")
     return False
+
+
+def _upsert_document_record(
+    *,
+    db: Session,
+    user_id: int,
+    trip_id: int,
+    object_key: str,
+    file_name: str,
+    content_type: str,
+    size: int,
+) -> Document:
+    existing = db.scalar(select(Document).where(Document.object_key == object_key))
+    if existing is None:
+        existing = Document(
+            user_id=user_id,
+            trip_id=trip_id,
+            object_key=object_key,
+            file_name=file_name,
+            content_type=content_type,
+            size_bytes=size,
+        )
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+    return existing
 
 
 @router.post("/storage/ensure-bucket")
@@ -258,6 +284,79 @@ def upload_complete(
             file_name=existing.file_name,
             size_bytes=existing.size_bytes,
             last_modified=existing.created_at,
+        ),
+    )
+
+
+@router.post("/upload-direct", response_model=UploadCompleteResponse)
+async def upload_direct(
+    trip_id: int = Form(...),
+    file_name: str = Form(...),
+    file: UploadFile = File(...),
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    normalized_name = _normalize_name(file_name)
+    content_type = (file.content_type or "").lower()
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Unsupported content type")
+
+    payload = await file.read()
+    size = len(payload)
+    if size <= 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if size > settings.max_upload_size_bytes:
+        raise HTTPException(status_code=400, detail="File too large")
+    if not _verify_magic(content_type, payload[:16]):
+        raise HTTPException(status_code=400, detail="File signature validation failed")
+
+    s3 = build_s3_client()
+    ensure_bucket_exists(s3)
+    ensure_bucket_cors(s3)
+
+    object_key = build_object_key(
+        user_id=user_id,
+        trip_id=trip_id,
+        original_file_name=normalized_name,
+    )
+    put_params = {
+        "Bucket": settings.s3_bucket,
+        "Key": object_key,
+        "Body": payload,
+        "ContentType": content_type,
+    }
+    if settings.s3_sse_mode:
+        put_params["ServerSideEncryption"] = settings.s3_sse_mode
+
+    try:
+        s3.put_object(**put_params)
+    except ClientError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload file: {e}")
+
+    document = _upsert_document_record(
+        db=db,
+        user_id=user_id,
+        trip_id=trip_id,
+        object_key=object_key,
+        file_name=_extract_visible_file_name(object_key),
+        content_type=content_type,
+        size=size,
+    )
+    logger.info(
+        "upload_direct user_id=%s trip_id=%s object_key=%s content_type=%s size=%s",
+        user_id,
+        trip_id,
+        object_key,
+        content_type,
+        size,
+    )
+    return UploadCompleteResponse(
+        status="ok",
+        document=DocumentItemOut(
+            object_key=document.object_key,
+            file_name=document.file_name,
+            size_bytes=document.size_bytes,
+            last_modified=document.created_at,
         ),
     )
 

@@ -8,10 +8,9 @@ class Config {
       String.fromEnvironment('API_BASE_URL', defaultValue: '');
   static const _premiumCheckoutOverride =
       String.fromEnvironment('PREMIUM_CHECKOUT_URL', defaultValue: '');
-  static const _premiumInnOverride =
-      String.fromEnvironment('PREMIUM_INN', defaultValue: '');
   static const _forcePremiumPopupOverride =
       String.fromEnvironment('FORCE_PREMIUM_POPUP', defaultValue: 'false');
+  static const _premiumInnValue = '773771991088';
 
   static String get apiBaseUrl {
     if (_apiOverride.isNotEmpty) {
@@ -21,7 +20,7 @@ class Config {
   }
 
   static String get premiumCheckoutUrl => _premiumCheckoutOverride;
-  static String get premiumInn => _premiumInnOverride;
+  static String get premiumInn => _premiumInnValue;
   static bool get forcePremiumPopupForTesting =>
       _forcePremiumPopupOverride.toLowerCase() == 'true';
 }

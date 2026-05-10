@@ -99,6 +99,30 @@ class DocumentsRepo {
     );
   }
 
+  Future<TripDocument> uploadBytesDirect({
+    required int tripId,
+    required String fileName,
+    required Uint8List bytes,
+    required String contentType,
+  }) async {
+    final form = FormData.fromMap({
+      'trip_id': tripId.toString(),
+      'file_name': fileName,
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: fileName,
+        contentType: DioMediaType.parse(contentType),
+      ),
+    });
+    final res = await api.dio.post(
+      '/documents/upload-direct',
+      data: form,
+    );
+    final data = Map<String, dynamic>.from(res.data as Map);
+    final rawDocument = Map<String, dynamic>.from(data['document'] as Map);
+    return TripDocument.fromJson(rawDocument);
+  }
+
   Future<List<TripDocument>> listTripDocuments(int tripId) async {
     final res = await api.dio.get('/documents/trips/$tripId');
     final data = res.data;
