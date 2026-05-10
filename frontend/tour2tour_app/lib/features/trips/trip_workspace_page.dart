@@ -1217,20 +1217,11 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         await widget.documentsRepo.ensureBucket();
         _bucketReady = true;
       }
-      final init = await widget.documentsRepo.uploadInit(
+      final uploaded = await widget.documentsRepo.uploadBytesDirect(
         tripId: widget.tripId!,
         fileName: targetFileName,
-        contentType: contentType,
-        fileSizeBytes: bytes.length,
-      );
-      await widget.documentsRepo.uploadBytesToPresigned(
-        uploadUrl: init.uploadUrl,
         bytes: bytes,
         contentType: contentType,
-      );
-      await widget.documentsRepo.uploadComplete(
-        tripId: widget.tripId!,
-        objectKey: init.objectKey,
       );
       await _loadDocuments();
       if (!mounted) return null;
@@ -1239,7 +1230,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           context,
         ).showSnackBar(const SnackBar(content: Text('Документ загружен')));
       }
-      return init.objectKey;
+      return uploaded.objectKey;
     } catch (_) {
       if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
