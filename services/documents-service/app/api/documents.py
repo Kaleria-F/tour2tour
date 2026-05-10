@@ -48,6 +48,13 @@ def _rewrite_presigned_url(url: str) -> str:
     if not settings.s3_public_endpoint:
         return url
 
+    # For virtual-hosted style presigned URLs the bucket lives in the host
+    # (e.g. https://bucket.s3.example.com/key). Replacing the host with the
+    # bare public endpoint drops the bucket and breaks both CORS and the
+    # signature, so keep the original URL unchanged.
+    if not settings.s3_force_path_style:
+        return url
+
     src = urlparse(url)
     dst = urlparse(settings.s3_public_endpoint)
     return urlunparse(
