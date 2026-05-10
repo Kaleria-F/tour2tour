@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 
@@ -1304,79 +1305,153 @@ class _StageFormPageState extends State<StageFormPage> {
                                       ),
                               ),
                             )
-                          : GestureDetector(
-                              key: const ValueKey('assistant-mic'),
-                              onLongPressStart: (_) => _startVoiceRecording(),
-                              onLongPressEnd: (_) => _stopVoiceRecordingIfNeeded(),
-                              onLongPressCancel: _stopVoiceRecordingIfNeeded,
-                              child: AnimatedScale(
-                                duration: const Duration(milliseconds: 120),
-                                scale: _recordingVoice ? 1.12 : 1,
-                                child: SizedBox(
-                                  width: 46,
-                                  height: 46,
-                                  child: Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      SizedBox(
-                                        width: 46,
-                                        height: 46,
-                                        child: CircularProgressIndicator(
-                                          value: _recordingVoice ? progress : 0,
-                                          strokeWidth: 3,
-                                          backgroundColor:
-                                              Colors.white.withOpacity(0.12),
-                                          valueColor:
-                                              const AlwaysStoppedAnimation<Color>(
-                                            Color(0xFFB6A1FF),
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 38,
-                                        height: 38,
-                                        decoration: BoxDecoration(
-                                          color: accentColor,
-                                          shape: BoxShape.circle,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: accentColor.withOpacity(0.30),
-                                              blurRadius: 12,
-                                              offset: const Offset(0, 6),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Stack(
-                                          alignment: Alignment.center,
-                                          children: [
-                                            Icon(
-                                              _recordingVoice
-                                                  ? Icons.graphic_eq_rounded
-                                                  : Icons.mic_rounded,
-                                              color: Colors.white,
-                                              size: 18,
-                                            ),
-                                            if (_recordingVoice)
-                                              Positioned(
-                                                bottom: 2,
-                                                child: Text(
-                                                  '$_recordSecondsLeft',
-                                                  style: const TextStyle(
-                                                    fontFamily: 'Geologica',
-                                                    color: Colors.white,
-                                                    fontSize: 8,
-                                                    fontWeight: FontWeight.w300,
-                                                  ),
-                                                ),
+                          : (kIsWeb
+                              ? Listener(
+                                  key: const ValueKey('assistant-mic'),
+                                  onPointerDown: (_) => _startVoiceRecording(),
+                                  onPointerUp: (_) => _stopVoiceRecordingIfNeeded(),
+                                  onPointerCancel: (_) => _stopVoiceRecordingIfNeeded(),
+                                  child: AnimatedScale(
+                                    duration: const Duration(milliseconds: 120),
+                                    scale: _recordingVoice ? 1.12 : 1,
+                                    child: SizedBox(
+                                      width: 46,
+                                      height: 46,
+                                      child: Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          SizedBox(
+                                            width: 46,
+                                            height: 46,
+                                            child: CircularProgressIndicator(
+                                              value: _recordingVoice ? progress : 0,
+                                              strokeWidth: 3,
+                                              backgroundColor:
+                                                  Colors.white.withOpacity(0.12),
+                                              valueColor:
+                                                  const AlwaysStoppedAnimation<Color>(
+                                                Color(0xFFB6A1FF),
                                               ),
-                                          ],
-                                        ),
+                                            ),
+                                          ),
+                                          Container(
+                                            width: 38,
+                                            height: 38,
+                                            decoration: BoxDecoration(
+                                              color: accentColor,
+                                              shape: BoxShape.circle,
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: accentColor.withOpacity(0.30),
+                                                  blurRadius: 12,
+                                                  offset: const Offset(0, 6),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Stack(
+                                              alignment: Alignment.center,
+                                              children: [
+                                                Icon(
+                                                  _recordingVoice
+                                                      ? Icons.graphic_eq_rounded
+                                                      : Icons.mic_rounded,
+                                                  color: Colors.white,
+                                                  size: 18,
+                                                ),
+                                                if (_recordingVoice)
+                                                  Positioned(
+                                                    bottom: 2,
+                                                    child: Text(
+                                                      '$_recordSecondsLeft',
+                                                      style: const TextStyle(
+                                                        fontFamily: 'Geologica',
+                                                        color: Colors.white,
+                                                        fontSize: 8,
+                                                        fontWeight: FontWeight.w300,
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
+                                    ),
                                   ),
-                                ),
-                              ),
-                            ),
+                                )
+                              : GestureDetector(
+                                  key: const ValueKey('assistant-mic'),
+                                  onLongPressStart: (_) => _startVoiceRecording(),
+                                  onLongPressEnd: (_) => _stopVoiceRecordingIfNeeded(),
+                                  onLongPressCancel: _stopVoiceRecordingIfNeeded,
+                                  child: AnimatedScale(
+                                    duration: const Duration(milliseconds: 120),
+                                    scale: _recordingVoice ? 1.12 : 1,
+                                    child: SizedBox(
+                                      width: 46,
+                                      height: 46,
+                                      child: Stack(
+                                        alignment: Alignment.center,
+                                        children: [
+                                          SizedBox(
+                                            width: 46,
+                                            height: 46,
+                                            child: CircularProgressIndicator(
+                                              value: _recordingVoice ? progress : 0,
+                                              strokeWidth: 3,
+                                              backgroundColor:
+                                                  Colors.white.withOpacity(0.12),
+                                              valueColor:
+                                                  const AlwaysStoppedAnimation<Color>(
+                                                Color(0xFFB6A1FF),
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            width: 38,
+                                            height: 38,
+                                            decoration: BoxDecoration(
+                                              color: accentColor,
+                                              shape: BoxShape.circle,
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: accentColor.withOpacity(0.30),
+                                                  blurRadius: 12,
+                                                  offset: const Offset(0, 6),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Stack(
+                                              alignment: Alignment.center,
+                                              children: [
+                                                Icon(
+                                                  _recordingVoice
+                                                      ? Icons.graphic_eq_rounded
+                                                      : Icons.mic_rounded,
+                                                  color: Colors.white,
+                                                  size: 18,
+                                                ),
+                                                if (_recordingVoice)
+                                                  Positioned(
+                                                    bottom: 2,
+                                                    child: Text(
+                                                      '$_recordSecondsLeft',
+                                                      style: const TextStyle(
+                                                        fontFamily: 'Geologica',
+                                                        color: Colors.white,
+                                                        fontSize: 8,
+                                                        fontWeight: FontWeight.w300,
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                )),
                     ),
                   ],
                 ),

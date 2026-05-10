@@ -8,6 +8,7 @@ from app.core.config import settings
 
 
 def _build_client(endpoint_url: str):
+    addressing_style = "path" if settings.s3_force_path_style else "virtual"
     return boto3.client(
         "s3",
         endpoint_url=endpoint_url,
@@ -15,7 +16,7 @@ def _build_client(endpoint_url: str):
         aws_access_key_id=settings.s3_access_key,
         aws_secret_access_key=settings.s3_secret_key,
         use_ssl=settings.s3_use_ssl,
-        config=Config(s3={"addressing_style": "path" if settings.s3_force_path_style else "auto"}),
+        config=Config(s3={"addressing_style": addressing_style}),
     )
 
 

@@ -38,6 +38,7 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   static const Duration _premiumPopupDelay = Duration(seconds: 10);
+  static bool _premiumPopupShownThisSession = false;
 
   UserMe? _me;
   SurveyProfile? _surveyProfile;
@@ -50,7 +51,6 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _recommendationsLoading = false;
   String? _error;
   Timer? _premiumPopupTimer;
-  bool _premiumPopupShown = false;
 
   @override
   void initState() {
@@ -172,12 +172,12 @@ class _ProfilePageState extends State<ProfilePage> {
     _premiumPopupTimer?.cancel();
     final blockForPremium =
         _me?.isPremium == true && !Config.forcePremiumPopupForTesting;
-    if (blockForPremium || _premiumPopupShown) return;
+    if (blockForPremium || _premiumPopupShownThisSession) return;
     _premiumPopupTimer = Timer(_premiumPopupDelay, () {
       final stillBlockedForPremium =
           _me?.isPremium == true && !Config.forcePremiumPopupForTesting;
-      if (!mounted || stillBlockedForPremium || _premiumPopupShown) return;
-      _premiumPopupShown = true;
+      if (!mounted || stillBlockedForPremium || _premiumPopupShownThisSession) return;
+      _premiumPopupShownThisSession = true;
       showDialog<void>(
         context: context,
         barrierDismissible: true,
