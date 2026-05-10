@@ -1,11 +1,11 @@
 {
-    "name": "tour2tour_app",
-    "short_name": "tour2tour_app",
+    "name": "Тур2Тур",
+    "short_name": "Тур2Тур",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Тур2Тур — удобные маршруты и все детали поездки в одном месте.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

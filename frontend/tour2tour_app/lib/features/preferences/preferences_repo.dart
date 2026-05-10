@@ -94,8 +94,13 @@ class PreferencesRepo {
     await api.dio.post('/users/me/preferences', data: {'interests': interests});
   }
 
-  Future<SurveyProfile> getSurveyProfile() async {
-    final res = await api.dio.get('/users/me/survey-profile');
+  Future<SurveyProfile> getSurveyProfile({int? tripId}) async {
+    final res = await api.dio.get(
+      '/users/me/survey-profile',
+      queryParameters: {
+        if (tripId != null) 'trip_id': tripId,
+      },
+    );
     final data = res.data;
     if (data is! Map<String, dynamic>) {
       return SurveyProfile.empty();
@@ -103,10 +108,13 @@ class PreferencesRepo {
     return SurveyProfile.fromJson(data);
   }
 
-  Future<SurveyProfile> setSurveyProfile(SurveyProfile profile) async {
+  Future<SurveyProfile> setSurveyProfile(SurveyProfile profile, {int? tripId}) async {
     final res = await api.dio.post(
       '/users/me/survey-profile',
       data: profile.toJson(),
+      queryParameters: {
+        if (tripId != null) 'trip_id': tripId,
+      },
     );
     final data = res.data;
     if (data is! Map<String, dynamic>) return profile;

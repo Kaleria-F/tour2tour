@@ -94,7 +94,7 @@ class PlaceStoryPlaceOut(BaseModel):
 class PlaceStoryBase(BaseModel):
     title: str = Field(min_length=1, max_length=140)
     cover_image_url: str | None = None
-    image_url: str = Field(min_length=1, max_length=512)
+    image_url: str | None = Field(default=None, min_length=1, max_length=512)
     body_text: str | None = None
     place_id: str | None = None
     sort_order: int = Field(default=0, ge=0, le=10000)

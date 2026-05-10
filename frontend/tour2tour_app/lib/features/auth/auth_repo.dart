@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../api/api_client.dart';
+import '../../core/session_coordinator.dart';
 import '../../core/token_storage.dart';
 
 class AuthFailure implements Exception {
@@ -184,6 +185,7 @@ class AuthRepo {
       }
 
       await tokenStorage.write(token);
+      SessionCoordinator.instance.resetWebSessionExpiryState();
       return LoginResult(
         accessToken: token,
         requires2fa: false,
@@ -213,6 +215,7 @@ class AuthRepo {
         throw const AuthFailure('Сервер не вернул токен доступа.');
       }
       await tokenStorage.write(token);
+      SessionCoordinator.instance.resetWebSessionExpiryState();
     } catch (error) {
       _throwFriendly(error);
     }
@@ -308,5 +311,8 @@ class AuthRepo {
     }
   }
 
-  Future<void> logout() => tokenStorage.clear();
+  Future<void> logout() async {
+    await tokenStorage.clear();
+    SessionCoordinator.instance.resetWebSessionExpiryState();
+  }
 }

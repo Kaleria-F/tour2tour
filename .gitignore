@@ -11,3 +11,8 @@
 
 # Env
 **/.env
+
+# Local deploy artifacts and keys
+id_ed25519_prod
+id_ed25519_prod.pub
+frontend/tour2tour_app/build-web.tar.gz

@@ -238,19 +238,21 @@ class _TravelShellHeader extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 28,
                   height: 1.05,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w400,
                   color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 6),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.68),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w400,
+              if (subtitle.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.68),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w300,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

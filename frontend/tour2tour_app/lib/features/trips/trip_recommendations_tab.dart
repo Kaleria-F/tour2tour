@@ -1,12 +1,11 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/widgets/cors_safe_network_image.dart';
-
 import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
 import '../profile/profile_repo.dart';
 import '../recommendations/recommendations_repo.dart';
+import '../recommendations/recommendation_labels.dart';
 import 'trips_repo.dart';
 
 class TripRecommendationsTab extends StatefulWidget {
@@ -63,7 +62,9 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
       final me = await widget.profileRepo.getMe();
       var profile = SurveyProfile.empty();
       try {
-        profile = await widget.preferencesRepo.getSurveyProfile();
+        profile = await widget.preferencesRepo.getSurveyProfile(
+          tripId: widget.tripId,
+        );
       } catch (_) {
         profile = SurveyProfile.empty();
       }
@@ -348,10 +349,11 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
                 children: [
                   _tag(item.city),
                   if (item.address.isNotEmpty) _tag(item.address),
-                  _tag('\u2605 ${item.rating.toStringAsFixed(1)}'),
-                  _tag(item.subcategory.isEmpty
-                      ? item.category
-                      : item.subcategory),
+                  _tag(
+                    recommendationTagLabel(
+                      item.subcategory.isEmpty ? item.category : item.subcategory,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -362,7 +364,11 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
   }
 
   Future<void> _openSurvey() async {
-    await context.push('/preferences?from=recommendations');
+    final query = <String, String>{
+      'from': 'recommendations',
+      if (widget.tripId != null) 'tripId': widget.tripId.toString(),
+    };
+    await context.push(Uri(path: '/preferences', queryParameters: query).toString());
     if (!mounted) return;
     await _load();
   }
@@ -610,10 +616,11 @@ class _SwipeCard extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     item.imageUrl.isNotEmpty
-                        ? CorsSafeNetworkImage(
-                            url: item.imageUrl,
+                        ? Image.network(
+                            item.imageUrl,
                             fit: BoxFit.cover,
-                            fallback: _CardPlaceholder(city: item.city),
+                            errorBuilder: (_, __, ___) =>
+                                _CardPlaceholder(city: item.city),
                           )
                         : _CardPlaceholder(city: item.city),
                     Container(
@@ -678,15 +685,12 @@ class _SwipeCard extends StatelessWidget {
                           Row(
                             children: [
                               _MetaChip(
-                                icon: Icons.star_rounded,
-                                label: item.rating.toStringAsFixed(1),
-                              ),
-                              const SizedBox(width: 8),
-                              _MetaChip(
                                 icon: Icons.auto_awesome_rounded,
-                                label: item.subcategory.isEmpty
-                                    ? item.category
-                                    : item.subcategory,
+                                label: recommendationTagLabel(
+                                  item.subcategory.isEmpty
+                                      ? item.category
+                                      : item.subcategory,
+                                ),
                               ),
                             ],
                           ),

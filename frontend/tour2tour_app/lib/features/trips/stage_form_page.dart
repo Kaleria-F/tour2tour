@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 
@@ -7,7 +7,6 @@ import 'dart:typed_data';
 
 import 'package:go_router/go_router.dart';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:record/record.dart';
 
 import 'trips_repo.dart';
@@ -216,10 +215,6 @@ class _StageFormPageState extends State<StageFormPage> {
   static const String _yandexGeocoderApiKey = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
   static final RegExp _moneyInputPattern = RegExp(r'^\d*([.,]\d{0,2})?$');
   static const int _assistantTrialLimit = 5;
-  static const String _assistantTrialUsedKey =
-      'stage_form_assistant_trial_used_v1';
-  static const FlutterSecureStorage _assistantTrialStorage =
-      FlutterSecureStorage();
   static const Map<String, String> _subtypeLabels = <String, String>{
     'road': 'Дорога',
     'airplane': 'Самолет',
@@ -537,8 +532,8 @@ class _StageFormPageState extends State<StageFormPage> {
   String _addressFromSubtitle(String subtitle) {
     final clean = _normalizeSuggestText(subtitle);
     final withCity = _ensureAddressHasTripCity(clean);
-    if (clean.contains('·')) {
-      final parts = clean.split('·').map((e) => _normalizeSuggestText(e)).toList();
+    if (clean.contains('В·')) {
+      final parts = clean.split('В·').map((e) => _normalizeSuggestText(e)).toList();
       if (parts.isNotEmpty) {
         final tail = parts.last;
         if (tail.isNotEmpty) return _ensureAddressHasTripCity(tail);
@@ -696,6 +691,11 @@ class _StageFormPageState extends State<StageFormPage> {
   bool get _assistantLocked =>
       !widget.isPremium && !_loadingAssistantTrial && _assistantTrialsLeft <= 0;
 
+  void _applyAssistantTrialStatus(StageAssistantTrialStatus status) {
+    _assistantTrialUsed = status.used.clamp(0, _assistantTrialLimit).toInt();
+    _loadingAssistantTrial = false;
+  }
+
   Future<void> _loadAssistantTrialState() async {
     if (widget.isPremium) {
       if (!mounted) return;
@@ -703,14 +703,10 @@ class _StageFormPageState extends State<StageFormPage> {
       return;
     }
     try {
-      final rawUsed = await _assistantTrialStorage.read(
-        key: _assistantTrialUsedKey,
-      );
-      final used = int.tryParse(rawUsed ?? '') ?? 0;
+      final status = await widget.tripsRepo.getStageAssistantTrialStatus();
       if (!mounted) return;
       setState(() {
-        _assistantTrialUsed = used.clamp(0, _assistantTrialLimit).toInt();
-        _loadingAssistantTrial = false;
+        _applyAssistantTrialStatus(status);
       });
     } catch (_) {
       if (!mounted) return;
@@ -720,14 +716,12 @@ class _StageFormPageState extends State<StageFormPage> {
 
   Future<void> _consumeAssistantTrial() async {
     if (widget.isPremium) return;
-    final nextUsed =
-        (_assistantTrialUsed + 1).clamp(0, _assistantTrialLimit).toInt();
-    setState(() => _assistantTrialUsed = nextUsed);
     try {
-      await _assistantTrialStorage.write(
-        key: _assistantTrialUsedKey,
-        value: nextUsed.toString(),
-      );
+      final status = await widget.tripsRepo.consumeStageAssistantTrial();
+      if (!mounted) return;
+      setState(() {
+        _applyAssistantTrialStatus(status);
+      });
     } catch (_) {}
   }
 
@@ -737,23 +731,25 @@ class _StageFormPageState extends State<StageFormPage> {
     await showDialog<void>(
       context: context,
       barrierDismissible: true,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 44),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 320),
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      builder: (dialogContext) => Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(28),
             color: const Color(0xFF1D1D1D),
             border: Border.all(
-              color: const Color(0xFFB6A1FF).withOpacity(0.28),
+              color: const Color(0xFFB6A1FF).withOpacity(0.34),
             ),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFB6A1FF).withOpacity(0.22),
-                blurRadius: 28,
-                offset: const Offset(0, 14),
+                color: const Color(0xFFB6A1FF).withOpacity(0.18),
+                blurRadius: 34,
+                offset: const Offset(0, 16),
               ),
             ],
           ),
@@ -764,13 +760,13 @@ class _StageFormPageState extends State<StageFormPage> {
               Row(
                 children: [
                   Container(
-                    width: 44,
-                    height: 44,
+                    width: 46,
+                    height: 46,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFB6A1FF).withOpacity(0.18),
-                      borderRadius: BorderRadius.circular(16),
+                      color: const Color(0xFFB6A1FF).withOpacity(0.16),
+                      borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: const Color(0xFFB6A1FF).withOpacity(0.32),
+                        color: const Color(0xFFB6A1FF).withOpacity(0.38),
                       ),
                     ),
                     child: const Icon(
@@ -795,7 +791,7 @@ class _StageFormPageState extends State<StageFormPage> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Продолжить быстрый ввод можно в подписке Тур2Тур Pro.',
+                'Откройте Тур2Тур Pro, чтобы продолжить быстрый ввод этапов голосом и текстом без ограничений.',
                 style: TextStyle(
                   fontFamily: 'Geologica',
                   color: Colors.white.withOpacity(0.74),
@@ -803,6 +799,32 @@ class _StageFormPageState extends State<StageFormPage> {
                   height: 1.42,
                   fontWeight: FontWeight.w300,
                 ),
+              ),
+              const SizedBox(height: 16),
+              _buildPremiumAssistantPreview(),
+              const SizedBox(height: 14),
+              Row(
+                children: const [
+                  Expanded(
+                    child: _PremiumFeatureChip(
+                      icon: Icons.mic_rounded,
+                      label: 'Голосовой ввод',
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: _PremiumFeatureChip(
+                      icon: Icons.auto_awesome_rounded,
+                      label: 'Автозаполнение',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const _PremiumFeatureChip(
+                icon: Icons.edit_note_rounded,
+                label: 'Свободные заметки',
+                fullWidth: true,
               ),
               const SizedBox(height: 16),
               Row(
@@ -817,9 +839,10 @@ class _StageFormPageState extends State<StageFormPage> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       onPressed: () => Navigator.of(dialogContext).pop(),
-                      child: const Text('Позже'),
+                      child: const Text('Немного позже'),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -832,22 +855,100 @@ class _StageFormPageState extends State<StageFormPage> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       onPressed: () {
                         Navigator.of(dialogContext).pop();
                         context.push('/premium');
                       },
-                      child: const Text('Pro'),
+                      child: const Text('Перейти на Pro'),
                     ),
                   ),
                 ],
               ),
             ],
           ),
+            ),
+          ),
         ),
       ),
     );
     _assistantLimitPopupShown = false;
+  }
+
+  Widget _buildPremiumAssistantPreview() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(0.07),
+            const Color(0xFFB6A1FF).withOpacity(0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: const Color(0xFFB6A1FF).withOpacity(0.26),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFB6A1FF).withOpacity(0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              colors: [
+                Color(0xFF9D7BFF),
+                Color(0xFFB6A1FF),
+              ],
+            ).createShader(bounds),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'быстрый ввод',
+              style: TextStyle(
+                fontFamily: 'Geologica',
+                color: Colors.white.withOpacity(0.66),
+                fontSize: 13,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFB6A1FF).withOpacity(0.16),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: const Color(0xFFB6A1FF).withOpacity(0.34),
+              ),
+            ),
+            child: const Text(
+              'Pro активен',
+              style: TextStyle(
+                fontFamily: 'Geologica',
+                color: Color(0xFFD8CCFF),
+                fontSize: 11,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _applyAssistantDraft(StageAssistantDraft draft) {
@@ -936,7 +1037,7 @@ class _StageFormPageState extends State<StageFormPage> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось обработать описание этапа')),
+          const SnackBar(content: Text('Не удалось обработать описание этапа')),
       );
     } finally {
       if (mounted) {
@@ -955,7 +1056,7 @@ class _StageFormPageState extends State<StageFormPage> {
     if (!hasPermission) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Нужен доступ к микрофону')),
+          const SnackBar(content: Text('Нужен доступ к микрофону')),
       );
       return;
     }
@@ -993,7 +1094,7 @@ class _StageFormPageState extends State<StageFormPage> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось начать запись')),
+          const SnackBar(content: Text('Не удалось начать запись')),
       );
     }
   }
@@ -1360,9 +1461,9 @@ class _StageFormPageState extends State<StageFormPage> {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: current?.hour ?? 12, minute: current?.minute ?? 0),
-      helpText: 'Выберите время',
-      cancelText: 'Отмена',
-      confirmText: 'ОК',
+                          helpText: 'Выберите время',
+                          cancelText: 'Отмена',
+                          confirmText: 'ОК',
       builder: (context, child) {
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
@@ -1515,7 +1616,7 @@ class _StageFormPageState extends State<StageFormPage> {
       ),
       decoration: InputDecoration(
         labelText: label,
-        hintText: 'Выбрать',
+                                  hintText: 'Выбрать',
         suffixIcon: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1540,7 +1641,7 @@ class _StageFormPageState extends State<StageFormPage> {
       validator: (value) {
         final raw = (value ?? '').trim();
         if (raw.isEmpty) return null;
-        if (_parseTime(raw, null) == null) return 'Формат времени: HH:MM';
+                                      if (_parseTime(raw, null) == null) return 'Формат времени: HH:MM';
         return null;
       },
     );
@@ -1551,7 +1652,7 @@ class _StageFormPageState extends State<StageFormPage> {
     final cs = Theme.of(context).colorScheme;
     final stageTypeItems = Map<String, String>.from(widget.stageTypeLabels);
     if (!stageTypeItems.containsKey(_stageType)) {
-      stageTypeItems[_stageType] = _stageType == 'document' ? 'Документ' : _stageType;
+                                stageTypeItems[_stageType] = _stageType == 'document' ? 'Документ' : _stageType;
     }
     final subtypes = widget.stageSubtypes[_stageType] ?? const <String>[];
     final isTransport = _stageType == 'transport';
@@ -1585,9 +1686,9 @@ class _StageFormPageState extends State<StageFormPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              widget.submitLabel == 'Сохранить'
-                                  ? 'Редактирование этапа'
-                                  : 'Новый этап',
+                                    widget.submitLabel == 'Сохранить'
+                                        ? 'Редактирование этапа'
+                                        : 'Новый этап',
                               style: const TextStyle(
                                 fontFamily: 'Geologica',
                                 color: Colors.white,
@@ -1669,7 +1770,7 @@ class _StageFormPageState extends State<StageFormPage> {
                             child: ListView(
                               padding: const EdgeInsets.only(bottom: 8),
                               children: [
-                                _bubble('Быстрое создание', [
+                                  _bubble('Быстрое создание', [
                                   Wrap(
                                     spacing: 8,
                                     runSpacing: 8,
@@ -1723,7 +1824,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                 _plainSection([
                                   _buildAssistantComposer(),
                                 ]),
-                                _bubble('Основное', [
+                                  _bubble('Основное', [
                                   TextFormField(
                                     controller: _titleCtrl,
                                     focusNode: _titleFocusNode,
@@ -1741,9 +1842,9 @@ class _StageFormPageState extends State<StageFormPage> {
                                       color: Colors.white,
                                       fontWeight: FontWeight.w300,
                                     ),
-                                    decoration: const InputDecoration(labelText: 'Название'),
-                                    validator: (v) =>
-                                        (v ?? '').trim().isEmpty ? 'Введите название' : null,
+                                      decoration: const InputDecoration(labelText: 'Название'),
+                                      validator: (v) =>
+                                          (v ?? '').trim().isEmpty ? 'Введите название' : null,
                                   ),
                                   if (_stageType != 'transport' &&
                                       (_orgSuggestLoading || _orgSuggestions.isNotEmpty)) ...[
@@ -1769,7 +1870,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                                   ),
                                                   SizedBox(width: 8),
                                                   Text(
-                                                    'Ищем организации...',
+                                                  'Ищем организации...',
                                                     style: TextStyle(
                                                       color: Colors.white70,
                                                       fontSize: 12,
@@ -1856,7 +1957,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                         color: Colors.white,
                                         fontWeight: FontWeight.w300,
                                       ),
-                                      decoration: const InputDecoration(labelText: 'Откуда'),
+                                          decoration: const InputDecoration(labelText: 'Откуда'),
                                     ),
                                     const SizedBox(height: 8),
                                     TextFormField(
@@ -1866,7 +1967,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                         color: Colors.white,
                                         fontWeight: FontWeight.w300,
                                       ),
-                                      decoration: const InputDecoration(labelText: 'Куда'),
+                                          decoration: const InputDecoration(labelText: 'Куда'),
                                     ),
                                   ] else ...[
                                     TextFormField(
@@ -1878,10 +1979,10 @@ class _StageFormPageState extends State<StageFormPage> {
                                       ),
                                       decoration: InputDecoration(
                                         labelText: isStay
-                                            ? 'Адрес проживания'
+                                          ? 'Адрес проживания'
                                             : isFood
-                                                ? 'Место / адрес'
-                                                : 'Адрес / место',
+                                              ? 'Место / адрес'
+                                              : 'Адрес / место',
                                       ),
                                     ),
                                   ],
@@ -1890,11 +1991,11 @@ class _StageFormPageState extends State<StageFormPage> {
                                     segments: const [
                                       ButtonSegment<String>(
                                         value: 'duration',
-                                        label: Text('Продолжительность'),
+                                            label: Text('Продолжительность'),
                                       ),
                                       ButtonSegment<String>(
                                         value: 'range',
-                                        label: Text('Промежуток'),
+                                            label: Text('Промежуток'),
                                       ),
                                     ],
                                     selected: {_transportTimeMode},
@@ -1946,7 +2047,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                         fontWeight: FontWeight.w300,
                                       ),
                                       decoration: const InputDecoration(
-                                        labelText: 'Продолжительность, мин',
+                                              labelText: 'Продолжительность, мин',
                                       ),
                                       keyboardType: TextInputType.number,
                                     ),
@@ -1971,7 +2072,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                   ],
                                 ], Colors.cyan),
                                 const SizedBox(height: 2),
-                                _bubble('Детали', [
+                                  _bubble('Детали', [
                                     if (subtypes.isNotEmpty) ...[
                                       DropdownButtonFormField<String>(
                                         value: (_subtype.isNotEmpty && subtypes.contains(_subtype))
@@ -1984,7 +2085,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                         ),
                                         dropdownColor: const Color(0xFF2B2B2B),
                                         iconEnabledColor: Colors.white70,
-                                        decoration: const InputDecoration(labelText: 'Подтип'),
+                                          decoration: const InputDecoration(labelText: 'Подтип'),
                                         items: subtypes
                                             .map(
                                               (e) => DropdownMenuItem(
@@ -2037,7 +2138,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                           fontWeight: FontWeight.w300,
                                         ),
                                         decoration: InputDecoration(
-                                          labelText: isFood ? 'Сколько потрачу, руб' : 'Стоимость, руб',
+                                              labelText: isFood ? 'Сколько потрачу, руб' : 'Стоимость, руб',
                                         ),
                                         keyboardType:
                                             const TextInputType.numberWithOptions(decimal: true),
@@ -2087,8 +2188,8 @@ class _StageFormPageState extends State<StageFormPage> {
                                               : const Icon(Icons.upload_file_rounded),
                                           label: Text(
                                             _docCtrl.text.trim().isEmpty
-                                                ? 'Загрузить документ'
-                                                : 'Документ загружен',
+                                                      ? 'Загрузить документ'
+                                                      : 'Документ загружен',
                                           ),
                                         ),
                                       ),
@@ -2109,6 +2210,10 @@ class _StageFormPageState extends State<StageFormPage> {
                                 SizedBox(
                                   height: 46,
                                   child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFD7E37A),
+                                      foregroundColor: const Color(0xFF171717),
+                                    ),
                                     onPressed: () {
                                       if (!(_formKey.currentState?.validate() ?? false)) return;
                                       final resolvedSubtype = _stageType == 'transport'
@@ -2281,6 +2386,73 @@ class _NightPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _PremiumFeatureChip extends StatelessWidget {
+  const _PremiumFeatureChip({
+    required this.icon,
+    required this.label,
+    this.fullWidth = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool fullWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    const accentColor = Color(0xFFD7E37A);
+    final child = Container(
+      width: fullWidth ? double.infinity : null,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(0.06),
+            accentColor.withOpacity(0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: accentColor.withOpacity(0.26),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withOpacity(0.07),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: accentColor,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Geologica',
+                color: Colors.white.withOpacity(0.88),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return child;
+  }
 }
 
 

@@ -7,6 +7,7 @@ param(
   [string]$WebRoot = "/var/www/tour2tour/web",
   [string]$KeyPath = "",
   [string]$PremiumCheckoutUrl = "",
+  [string]$PremiumInn = "",
   [switch]$SkipFrontend
 )
 
@@ -42,6 +43,11 @@ if (-not $SkipFrontend) {
     } else {
       $env:PREMIUM_CHECKOUT_URL
     }
+    $resolvedPremiumInn = if (-not [string]::IsNullOrWhiteSpace($PremiumInn)) {
+      $PremiumInn
+    } else {
+      $env:PREMIUM_INN
+    }
     $flutterBuildArgs = @(
       "build",
       "web",
@@ -50,6 +56,9 @@ if (-not $SkipFrontend) {
     )
     if (-not [string]::IsNullOrWhiteSpace($resolvedPremiumCheckoutUrl)) {
       $flutterBuildArgs += "--dart-define=PREMIUM_CHECKOUT_URL=$resolvedPremiumCheckoutUrl"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($resolvedPremiumInn)) {
+      $flutterBuildArgs += "--dart-define=PREMIUM_INN=$resolvedPremiumInn"
     }
     flutter @flutterBuildArgs
   } finally {

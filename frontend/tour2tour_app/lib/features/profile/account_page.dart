@@ -87,6 +87,7 @@ class _AccountPageState extends State<AccountPage> {
 
   @override
   Widget build(BuildContext context) {
+    final avatarImage = buildAvatarImage(_me?.avatarUrl);
     return TravelAppShell(
       title: 'Профиль',
       subtitle: 'Учетная запись и настройки безопасности',
@@ -135,8 +136,8 @@ class _AccountPageState extends State<AccountPage> {
                           CircleAvatar(
                             radius: 28,
                             backgroundColor: const Color(0xFF2B2B2B),
-                            backgroundImage: buildAvatarImage(_me?.avatarUrl),
-                            child: buildAvatarImage(_me?.avatarUrl) == null
+                            backgroundImage: avatarImage,
+                            child: avatarImage == null
                                 ? const Icon(
                                     Icons.person_rounded,
                                     size: 28,

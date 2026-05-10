@@ -167,16 +167,32 @@ if ($RunWeb) {
     $flutterDir = Join-Path $root "frontend\tour2tour_app"
     Write-Host "Starting Flutter Web in a new terminal..."
     $premiumCheckoutUrl = ""
+    $premiumInn = ""
+    $forcePremiumPopup = ""
     $composeEnvPath = Join-Path $root "infra\.env"
     if (Test-Path $composeEnvPath) {
         $premiumLine = Get-Content $composeEnvPath | Where-Object { $_ -match '^PREMIUM_CHECKOUT_URL=' } | Select-Object -First 1
         if ($premiumLine) {
             $premiumCheckoutUrl = ($premiumLine -replace '^PREMIUM_CHECKOUT_URL=', '').Trim()
         }
+        $premiumInnLine = Get-Content $composeEnvPath | Where-Object { $_ -match '^PREMIUM_INN=' } | Select-Object -First 1
+        if ($premiumInnLine) {
+            $premiumInn = ($premiumInnLine -replace '^PREMIUM_INN=', '').Trim()
+        }
+        $forcePremiumPopupLine = Get-Content $composeEnvPath | Where-Object { $_ -match '^FORCE_PREMIUM_POPUP=' } | Select-Object -First 1
+        if ($forcePremiumPopupLine) {
+            $forcePremiumPopup = ($forcePremiumPopupLine -replace '^FORCE_PREMIUM_POPUP=', '').Trim()
+        }
     }
     $flutterCommand = "Set-Location '$flutterDir'; flutter pub get; flutter run -d chrome --dart-define=API_BASE_URL=$apiBaseUrl"
     if (-not [string]::IsNullOrWhiteSpace($premiumCheckoutUrl)) {
         $flutterCommand += " --dart-define=PREMIUM_CHECKOUT_URL=$premiumCheckoutUrl"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($premiumInn)) {
+        $flutterCommand += " --dart-define=PREMIUM_INN=$premiumInn"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($forcePremiumPopup)) {
+        $flutterCommand += " --dart-define=FORCE_PREMIUM_POPUP=$forcePremiumPopup"
     }
     Start-Process powershell -ArgumentList @(
         "-NoExit",

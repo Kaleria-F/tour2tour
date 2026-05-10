@@ -153,12 +153,11 @@ def upload_init(
     params = {
         "Bucket": settings.s3_bucket,
         "Key": object_key,
-        "ContentType": payload.content_type,
     }
-    # Do not force SSE header in presigned PUT signature.
-    # Many web clients won't send x-amz-server-side-encryption header explicitly,
-    # which leads to SignatureDoesNotMatch on upload.
-    # Prefer bucket-level default encryption policy for at-rest encryption.
+    # Do not sign Content-Type into the presigned PUT request.
+    # Browsers may normalize or omit this header on web uploads, which causes
+    # SignatureDoesNotMatch/403 even when the file bytes are valid.
+    # The uploaded object is still validated server-side in upload_complete().
     try:
         upload_url = s3_presign.generate_presigned_url(
             ClientMethod="put_object",

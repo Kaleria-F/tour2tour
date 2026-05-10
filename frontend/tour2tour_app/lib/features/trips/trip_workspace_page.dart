@@ -1612,7 +1612,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                               _tripTitle,
                               style: const TextStyle(
                                 fontSize: 30,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w300,
                                 color: Colors.white,
                                 height: 1.1,
                               ),
@@ -1653,8 +1653,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                             city: widget.destinationCity,
                                             titleOverride:
                                                 '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0435 \u043c\u0430\u0440\u0448\u0440\u0443\u0442\u0430',
-                                            subtitleOverride:
-                                                '\u041c\u0435\u0441\u0442\u0430, \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u0438\u043c\u0435\u043d\u043d\u043e \u0434\u043b\u044f \u044d\u0442\u043e\u0439 \u043f\u043e\u0435\u0437\u0434\u043a\u0438',
                                             embedded: true,
                                             onBack: _closeTripFavoritesView,
                                           )
@@ -5744,7 +5742,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                         widget.tripTitle,
                         style: const TextStyle(
                           fontSize: 30,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w300,
                           color: Colors.white,
                           height: 1.1,
                         ),

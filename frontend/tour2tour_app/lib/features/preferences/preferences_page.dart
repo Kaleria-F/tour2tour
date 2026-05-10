@@ -43,12 +43,14 @@ class PreferencesPage extends StatefulWidget {
   final PreferencesRepo repo;
   final AuthRepo auth;
   final bool fromRecommendations;
+  final int? tripId;
 
   const PreferencesPage({
     super.key,
     required this.repo,
     required this.auth,
     this.fromRecommendations = false,
+    this.tripId,
   });
 
   @override
@@ -172,7 +174,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
 
   Future<void> _loadExisting() async {
     try {
-      final profile = await widget.repo.getSurveyProfile();
+      final profile = await widget.repo.getSurveyProfile(tripId: widget.tripId);
       _multiAnswers['interests'] = profile.interests.toSet();
       _multiAnswers['trip_format'] = profile.tripFormats.toSet();
       if (profile.budget != null) {
@@ -233,6 +235,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
           skipped: true,
           hasCompleted: false,
         ),
+        tripId: widget.tripId,
       );
       if (!mounted) return;
       if (widget.fromRecommendations) {
@@ -263,7 +266,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
         skipped: false,
         hasCompleted: true,
       );
-      await widget.repo.setSurveyProfile(profile);
+      await widget.repo.setSurveyProfile(profile, tripId: widget.tripId);
       if (!mounted) return;
       if (widget.fromRecommendations) {
         context.pop();

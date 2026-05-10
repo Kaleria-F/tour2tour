@@ -190,6 +190,18 @@ def _to_story_out(story: PlaceStory) -> PlaceStoryOut:
     )
 
 
+def _resolve_story_image_url(image_url: str | None, cover_image_url: str | None, linked_place: Place | None) -> str:
+    resolved = (image_url or "").strip() or (cover_image_url or "").strip()
+    if not resolved and linked_place is not None:
+        resolved = (linked_place.image_url or "").strip()
+    if not resolved:
+        raise HTTPException(
+            status_code=400,
+            detail="Story image is required. Upload an image or provide an image URL.",
+        )
+    return resolved
+
+
 def _replace_tags(db: Session, place: Place, tags: dict[str, int]) -> None:
     tags = validate_place_tags(tags)
     if "tags" in place.__dict__:
@@ -462,11 +474,16 @@ def create_place_story(
         linked_place = db.get(Place, payload.place_id)
         if linked_place is None:
             raise HTTPException(status_code=404, detail="Linked place not found")
+    resolved_image_url = _resolve_story_image_url(
+        payload.image_url,
+        payload.cover_image_url,
+        linked_place,
+    )
     story = PlaceStory(
         id=str(uuid4()),
         title=payload.title,
         cover_image_url=payload.cover_image_url,
-        image_url=payload.image_url,
+        image_url=resolved_image_url,
         body_text=payload.body_text,
         place_id=linked_place.id if linked_place else None,
         sort_order=payload.sort_order,
@@ -489,6 +506,7 @@ def update_place_story(
     if story is None:
         raise HTTPException(status_code=404, detail="Story not found")
     data = payload.model_dump(exclude_unset=True)
+    next_place = story.place if story.place_id else None
     if "place_id" in data:
         place_id = data.get("place_id")
         if place_id:
@@ -496,9 +514,17 @@ def update_place_story(
             if linked_place is None:
                 raise HTTPException(status_code=404, detail="Linked place not found")
             story.place_id = linked_place.id
+            next_place = linked_place
         else:
             story.place_id = None
+            next_place = None
         data.pop("place_id", None)
+    if "image_url" in data or "cover_image_url" in data or "place_id" in payload.model_fields_set:
+        data["image_url"] = _resolve_story_image_url(
+            data.get("image_url", story.image_url),
+            data.get("cover_image_url", story.cover_image_url),
+            next_place,
+        )
     for key, value in data.items():
         setattr(story, key, value)
     db.add(story)

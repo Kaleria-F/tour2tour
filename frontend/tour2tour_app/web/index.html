@@ -18,8 +18,14 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
-  <script src="https://api-maps.yandex.ru/v3/?apikey=acf6e354-8f9c-4163-9d37-54bf33ee956b&lang=ru_RU"></script>
+  <meta
+    name="description"
+    content="Тур2Тур — удобное планирование маршрутов и все детали поездки в одном месте."
+  >
+  <script
+    defer
+    src="https://api-maps.yandex.ru/v3/?apikey=acf6e354-8f9c-4163-9d37-54bf33ee956b&lang=ru_RU"
+  ></script>
   <script>
     (function () {
       const API_KEY = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
@@ -28,10 +34,13 @@
       const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
       const GEOCODER_DAILY_LIMIT = 1000;
       const RETRY_DELAYS_MS = [500, 1200, 2500];
+      const GEOCODER_TIMEOUT_MS = 8000;
+      const ROUTE_TIMEOUT_MS = 12000;
       const fallbackCenter = [37.617635, 55.755814]; // Moscow fallback
       const mapState = new WeakMap();
       const retryState = new WeakMap();
       const syncQueue = new WeakMap();
+      const syncScheduled = new WeakMap();
       function resolveApiBaseUrl() {
         const host = (window.location && window.location.hostname) || '';
         if (host.endsWith('24tour2tour.ru')) return 'https://api.24tour2tour.ru';
@@ -50,6 +59,19 @@
         }
         await window.ymaps3.ready;
         return window.ymaps3;
+      }
+
+      async function fetchWithTimeout(url, options, timeoutMs) {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          return await fetch(url, {
+            ...(options || {}),
+            signal: controller.signal,
+          });
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
       }
 
       function readJson(key, fallbackValue) {
@@ -134,7 +156,7 @@
           '&format=json&results=1&lang=ru_RU&geocode=' +
           encodeURIComponent(query);
 
-        const resp = await fetch(url);
+        const resp = await fetchWithTimeout(url, null, GEOCODER_TIMEOUT_MS);
         if (resp.status === 429) {
           throw makeDailyLimitError();
         }
@@ -580,19 +602,23 @@
         setRouteInfo(state, 'Строим маршрут...');
         try {
           const mode = state.routeMode || 'driving-car';
-          const resp = await fetch(`${resolveApiBaseUrl()}/trips/routing/ors/route`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
+          const resp = await fetchWithTimeout(
+            `${resolveApiBaseUrl()}/trips/routing/ors/route`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                mode: mode,
+                points: [
+                  { lon: p1.coords[0], lat: p1.coords[1] },
+                  { lon: p2.coords[0], lat: p2.coords[1] },
+                ],
+              }),
             },
-            body: JSON.stringify({
-              mode: mode,
-              points: [
-                { lon: p1.coords[0], lat: p1.coords[1] },
-                { lon: p2.coords[0], lat: p2.coords[1] },
-              ],
-            }),
-          });
+            ROUTE_TIMEOUT_MS,
+          );
           if (!resp.ok) {
             setRouteInfo(state, 'Маршрут недоступен');
             return;
@@ -923,22 +949,32 @@
         syncQueue.set(container, next);
       }
 
+      function requestSync(container) {
+        if (!container) return;
+        if (syncScheduled.get(container)) return;
+        syncScheduled.set(container, true);
+        window.requestAnimationFrame(() => {
+          syncScheduled.set(container, false);
+          enqueueSync(container);
+        });
+      }
+
       const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
           if (mutation.type === 'attributes') {
-            enqueueSync(mutation.target);
+            requestSync(mutation.target);
             continue;
           }
           if (mutation.type === 'childList') {
             mutation.addedNodes.forEach((node) => {
               if (!(node instanceof HTMLElement)) return;
               if (node.classList && node.classList.contains('t2t-yandex-city-map')) {
-                enqueueSync(node);
+                requestSync(node);
               }
               if (node.querySelectorAll) {
                 node
                   .querySelectorAll('.t2t-yandex-city-map')
-                  .forEach((el) => enqueueSync(el));
+                  .forEach((el) => requestSync(el));
               }
             });
           }
@@ -948,11 +984,11 @@
       document.addEventListener('DOMContentLoaded', () => {
         document
           .querySelectorAll('.t2t-yandex-city-map')
-          .forEach((el) => enqueueSync(el));
+          .forEach((el) => requestSync(el));
       });
 
       document.addEventListener('t2t-city-change', (event) => {
-        enqueueSync(event.target);
+        requestSync(event.target);
       });
 
       observer.observe(document.documentElement, {
@@ -969,13 +1005,15 @@
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="tour2tour_app">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="apple-mobile-web-app-title" content="Тур2Тур">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png"/>
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon-64.png"/>
+  <link rel="icon" type="image/png" sizes="96x96" href="favicon-96.png"/>
 
-  <title>tour2tour_app</title>
+  <title>Тур2Тур</title>
   <link rel="manifest" href="manifest.json">
 </head>
 <body>

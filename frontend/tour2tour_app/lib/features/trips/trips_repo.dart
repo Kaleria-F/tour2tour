@@ -440,6 +440,32 @@ class StageAssistantDraft {
   }
 }
 
+class StageAssistantTrialStatus {
+  final int limit;
+  final int used;
+  final int remaining;
+  final bool isLocked;
+
+  const StageAssistantTrialStatus({
+    required this.limit,
+    required this.used,
+    required this.remaining,
+    required this.isLocked,
+  });
+
+  factory StageAssistantTrialStatus.fromJson(Map<String, dynamic> json) {
+    int parseInt(dynamic raw, int fallback) =>
+        int.tryParse(raw?.toString() ?? '') ?? fallback;
+
+    return StageAssistantTrialStatus(
+      limit: parseInt(json['limit'], 5),
+      used: parseInt(json['used'], 0),
+      remaining: parseInt(json['remaining'], 5),
+      isLocked: json['is_locked'] == true,
+    );
+  }
+}
+
 class TripsRepo {
   final ApiClient api;
   TripsRepo(this.api);
@@ -1123,5 +1149,33 @@ class TripsRepo {
     final data = res.data;
     if (data is! Map<String, dynamic>) return null;
     return StageAssistantDraft.fromJson(data);
+  }
+
+  Future<StageAssistantTrialStatus> getStageAssistantTrialStatus() async {
+    final res = await api.dio.get('/users/me/stage-assistant-trial');
+    final data = res.data;
+    if (data is! Map<String, dynamic>) {
+      return const StageAssistantTrialStatus(
+        limit: 5,
+        used: 0,
+        remaining: 5,
+        isLocked: false,
+      );
+    }
+    return StageAssistantTrialStatus.fromJson(data);
+  }
+
+  Future<StageAssistantTrialStatus> consumeStageAssistantTrial() async {
+    final res = await api.dio.post('/users/me/stage-assistant-trial/consume');
+    final data = res.data;
+    if (data is! Map<String, dynamic>) {
+      return const StageAssistantTrialStatus(
+        limit: 5,
+        used: 0,
+        remaining: 5,
+        isLocked: false,
+      );
+    }
+    return StageAssistantTrialStatus.fromJson(data);
   }
 }

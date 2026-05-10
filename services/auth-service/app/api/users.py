@@ -1,8 +1,9 @@
 import json
 import logging
 import secrets
+from collections import Counter, defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import delete, select
 
@@ -25,6 +26,7 @@ from app.schemas.preferences import (
 from app.schemas.user import (
     EmailChangeConfirmIn,
     EmailChangeRequestIn,
+    StageAssistantTrialOut,
     UserMeOut,
     UserProfileUpdateIn,
 )
@@ -46,6 +48,9 @@ TRAVEL_MODE_ALIASES = {
     "walk": "walk",
 }
 EMAIL_CHANGE_CODE_TTL = 10 * 60
+TRIP_SURVEY_PREFIX = "trip:"
+STAGE_ASSISTANT_TRIAL_KEY = "stage_assistant_trial_used"
+STAGE_ASSISTANT_TRIAL_LIMIT = 5
 
 
 @router.get("/me", response_model=UserMeOut)
@@ -66,6 +71,58 @@ def get_me(me: User = Depends(get_current_user)):
 
 def _normalize_email(email: str | None) -> str:
     return (email or "").strip().lower()
+
+
+def _read_stage_assistant_trial_used(db: Session, user_id: int) -> int:
+    row = db.execute(
+        select(UserPreference).where(
+            UserPreference.user_id == user_id,
+            UserPreference.key == STAGE_ASSISTANT_TRIAL_KEY,
+        )
+    ).scalars().first()
+    if row is None:
+        return 0
+    try:
+        return max(0, min(int(row.value), STAGE_ASSISTANT_TRIAL_LIMIT))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _write_stage_assistant_trial_used(db: Session, user_id: int, used: int) -> int:
+    normalized = max(0, min(used, STAGE_ASSISTANT_TRIAL_LIMIT))
+    row = db.execute(
+        select(UserPreference).where(
+            UserPreference.user_id == user_id,
+            UserPreference.key == STAGE_ASSISTANT_TRIAL_KEY,
+        )
+    ).scalars().first()
+    if row is None:
+        db.add(
+            UserPreference(
+                user_id=user_id,
+                key=STAGE_ASSISTANT_TRIAL_KEY,
+                value=str(normalized),
+            )
+        )
+    else:
+        row.value = str(normalized)
+        db.add(row)
+    db.commit()
+    return normalized
+
+
+def _stage_assistant_trial_out(used: int, is_premium: bool) -> StageAssistantTrialOut:
+    normalized = max(0, min(used, STAGE_ASSISTANT_TRIAL_LIMIT))
+    remaining = STAGE_ASSISTANT_TRIAL_LIMIT if is_premium else max(
+        0,
+        STAGE_ASSISTANT_TRIAL_LIMIT - normalized,
+    )
+    return StageAssistantTrialOut(
+        limit=STAGE_ASSISTANT_TRIAL_LIMIT,
+        used=normalized,
+        remaining=remaining,
+        is_locked=(not is_premium and remaining <= 0),
+    )
 
 
 def _email_change_key(user_id: int, email: str) -> str:
@@ -214,6 +271,29 @@ def confirm_email_change(
     return get_me(me)
 
 
+@router.get("/me/stage-assistant-trial", response_model=StageAssistantTrialOut)
+def get_stage_assistant_trial(
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    used = _read_stage_assistant_trial_used(db, me.id)
+    return _stage_assistant_trial_out(used, me.is_premium)
+
+
+@router.post("/me/stage-assistant-trial/consume", response_model=StageAssistantTrialOut)
+def consume_stage_assistant_trial(
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    if me.is_premium:
+        return _stage_assistant_trial_out(0, True)
+
+    used = _read_stage_assistant_trial_used(db, me.id)
+    next_used = min(STAGE_ASSISTANT_TRIAL_LIMIT, used + 1)
+    stored_used = _write_stage_assistant_trial_used(db, me.id, next_used)
+    return _stage_assistant_trial_out(stored_used, False)
+
+
 @router.get("/me/preferences", response_model=PreferencesOut)
 def get_preferences(
     db: Session = Depends(get_db),
@@ -289,74 +369,39 @@ def _normalize_value(value: str | None, aliases: dict[str, str]) -> str | None:
     return normalized.strip() or None
 
 
-@router.get("/me/survey-profile", response_model=SurveyProfileOut)
-def get_survey_profile(
-    db: Session = Depends(get_db),
-    me: User = Depends(get_current_user),
-):
-    rows = db.execute(
-        select(UserPreference).where(UserPreference.user_id == me.id)
-    ).scalars().all()
+def _trip_scope_prefix(trip_id: int) -> str:
+    return f"{TRIP_SURVEY_PREFIX}{trip_id}:"
 
-    interests: list[str] = []
-    trip_formats: list[str] = []
-    interest_weights: dict[str, int] = {}
-    budget: str | None = None
-    travel_mode: str | None = None
-    pace: str | None = None
-    skipped = False
 
-    for row in rows:
-        if row.key == INTEREST_KEY:
-            normalized = _normalize_value(row.value, INTEREST_ALIASES)
-            if normalized is not None:
-                interests.append(normalized)
-        elif row.key == TRIP_FORMAT_KEY:
-            normalized = _normalize_value(row.value, TRIP_FORMAT_ALIASES)
-            if normalized is not None:
-                trip_formats.append(normalized)
-        elif row.key.startswith(INTEREST_WEIGHT_PREFIX):
-            tag = _normalize_value(row.key[len(INTEREST_WEIGHT_PREFIX) :], INTEREST_ALIASES)
-            if tag is None:
-                continue
-            try:
-                weight = int(row.value)
-            except ValueError:
-                continue
-            if 1 <= weight <= 5:
-                interest_weights[tag] = weight
-        elif row.key == SURVEY_PROFILE_META_KEY:
-            try:
-                meta = json.loads(row.value)
-            except json.JSONDecodeError:
-                continue
-            budget = meta.get("budget") if isinstance(meta.get("budget"), str) else budget
-            travel_mode = _normalize_value(
-                meta.get("travel_mode") if isinstance(meta.get("travel_mode"), str) else travel_mode,
-                TRAVEL_MODE_ALIASES,
-            )
-            pace = meta.get("pace") if isinstance(meta.get("pace"), str) else pace
-            skipped = bool(meta.get("skipped", skipped))
+def _trip_scoped_key(trip_id: int, key: str) -> str:
+    return f"{_trip_scope_prefix(trip_id)}{key}"
 
-    has_completed = _survey_has_completed(
-        interests=_filter_known_values(interests, INTEREST_TAGS),
-        trip_formats=_filter_known_values(trip_formats, TRIP_FORMAT_TAGS),
-        budget=budget,
-        travel_mode=travel_mode if travel_mode in TRAVEL_MODE_TAGS else None,
-        pace=pace if pace in PACE_VALUES else None,
-        interest_weights={tag: weight for tag, weight in interest_weights.items() if tag in INTEREST_TAGS},
-        skipped=skipped,
-    )
 
-    interests = _filter_known_values(interests, INTEREST_TAGS)
-    trip_formats = _filter_known_values(trip_formats, TRIP_FORMAT_TAGS)
-    interest_weights = {
-        tag: weight for tag, weight in interest_weights.items() if tag in INTEREST_TAGS
+def _empty_profile_state() -> dict:
+    return {
+        "interests": [],
+        "trip_formats": [],
+        "interest_weights": {},
+        "budget": None,
+        "travel_mode": None,
+        "pace": None,
+        "skipped": False,
     }
-    travel_mode = travel_mode if travel_mode in TRAVEL_MODE_TAGS else None
-    pace = pace if pace in PACE_VALUES else None
 
-    return SurveyProfileOut(
+
+def _normalize_profile_state(state: dict) -> dict:
+    interests = _filter_known_values(state["interests"], INTEREST_TAGS)
+    trip_formats = _filter_known_values(state["trip_formats"], TRIP_FORMAT_TAGS)
+    interest_weights = {
+        tag: weight
+        for tag, weight in state["interest_weights"].items()
+        if tag in INTEREST_TAGS and isinstance(weight, int) and 1 <= weight <= 5
+    }
+    travel_mode = state["travel_mode"] if state["travel_mode"] in TRAVEL_MODE_TAGS else None
+    pace = state["pace"] if state["pace"] in PACE_VALUES else None
+    budget = state["budget"]
+    skipped = bool(state["skipped"])
+    has_completed = _survey_has_completed(
         interests=interests,
         trip_formats=trip_formats,
         budget=budget,
@@ -364,31 +409,217 @@ def get_survey_profile(
         pace=pace,
         interest_weights=interest_weights,
         skipped=skipped,
-        has_completed=has_completed,
     )
+    return {
+        "interests": interests,
+        "trip_formats": trip_formats,
+        "interest_weights": interest_weights,
+        "budget": budget,
+        "travel_mode": travel_mode,
+        "pace": pace,
+        "skipped": skipped,
+        "has_completed": has_completed,
+    }
+
+
+def _profile_out_from_state(state: dict) -> SurveyProfileOut:
+    normalized = _normalize_profile_state(state)
+    return SurveyProfileOut(
+        interests=normalized["interests"],
+        trip_formats=normalized["trip_formats"],
+        budget=normalized["budget"],
+        travel_mode=normalized["travel_mode"],
+        pace=normalized["pace"],
+        interest_weights=normalized["interest_weights"],
+        skipped=normalized["skipped"],
+        has_completed=normalized["has_completed"],
+    )
+
+
+def _extract_scoped_profile(rows: list[UserPreference], trip_id: int | None) -> dict:
+    state = _empty_profile_state()
+    meta_key = SURVEY_PROFILE_META_KEY if trip_id is None else _trip_scoped_key(trip_id, SURVEY_PROFILE_META_KEY)
+    interest_key = INTEREST_KEY if trip_id is None else _trip_scoped_key(trip_id, INTEREST_KEY)
+    trip_format_key = TRIP_FORMAT_KEY if trip_id is None else _trip_scoped_key(trip_id, TRIP_FORMAT_KEY)
+    weight_prefix = (
+        INTEREST_WEIGHT_PREFIX
+        if trip_id is None
+        else _trip_scoped_key(trip_id, INTEREST_WEIGHT_PREFIX)
+    )
+
+    for row in rows:
+        if row.key == interest_key:
+            normalized = _normalize_value(row.value, INTEREST_ALIASES)
+            if normalized is not None:
+                state["interests"].append(normalized)
+        elif row.key == trip_format_key:
+            normalized = _normalize_value(row.value, TRIP_FORMAT_ALIASES)
+            if normalized is not None:
+                state["trip_formats"].append(normalized)
+        elif row.key.startswith(weight_prefix):
+            tag = _normalize_value(row.key[len(weight_prefix) :], INTEREST_ALIASES)
+            if tag is None:
+                continue
+            try:
+                weight = int(row.value)
+            except ValueError:
+                continue
+            if 1 <= weight <= 5:
+                state["interest_weights"][tag] = weight
+        elif row.key == meta_key:
+            try:
+                meta = json.loads(row.value)
+            except json.JSONDecodeError:
+                continue
+            state["budget"] = meta.get("budget") if isinstance(meta.get("budget"), str) else state["budget"]
+            state["travel_mode"] = _normalize_value(
+                meta.get("travel_mode") if isinstance(meta.get("travel_mode"), str) else state["travel_mode"],
+                TRAVEL_MODE_ALIASES,
+            )
+            state["pace"] = meta.get("pace") if isinstance(meta.get("pace"), str) else state["pace"]
+            state["skipped"] = bool(meta.get("skipped", state["skipped"]))
+
+    return _normalize_profile_state(state)
+
+
+def _aggregate_all_profile_states(rows: list[UserPreference]) -> dict:
+    per_scope: dict[str, dict] = defaultdict(_empty_profile_state)
+
+    for row in rows:
+        scope = "global"
+        raw_key = row.key
+        if raw_key.startswith(TRIP_SURVEY_PREFIX):
+            parts = raw_key.split(":", 2)
+            if len(parts) != 3 or not parts[1].isdigit():
+                continue
+            scope = f"trip:{parts[1]}"
+            raw_key = parts[2]
+
+        state = per_scope[scope]
+        if raw_key == INTEREST_KEY:
+            normalized = _normalize_value(row.value, INTEREST_ALIASES)
+            if normalized is not None:
+                state["interests"].append(normalized)
+        elif raw_key == TRIP_FORMAT_KEY:
+            normalized = _normalize_value(row.value, TRIP_FORMAT_ALIASES)
+            if normalized is not None:
+                state["trip_formats"].append(normalized)
+        elif raw_key.startswith(INTEREST_WEIGHT_PREFIX):
+            tag = _normalize_value(raw_key[len(INTEREST_WEIGHT_PREFIX) :], INTEREST_ALIASES)
+            if tag is None:
+                continue
+            try:
+                weight = int(row.value)
+            except ValueError:
+                continue
+            if 1 <= weight <= 5:
+                state["interest_weights"][tag] = weight
+        elif raw_key == SURVEY_PROFILE_META_KEY:
+            try:
+                meta = json.loads(row.value)
+            except json.JSONDecodeError:
+                continue
+            state["budget"] = meta.get("budget") if isinstance(meta.get("budget"), str) else state["budget"]
+            state["travel_mode"] = _normalize_value(
+                meta.get("travel_mode") if isinstance(meta.get("travel_mode"), str) else state["travel_mode"],
+                TRAVEL_MODE_ALIASES,
+            )
+            state["pace"] = meta.get("pace") if isinstance(meta.get("pace"), str) else state["pace"]
+            state["skipped"] = bool(meta.get("skipped", state["skipped"]))
+
+    normalized_states = [
+        _normalize_profile_state(state)
+        for state in per_scope.values()
+        if state["interests"]
+        or state["trip_formats"]
+        or state["interest_weights"]
+        or state["budget"] is not None
+        or state["travel_mode"] is not None
+        or state["pace"] is not None
+        or state["skipped"]
+    ]
+    if not normalized_states:
+        return _normalize_profile_state(_empty_profile_state())
+
+    interests = sorted({tag for state in normalized_states for tag in state["interests"]})
+    trip_formats = sorted({tag for state in normalized_states for tag in state["trip_formats"]})
+
+    weights_bucket: dict[str, list[int]] = defaultdict(list)
+    for state in normalized_states:
+        for tag, weight in state["interest_weights"].items():
+            weights_bucket[tag].append(weight)
+    interest_weights = {
+        tag: max(1, min(5, round(sum(values) / len(values))))
+        for tag, values in weights_bucket.items()
+        if values
+    }
+
+    budgets = [state["budget"] for state in normalized_states if state["budget"]]
+    travel_modes = [state["travel_mode"] for state in normalized_states if state["travel_mode"]]
+    paces = [state["pace"] for state in normalized_states if state["pace"]]
+    skipped = all(state["skipped"] for state in normalized_states) and not (
+        interests or trip_formats or interest_weights or budgets or travel_modes or paces
+    )
+
+    return _normalize_profile_state(
+        {
+            "interests": interests,
+            "trip_formats": trip_formats,
+            "interest_weights": interest_weights,
+            "budget": Counter(budgets).most_common(1)[0][0] if budgets else None,
+            "travel_mode": Counter(travel_modes).most_common(1)[0][0] if travel_modes else None,
+            "pace": Counter(paces).most_common(1)[0][0] if paces else None,
+            "skipped": skipped,
+        }
+    )
+
+
+@router.get("/me/survey-profile", response_model=SurveyProfileOut)
+def get_survey_profile(
+    trip_id: int | None = Query(default=None, ge=1),
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    rows = db.execute(
+        select(UserPreference).where(UserPreference.user_id == me.id)
+    ).scalars().all()
+    state = (
+        _extract_scoped_profile(rows, trip_id=trip_id)
+        if trip_id is not None
+        else _aggregate_all_profile_states(rows)
+    )
+    return _profile_out_from_state(state)
 
 
 @router.post("/me/survey-profile", response_model=SurveyProfileOut)
 def set_survey_profile(
     payload: SurveyProfileIn,
+    trip_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
     me: User = Depends(get_current_user),
 ):
+    interest_key = INTEREST_KEY if trip_id is None else _trip_scoped_key(trip_id, INTEREST_KEY)
+    trip_format_key = TRIP_FORMAT_KEY if trip_id is None else _trip_scoped_key(trip_id, TRIP_FORMAT_KEY)
+    meta_key = SURVEY_PROFILE_META_KEY if trip_id is None else _trip_scoped_key(trip_id, SURVEY_PROFILE_META_KEY)
+    interest_weight_prefix = (
+        INTEREST_WEIGHT_PREFIX if trip_id is None else _trip_scoped_key(trip_id, INTEREST_WEIGHT_PREFIX)
+    )
+
     db.execute(
         delete(UserPreference).where(
             UserPreference.user_id == me.id,
-            (UserPreference.key == INTEREST_KEY)
-            | (UserPreference.key == TRIP_FORMAT_KEY)
-            | (UserPreference.key == SURVEY_PROFILE_META_KEY)
-            | (UserPreference.key.like(f"{INTEREST_WEIGHT_PREFIX}%")),
+            (UserPreference.key == interest_key)
+            | (UserPreference.key == trip_format_key)
+            | (UserPreference.key == meta_key)
+            | (UserPreference.key.like(f"{interest_weight_prefix}%")),
         )
     )
 
     for v in payload.interests:
-        db.add(UserPreference(user_id=me.id, key=INTEREST_KEY, value=v))
+        db.add(UserPreference(user_id=me.id, key=interest_key, value=v))
 
     for v in payload.trip_formats:
-        db.add(UserPreference(user_id=me.id, key=TRIP_FORMAT_KEY, value=v))
+        db.add(UserPreference(user_id=me.id, key=trip_format_key, value=v))
 
     for tag, weight in payload.interest_weights.items():
         if not (1 <= weight <= 5):
@@ -398,7 +629,7 @@ def set_survey_profile(
         db.add(
             UserPreference(
                 user_id=me.id,
-                key=f"{INTEREST_WEIGHT_PREFIX}{tag}",
+                key=f"{interest_weight_prefix}{tag}",
                 value=str(weight),
             )
         )
@@ -412,7 +643,7 @@ def set_survey_profile(
         },
         ensure_ascii=True,
     )
-    db.add(UserPreference(user_id=me.id, key=SURVEY_PROFILE_META_KEY, value=meta))
+    db.add(UserPreference(user_id=me.id, key=meta_key, value=meta))
     db.commit()
 
     has_completed = _survey_has_completed(

@@ -1,25 +1,14 @@
-import 'dart:ui';
+﻿import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../../core/widgets/cors_safe_network_image.dart';
 import '../interactions/interactions_repo.dart';
 import '../profile/profile_repo.dart';
+import '../recommendations/recommendation_labels.dart';
 import '../shared/travel_app_shell.dart';
 import '../trips/trips_repo.dart';
 
 class FavoritesPage extends StatefulWidget {
-  final InteractionsRepo interactionsRepo;
-  final ProfileRepo profileRepo;
-  final int? tripId;
-  final String? city;
-  final String? titleOverride;
-  final String? subtitleOverride;
-  final TravelNavTab currentTab;
-  final TripsRepo? tripsRepo;
-  final bool embedded;
-  final VoidCallback? onBack;
-
   const FavoritesPage({
     super.key,
     required this.interactionsRepo,
@@ -33,6 +22,17 @@ class FavoritesPage extends StatefulWidget {
     this.embedded = false,
     this.onBack,
   });
+
+  final InteractionsRepo interactionsRepo;
+  final ProfileRepo profileRepo;
+  final int? tripId;
+  final String? city;
+  final String? titleOverride;
+  final String? subtitleOverride;
+  final TravelNavTab currentTab;
+  final TripsRepo? tripsRepo;
+  final bool embedded;
+  final VoidCallback? onBack;
 
   @override
   State<FavoritesPage> createState() => _FavoritesPageState();
@@ -70,9 +70,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-      });
+      setState(() => _error = e.toString());
     } finally {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -109,6 +107,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
   Future<void> _removeFavorite(FavoritePlace item) async {
     final userId = _currentUserId;
     if (userId == null) return;
+
     _removeLocal(item.placeId);
     try {
       await widget.interactionsRepo.trackEvent(
@@ -120,11 +119,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            '\u0423\u0431\u0440\u0430\u043d\u043e \u0438\u0437 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0433\u043e',
-          ),
-        ),
+        const SnackBar(content: Text('РЈР±СЂР°РЅРѕ РёР· СЃРѕС…СЂР°РЅРµРЅРЅРѕРіРѕ')),
       );
     } catch (_) {
       if (!mounted) return;
@@ -132,9 +127,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u043c\u0435\u0441\u0442\u043e \u0438\u0437 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0433\u043e',
-          ),
+          content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РјРµСЃС‚Рѕ РёР· СЃРѕС…СЂР°РЅРµРЅРЅРѕРіРѕ'),
         ),
       );
     }
@@ -159,11 +152,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
     if (created == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043c\u0435\u0441\u0442\u043e \u0432 \u043c\u0430\u0440\u0448\u0440\u0443\u0442',
-          ),
-        ),
+        const SnackBar(content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ РґРѕР±Р°РІРёС‚СЊ РјРµСЃС‚Рѕ РІ РјР°СЂС€СЂСѓС‚')),
       );
       return;
     }
@@ -177,11 +166,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u043e \u0432 \u043c\u0430\u0440\u0448\u0440\u0443\u0442: ${item.title}',
-        ),
-      ),
+      SnackBar(content: Text('Р”РѕР±Р°РІР»РµРЅРѕ РІ РјР°СЂС€СЂСѓС‚: ${item.title}')),
     );
   }
 
@@ -200,107 +185,167 @@ class _FavoritesPageState extends State<FavoritesPage> {
     }
 
     if (!mounted) return;
-    await showModalBottomSheet<void>(
+    final showCityChip = !((widget.city ?? '').trim().isNotEmpty);
+    await showDialog<void>(
       context: context,
-      backgroundColor: const Color(0xFF1D1D1D),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.18),
-                        borderRadius: BorderRadius.circular(2),
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1D1D1D),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: Colors.white.withOpacity(0.05)),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      height: 290,
+                      width: double.infinity,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          item.imageUrl != null && item.imageUrl!.isNotEmpty
+                              ? Image.network(
+                                  item.imageUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      _FavoriteThumbFallback(city: item.city),
+                                )
+                              : _FavoriteThumbFallback(city: item.city),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  Colors.black.withOpacity(0.42),
+                                  Colors.black.withOpacity(0.08),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 14,
+                            right: 14,
+                            child: IconButton(
+                              onPressed: () => Navigator.of(dialogContext).pop(),
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.black.withOpacity(0.34),
+                                foregroundColor: Colors.white,
+                              ),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ),
+                          Positioned(
+                            right: 14,
+                            bottom: 14,
+                            child: IconButton(
+                              onPressed: () async {
+                                Navigator.of(dialogContext).pop();
+                                await _removeFavorite(item);
+                              },
+                              style: IconButton.styleFrom(
+                                backgroundColor: const Color(0xFFD7E37A),
+                                foregroundColor: const Color(0xFF171717),
+                              ),
+                              icon: const Icon(Icons.bookmark_remove_outlined),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  Text(
-                    item.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _MetaChip(icon: Icons.location_on_rounded, label: item.city),
-                      if ((item.address ?? '').isNotEmpty)
-                        _MetaChip(
-                          icon: Icons.place_outlined,
-                          label: item.address!,
-                        ),
-                      if (item.rating != null)
-                        _MetaChip(
-                          icon: Icons.star_rounded,
-                          label: item.rating!.toStringAsFixed(1),
-                        ),
-                      if ((item.subcategory ?? '').isNotEmpty)
-                        _MetaChip(
-                          icon: Icons.auto_awesome_rounded,
-                          label: item.subcategory!,
-                        )
-                      else if ((item.category ?? '').isNotEmpty)
-                        _MetaChip(
-                          icon: Icons.auto_awesome_rounded,
-                          label: item.category!,
-                        ),
-                    ],
-                  ),
-                  if ((item.description ?? '').isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    Text(
-                      item.description!,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.84),
-                        height: 1.45,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(18, 16, 18, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.title,
+                            style: const TextStyle(
+                              fontFamily: 'Geologica',
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (showCityChip)
+                                _MetaChip(
+                                  icon: Icons.location_on_rounded,
+                                  label: item.city,
+                                ),
+                              if ((item.address ?? '').isNotEmpty)
+                                _MetaChip(
+                                  icon: Icons.place_outlined,
+                                  label: item.address!,
+                                ),
+                              if ((item.subcategory ?? '').isNotEmpty)
+                                _MetaChip(
+                                  icon: Icons.auto_awesome_rounded,
+                                  label: recommendationTagLabel(item.subcategory!),
+                                )
+                              else if ((item.category ?? '').isNotEmpty)
+                                _MetaChip(
+                                  icon: Icons.auto_awesome_rounded,
+                                  label: recommendationTagLabel(item.category!),
+                                ),
+                            ],
+                          ),
+                          if ((item.description ?? '').isNotEmpty) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              item.description!,
+                              style: TextStyle(
+                                fontFamily: 'Geologica',
+                                color: Colors.white.withOpacity(0.84),
+                                height: 1.45,
+                                fontWeight: FontWeight.w300,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 18),
+                          Row(
+                            children: [
+                              if (widget.tripsRepo != null &&
+                                  (widget.tripId ?? item.tripId) != null) ...[
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFD7E37A),
+                                      foregroundColor: const Color(0xFF171717),
+                                    ),
+                                    onPressed: () async {
+                                      Navigator.of(dialogContext).pop();
+                                      await _addToTrip(item);
+                                    },
+                                    icon: const Icon(Icons.route_rounded),
+                                    label: const Text('Добавить в маршрут'),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      if (widget.tripsRepo != null &&
-                          (widget.tripId ?? item.tripId) != null) ...[
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () async {
-                              Navigator.of(context).pop();
-                              await _addToTrip(item);
-                            },
-                            icon: const Icon(Icons.route_rounded),
-                            label: const Text('В маршрут'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                      ],
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            Navigator.of(context).pop();
-                            await _removeFavorite(item);
-                          },
-                          icon: const Icon(Icons.bookmark_remove_outlined),
-                          label: const Text('Убрать'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
+            ),
+          ),
         ),
       ),
     );
@@ -312,62 +357,32 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final filteredItems = hasCityFilter
         ? _groups.expand((group) => group.items).toList()
         : const <FavoritePlace>[];
-    final title = widget.titleOverride ?? '\u0418\u0437\u0431\u0440\u0430\u043d\u043d\u043e\u0435';
-    final subtitle = widget.subtitleOverride ??
-        (hasCityFilter
-            ? '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0434\u043b\u044f ${widget.city}'
-            : '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u044b\u0435 \u043c\u0435\u0441\u0442\u0430 \u0441\u0433\u0440\u0443\u043f\u043f\u0438\u0440\u043e\u0432\u0430\u043d\u044b \u043f\u043e \u0433\u043e\u0440\u043e\u0434\u0430\u043c');
+    final title = widget.titleOverride ?? 'РР·Р±СЂР°РЅРЅРѕРµ';
+    final subtitle = widget.subtitleOverride ?? '';
     final content = _buildContent(hasCityFilter, filteredItems);
 
     if (widget.embedded) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              if (widget.onBack != null)
-                TextButton.icon(
-                  onPressed: widget.onBack,
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFFD7E37A),
-                    padding: EdgeInsets.zero,
-                  ),
-                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                  label: const Text('\u041a \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u044f\u043c'),
-                ),
-              const Spacer(),
-              InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: _load,
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2B2B2B),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withOpacity(0.06)),
-                  ),
-                  child: const Icon(Icons.refresh_rounded, color: Colors.white),
-                ),
+          if (widget.onBack != null)
+            TextButton.icon(
+              onPressed: widget.onBack,
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFFD7E37A),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
+              icon: const Icon(Icons.arrow_back_rounded, size: 18),
+              label: const Text('К рекомендациям'),
+            ),
+          if (widget.onBack != null) const SizedBox(height: 8),
           Text(
             title,
             style: const TextStyle(
+              fontFamily: 'Geologica',
               color: Colors.white,
               fontSize: 24,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.68),
-              fontSize: 14,
-              height: 1.35,
+              fontWeight: FontWeight.w400,
             ),
           ),
           const SizedBox(height: 14),
@@ -380,127 +395,88 @@ class _FavoritesPageState extends State<FavoritesPage> {
       title: title,
       subtitle: subtitle,
       currentTab: widget.currentTab,
-      headerAction: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: _load,
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: const Color(0xFF2B2B2B),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
-          ),
-          child: const Icon(Icons.refresh_rounded, color: Colors.white),
-        ),
-      ),
+      headerAction: const SizedBox(width: 48, height: 48),
       body: content,
     );
   }
 
   Widget _buildContent(bool hasCityFilter, List<FavoritePlace> filteredItems) {
-    return _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFFD7E37A)),
-            )
-          : _error != null
-              ? Center(
-                  child: TravelCard(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline_rounded,
-                            color: Colors.redAccent, size: 34),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Не удалось загрузить избранное',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.66),
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : _groups.isEmpty
-                  ? const Center(
-                      child: TravelCard(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.folder_open_rounded,
-                                color: Color(0xFFD7E37A), size: 42),
-                            SizedBox(height: 10),
-                            Text(
-                              'Пока нет избранного',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Сохраняйте рекомендации из маршрутов, и здесь появятся папки по городам.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                                height: 1.35,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : hasCityFilter
-                      ? GridView.builder(
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 14,
-                            mainAxisSpacing: 14,
-                            mainAxisExtent: 340,
-                          ),
-                          itemCount: filteredItems.length,
-                          itemBuilder: (_, index) => _FavoritePlaceTile(
-                            key: ValueKey(filteredItems[index].placeId),
-                            item: filteredItems[index],
-                            onTap: () => _openFavoriteDetails(filteredItems[index]),
-                            canAddToTrip: widget.tripsRepo != null &&
-                                (widget.tripId ?? filteredItems[index].tripId) != null,
-                            onAddToTrip: () => _addToTrip(filteredItems[index]),
-                            onRemove: () => _removeFavorite(filteredItems[index]),
-                          ),
-                        )
-                      : GridView.builder(
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 18,
-                            mainAxisSpacing: 22,
-                            childAspectRatio: 0.84,
-                          ),
-                          itemCount: _groups.length,
-                          itemBuilder: (context, index) {
-                            final group = _groups[index];
-                            return _CityFolderCard(
-                              group: group,
-                              onTap: () => _openFolder(group),
-                            );
-                          },
-                        );
+    if (_loading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFFD7E37A)),
+      );
+    }
+
+    if (_error != null) {
+      return Center(
+        child: TravelCard(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                color: Colors.redAccent,
+                size: 34,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ СЃРѕС…СЂР°РЅРµРЅРЅС‹Рµ РјРµСЃС‚Р°',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Geologica',
+                  color: Colors.white.withOpacity(0.72),
+                  fontSize: 13,
+                  height: 1.35,
+                  fontWeight: FontWeight.w300,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (hasCityFilter) {
+      return GridView.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
+          mainAxisExtent: 340,
+        ),
+        itemCount: filteredItems.length,
+        itemBuilder: (_, index) {
+          final item = filteredItems[index];
+          return _FavoritePlaceTile(
+            key: ValueKey(item.placeId),
+            item: item,
+            showCityChip: false,
+            onTap: () => _openFavoriteDetails(item),
+            canAddToTrip:
+                widget.tripsRepo != null && (widget.tripId ?? item.tripId) != null,
+            onAddToTrip: () => _addToTrip(item),
+            onRemove: () => _removeFavorite(item),
+          );
+        },
+      );
+    }
+
+    return GridView.builder(
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 18,
+        mainAxisSpacing: 22,
+        childAspectRatio: 1.04,
+      ),
+      itemCount: _groups.length,
+      itemBuilder: (context, index) {
+        final group = _groups[index];
+        return _CityFolderCard(
+          group: group,
+          onTap: () => _openFolder(group),
+        );
+      },
+    );
   }
 
   Future<void> _openFolder(FavoriteCityGroup group) async {
@@ -546,17 +522,20 @@ class _FavoritesPageState extends State<FavoritesPage> {
                               Text(
                                 group.city,
                                 style: const TextStyle(
+                                  fontFamily: 'Geologica',
                                   color: Colors.white,
                                   fontSize: 26,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w400,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '${visibleItems.length} сохраненных мест',
+                                '${visibleItems.length} РјРµСЃС‚',
                                 style: TextStyle(
+                                  fontFamily: 'Geologica',
                                   color: Colors.white.withOpacity(0.64),
                                   fontSize: 14,
+                                  fontWeight: FontWeight.w300,
                                 ),
                               ),
                               const SizedBox(height: 14),
@@ -576,6 +555,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                     return _FavoritePlaceTile(
                                       key: ValueKey(item.placeId),
                                       item: item,
+                                      showCityChip: false,
                                       onTap: () async {
                                         await _openFavoriteDetails(item);
                                         if (!mounted) return;
@@ -598,8 +578,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                       onRemove: () async {
                                         modalSetState(() {
                                           visibleItems.removeWhere(
-                                            (entry) =>
-                                                entry.placeId == item.placeId,
+                                            (entry) => entry.placeId == item.placeId,
                                           );
                                         });
                                         await _removeFavorite(item);
@@ -626,99 +605,6 @@ class _FavoritesPageState extends State<FavoritesPage> {
       },
     );
   }
-
-  // ignore: unused_element
-  Future<void> _openFolderLegacy(FavoriteCityGroup group) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.78,
-          maxChildSize: 0.92,
-          minChildSize: 0.45,
-          builder: (context, controller) {
-            return ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(30)),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 430),
-                    child: Container(
-                      color: const Color(0xFF1C1C1C).withOpacity(0.92),
-                      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-                      child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 42,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.22),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        group.city,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${group.items.length} сохраненных мест',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.64),
-                          fontSize: 14,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Expanded(
-                        child: GridView.builder(
-                          controller: controller,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            crossAxisSpacing: 14,
-                            mainAxisSpacing: 14,
-                            mainAxisExtent: 340,
-                          ),
-                          itemCount: group.items.length,
-                          itemBuilder: (_, index) {
-                            final item = group.items[index];
-                            return _FavoritePlaceTile(
-                              key: ValueKey(item.placeId),
-                              item: item,
-                              onTap: () => _openFavoriteDetails(item),
-                              canAddToTrip: widget.tripsRepo != null &&
-                                  (widget.tripId ?? item.tripId) != null,
-                              onAddToTrip: () => _addToTrip(item),
-                              onRemove: () => _removeFavorite(item),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
 }
 
 class _CityFolderCard extends StatelessWidget {
@@ -732,71 +618,37 @@ class _CityFolderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final previewItems = group.items.take(3).toList();
+    final previewItems = group.items.take(2).toList();
     return InkWell(
       borderRadius: BorderRadius.circular(30),
       onTap: onTap,
-      child: Column(
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          Expanded(
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned(
-                  top: 6,
-                  left: 24,
-                  child: _FolderPreviewSheet(
-                    angle: -0.06,
-                    item: previewItems.isNotEmpty ? previewItems[0] : null,
-                  ),
-                ),
-                Positioned(
-                  top: 10,
-                  right: 20,
-                  child: _FolderPreviewSheet(
-                    angle: 0.08,
-                    item: previewItems.length > 1 ? previewItems[1] : null,
-                  ),
-                ),
-                Positioned(
-                  top: 22,
-                  left: 8,
-                  right: 8,
-                  bottom: 18,
-                  child: _GlassFolderFront(
-                    city: group.city,
-                    count: group.items.length,
-                    stickerCount: previewItems.length,
-                  ),
-                ),
-              ],
+          Positioned(
+            top: 2,
+            left: 20,
+            child: _FolderPreviewSheet(
+              angle: -0.05,
+              item: previewItems.isNotEmpty ? previewItems[0] : null,
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            group.city,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
+          Positioned(
+            top: 8,
+            right: 18,
+            child: _FolderPreviewSheet(
+              angle: 0.06,
+              item: previewItems.length > 1 ? previewItems[1] : null,
             ),
           ),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              '${group.items.length} мест',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+          Positioned(
+            top: 18,
+            left: 8,
+            right: 8,
+            bottom: 14,
+            child: _GlassFolderFront(
+              city: group.city,
+              count: group.items.length,
             ),
           ),
         ],
@@ -819,8 +671,8 @@ class _FolderPreviewSheet extends StatelessWidget {
     return Transform.rotate(
       angle: angle,
       child: Container(
-        width: 72,
-        height: 88,
+        width: 64,
+        height: 78,
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.92),
           borderRadius: BorderRadius.circular(18),
@@ -835,15 +687,22 @@ class _FolderPreviewSheet extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(18),
           child: item?.imageUrl != null && item!.imageUrl!.isNotEmpty
-              ? CorsSafeNetworkImage(
-                  url: item!.imageUrl!,
+              ? Image.network(
+                  item!.imageUrl!,
                   fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Center(
+                    child: Icon(
+                      Icons.photo_rounded,
+                      color: Colors.black.withOpacity(0.28),
+                      size: 24,
+                    ),
+                  ),
                 )
               : Center(
                   child: Icon(
                     Icons.photo_rounded,
                     color: Colors.black.withOpacity(0.28),
-                    size: 28,
+                    size: 24,
                   ),
                 ),
         ),
@@ -856,12 +715,10 @@ class _GlassFolderFront extends StatelessWidget {
   const _GlassFolderFront({
     required this.city,
     required this.count,
-    required this.stickerCount,
   });
 
   final String city;
   final int count;
-  final int stickerCount;
 
   @override
   Widget build(BuildContext context) {
@@ -880,9 +737,7 @@ class _GlassFolderFront extends StatelessWidget {
                 Colors.white.withOpacity(0.18),
               ],
             ),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.2),
-            ),
+            border: Border.all(color: Colors.white.withOpacity(0.2)),
             boxShadow: [
               BoxShadow(
                 color: Colors.white.withOpacity(0.05),
@@ -891,81 +746,35 @@ class _GlassFolderFront extends StatelessWidget {
               ),
             ],
           ),
-          child: Stack(
-            children: [
-              Positioned(
-                left: 0,
-                top: 0,
-                child: Container(
-                  width: 84,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(28),
-                      bottomRight: Radius.circular(22),
-                    ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  city,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontFamily: 'Geologica',
+                    color: Color(0xFFF4F4F4),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w400,
                   ),
                 ),
-              ),
-              Positioned(
-                right: 16,
-                top: 16,
-                child: Wrap(
-                  spacing: 8,
-                  children: List.generate(
-                    stickerCount.clamp(1, 2),
-                    (index) => Container(
-                      width: 26,
-                      height: 26,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.4),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.35),
-                        ),
-                      ),
-                      child: Icon(
-                        index.isEven
-                            ? Icons.place_outlined
-                            : Icons.auto_awesome_rounded,
-                        size: 15,
-                        color: const Color(0xFF3B3B3B),
-                      ),
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  '$count РјРµСЃС‚',
+                  style: TextStyle(
+                    fontFamily: 'Geologica',
+                    color: Colors.white.withOpacity(0.72),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w300,
                   ),
                 ),
-              ),
-              Positioned(
-                left: 18,
-                right: 18,
-                bottom: 18,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      city,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFFF4F4F4),
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$count сохранений',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.72),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -977,6 +786,7 @@ class _FavoritePlaceTile extends StatelessWidget {
   const _FavoritePlaceTile({
     super.key,
     required this.item,
+    required this.showCityChip,
     required this.onTap,
     required this.onRemove,
     required this.onAddToTrip,
@@ -984,6 +794,7 @@ class _FavoritePlaceTile extends StatelessWidget {
   });
 
   final FavoritePlace item;
+  final bool showCityChip;
   final VoidCallback onTap;
   final VoidCallback onRemove;
   final VoidCallback onAddToTrip;
@@ -1020,7 +831,7 @@ class _FavoritePlaceTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  height: 184,
+                  height: 150,
                   width: double.infinity,
                   child: ClipRRect(
                     borderRadius: const BorderRadius.vertical(
@@ -1030,10 +841,10 @@ class _FavoritePlaceTile extends StatelessWidget {
                       fit: StackFit.expand,
                       children: [
                         item.imageUrl != null && item.imageUrl!.isNotEmpty
-                            ? CorsSafeNetworkImage(
-                                url: item.imageUrl!,
+                            ? Image.network(
+                                item.imageUrl!,
                                 fit: BoxFit.cover,
-                                fallback:
+                                errorBuilder: (_, __, ___) =>
                                     _FavoriteThumbFallback(city: item.city),
                               )
                             : _FavoriteThumbFallback(city: item.city),
@@ -1101,39 +912,24 @@ class _FavoritePlaceTile extends StatelessWidget {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _MetaChip(
-                            icon: Icons.location_on_outlined,
-                            label: item.city,
-                          ),
-                          if (item.rating != null)
+                          if ((item.subcategory ?? '').isNotEmpty)
                             _MetaChip(
-                              icon: Icons.star_rounded,
-                              label: item.rating!.toStringAsFixed(1),
+                              icon: Icons.auto_awesome_rounded,
+                              label: recommendationTagLabel(item.subcategory!),
+                            )
+                          else if ((item.category ?? '').isNotEmpty)
+                            _MetaChip(
+                              icon: Icons.auto_awesome_rounded,
+                              label: recommendationTagLabel(item.category!),
+                            ),
+                          if (showCityChip)
+                            _MetaChip(
+                              icon: Icons.location_on_outlined,
+                              label: item.city,
                             ),
                           if ((item.tripTitle ?? '').isNotEmpty)
-                            _MetaChip(
-                              icon: Icons.route_rounded,
-                              label: item.tripTitle!,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          if (canAddToTrip)
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: onAddToTrip,
-                                icon: const Icon(Icons.route_rounded, size: 16),
-                                label: const Text('В маршрут'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFD7E37A),
-                                  foregroundColor: const Color(0xFF171717),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                              ),
+                            _RouteBadge(
+                              tooltip: item.tripTitle!,
                             ),
                         ],
                       ),
@@ -1189,6 +985,39 @@ class _MetaChip extends StatelessWidget {
   }
 }
 
+class _RouteBadge extends StatelessWidget {
+  const _RouteBadge({required this.tooltip});
+
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: const Color(0xFFD7E37A),
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFD7E37A).withOpacity(0.18),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.route_rounded,
+          size: 18,
+          color: Color(0xFF171717),
+        ),
+      ),
+    );
+  }
+}
+
 class _FavoriteThumbFallback extends StatelessWidget {
   const _FavoriteThumbFallback({required this.city});
 
@@ -1209,8 +1038,9 @@ class _FavoriteThumbFallback extends StatelessWidget {
       ),
       child: Center(
         child: Text(
-          city.substring(0, city.isEmpty ? 0 : 1).toUpperCase(),
+          city.isEmpty ? '' : city.substring(0, 1).toUpperCase(),
           style: TextStyle(
+            fontFamily: 'Geologica',
             color: Colors.white.withOpacity(0.8),
             fontSize: 24,
             fontWeight: FontWeight.w700,

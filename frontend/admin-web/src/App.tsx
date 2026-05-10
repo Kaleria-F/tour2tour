@@ -61,8 +61,7 @@ type StoryFormState = {
   image_url: string;
   body_text: string;
   place_id: string;
-  sort_order: string;
-  is_active: boolean;
+  story_position: 'start' | 'keep' | 'end';
 };
 
 const CATEGORY_OPTIONS: Array<Option & { subcategories: Option[] }> = [
@@ -179,8 +178,7 @@ const EMPTY_STORY_FORM: StoryFormState = {
   image_url: '',
   body_text: '',
   place_id: '',
-  sort_order: '0',
-  is_active: true,
+  story_position: 'end',
 };
 
 function normalizeTags(tags: Record<string, number>) {
@@ -303,8 +301,7 @@ export function App() {
       image_url: storyEditor.image_url ?? '',
       body_text: storyEditor.body_text ?? '',
       place_id: storyEditor.place_id ?? '',
-      sort_order: String(storyEditor.sort_order ?? 0),
-      is_active: storyEditor.is_active ?? true,
+      story_position: 'keep',
     });
     if (storyEditor.place) {
       setStoryPlaceResults([storyEditor.place]);
@@ -577,14 +574,28 @@ export function App() {
         coverImageUrl = uploaded.url;
       }
 
+      const currentSort = storyEditor?.sort_order ?? 0;
+      const orderedStories = stories
+        .filter((story) => story.id !== storyEditor?.id)
+        .slice()
+        .sort((left, right) => left.sort_order - right.sort_order);
+      const firstSort = orderedStories[0]?.sort_order ?? 0;
+      const lastSort = orderedStories[orderedStories.length - 1]?.sort_order ?? 0;
+      const resolvedSortOrder =
+        storyForm.story_position === 'keep'
+          ? currentSort
+          : storyForm.story_position === 'start'
+            ? firstSort
+            : lastSort + 1;
+
       const payload = {
         title: storyForm.title.trim(),
         cover_image_url: coverImageUrl || null,
         image_url: imageUrl,
         body_text: storyForm.body_text.trim() || null,
         place_id: storyForm.place_id || null,
-        sort_order: Number(storyForm.sort_order || '0') || 0,
-        is_active: storyForm.is_active,
+        sort_order: resolvedSortOrder,
+        is_active: storyEditor?.is_active ?? true,
       };
 
       if (storyEditor) {
@@ -993,13 +1004,9 @@ export function App() {
                       <div className="story-main">
                         <div className="candidate-head">
                           <strong>{story.title}</strong>
-                          <span className={story.is_active ? 'status-badge' : 'tag-pill tag-default'}>
-                            {story.is_active ? 'Активна' : 'Скрыта'}
-                          </span>
                         </div>
                         <div className="muted small">
-                          Порядок: {story.sort_order}
-                          {story.place ? ` · ${story.place.name} · ${story.place.city}` : ' · Без привязки к месту'}
+                          {story.place ? `${story.place.name} · ${story.place.city}` : 'Без привязки к месту'}
                         </div>
                         {story.body_text && <div className="candidate-description">{story.body_text}</div>}
                         <div className="row">
@@ -1213,30 +1220,19 @@ export function App() {
                       </div>
                       <div className="field-group">
                         <label>Порядок</label>
-                        <input
-                          value={storyForm.sort_order}
-                          onChange={(event) => setStoryForm((current) => ({ ...current, sort_order: event.target.value }))}
-                          placeholder="0"
-                        />
-                      </div>
-                      <div className="field-group">
-                        <label>Статус</label>
-                        <div className="chip-group">
-                          <button
-                            type="button"
-                            className={storyForm.is_active ? 'chip chip-active' : 'chip'}
-                            onClick={() => setStoryForm((current) => ({ ...current, is_active: true }))}
-                          >
-                            Активна
-                          </button>
-                          <button
-                            type="button"
-                            className={!storyForm.is_active ? 'chip chip-active' : 'chip'}
-                            onClick={() => setStoryForm((current) => ({ ...current, is_active: false }))}
-                          >
-                            Скрыта
-                          </button>
-                        </div>
+                        <select
+                          value={storyForm.story_position}
+                          onChange={(event) =>
+                            setStoryForm((current) => ({
+                              ...current,
+                              story_position: event.target.value as StoryFormState['story_position'],
+                            }))
+                          }
+                        >
+                          {storyEditor && <option value="keep">Оставить текущий порядок</option>}
+                          <option value="start">Поставить первой</option>
+                          <option value="end">Поставить последней</option>
+                        </select>
                       </div>
                       <div className="field-group form-span-2">
                         <label>Текст истории</label>

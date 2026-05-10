@@ -4,13 +4,14 @@ import 'dart:async';
 
 import 'package:go_router/go_router.dart';
 
-import '../../core/widgets/cors_safe_network_image.dart';
 import '../interactions/interactions_repo.dart';
 import '../preferences/preferences_repo.dart';
+import '../recommendations/recommendation_labels.dart';
 import '../recommendations/recommendations_repo.dart';
 import '../shared/travel_app_shell.dart';
 import '../stories/stories_repo.dart';
 import '../trips/trips_repo.dart';
+import '../../config.dart';
 import 'profile_repo.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -36,7 +37,7 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  static const Duration _premiumPopupDelay = Duration(seconds: 150);
+  static const Duration _premiumPopupDelay = Duration(seconds: 10);
 
   UserMe? _me;
   SurveyProfile? _surveyProfile;
@@ -161,92 +162,243 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<void> _openGlobalSurvey() async {
+    await context.push('/preferences');
+    if (!mounted) return;
+    await _load();
+  }
+
   void _schedulePremiumPopup() {
     _premiumPopupTimer?.cancel();
-    if (_me?.isPremium == true || _premiumPopupShown) return;
+    final blockForPremium =
+        _me?.isPremium == true && !Config.forcePremiumPopupForTesting;
+    if (blockForPremium || _premiumPopupShown) return;
     _premiumPopupTimer = Timer(_premiumPopupDelay, () {
-      if (!mounted || _me?.isPremium == true || _premiumPopupShown) return;
+      final stillBlockedForPremium =
+          _me?.isPremium == true && !Config.forcePremiumPopupForTesting;
+      if (!mounted || stillBlockedForPremium || _premiumPopupShown) return;
       _premiumPopupShown = true;
       showDialog<void>(
         context: context,
         barrierDismissible: true,
-        builder: (dialogContext) => Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1D1D1D),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.white.withOpacity(0.08)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD7E37A).withOpacity(0.14),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(
-                        Icons.auto_awesome_rounded,
-                        color: Color(0xFFD7E37A),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Тур2Тур Pro',
-                        style: TextStyle(
-                          fontFamily: 'Geologica',
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w300,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white70,
-                      ),
+        builder: (dialogContext) => Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  color: const Color(0xFF1D1D1D),
+                  border: Border.all(
+                    color: const Color(0xFFB6A1FF).withOpacity(0.34),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFB6A1FF).withOpacity(0.18),
+                      blurRadius: 34,
+                      offset: const Offset(0, 16),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Быстрый ввод этапов голосом и текстом. Просто продиктуйте мысль, а приложение заполнит маршрут за вас.',
-                  style: TextStyle(
-                    fontFamily: 'Geologica',
-                    color: Colors.white.withOpacity(0.72),
-                    fontSize: 14,
-                    height: 1.45,
-                    fontWeight: FontWeight.w300,
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFB6A1FF).withOpacity(0.16),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: const Color(0xFFB6A1FF).withOpacity(0.38),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.workspace_premium_rounded,
+                            color: Color(0xFFB6A1FF),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Тур2Тур Pro',
+                            style: TextStyle(
+                              fontFamily: 'Geologica',
+                              color: Colors.white.withOpacity(0.96),
+                              fontSize: 20,
+                              height: 1.15,
+                              fontWeight: FontWeight.w300,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Откройте быстрый ввод этапов маршрута и заполняйте поля голосом или свободным текстом.',
+                      style: TextStyle(
+                        fontFamily: 'Geologica',
+                        color: Colors.white.withOpacity(0.74),
+                        fontSize: 13,
+                        height: 1.42,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildPremiumPopupPreview(),
+                    const SizedBox(height: 14),
+                    const Row(
+                      children: [
+                        Expanded(
+                          child: _PremiumPopupFeatureChip(
+                            icon: Icons.mic_rounded,
+                            label: 'Голосовой ввод',
+                          ),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: _PremiumPopupFeatureChip(
+                            icon: Icons.auto_awesome_rounded,
+                            label: 'Автозаполнение',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    const _PremiumPopupFeatureChip(
+                      icon: Icons.edit_note_rounded,
+                      label: 'Свободные заметки',
+                      fullWidth: true,
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: BorderSide(
+                                color: Colors.white.withOpacity(0.14),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: const Text('Немного позже'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFB6A1FF),
+                              foregroundColor: const Color(0xFF17131F),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                            ),
+                            onPressed: () {
+                              Navigator.of(dialogContext).pop();
+                              context.push('/premium');
+                            },
+                            child: const Text('Перейти на Pro'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(dialogContext).pop();
-                      context.push('/premium');
-                    },
-                    child: const Text('Подробнее'),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
       );
     });
+  }
+
+  Widget _buildPremiumPopupPreview() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(0.07),
+            const Color(0xFFB6A1FF).withOpacity(0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: const Color(0xFFB6A1FF).withOpacity(0.26),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFB6A1FF).withOpacity(0.08),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          ShaderMask(
+            shaderCallback: (bounds) => const LinearGradient(
+              colors: [
+                Color(0xFF9D7BFF),
+                Color(0xFFB6A1FF),
+              ],
+            ).createShader(bounds),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'быстрый ввод',
+              style: TextStyle(
+                fontFamily: 'Geologica',
+                color: Colors.white.withOpacity(0.66),
+                fontSize: 13,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFB6A1FF).withOpacity(0.16),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: const Color(0xFFB6A1FF).withOpacity(0.34),
+              ),
+            ),
+            child: const Text(
+              'Pro активен',
+              style: TextStyle(
+                fontFamily: 'Geologica',
+                color: Color(0xFFD8CCFF),
+                fontSize: 11,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Map<String, dynamic> _metadata(RecommendationItem item) => {
@@ -328,6 +480,7 @@ class _ProfilePageState extends State<ProfilePage> {
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF1D1D1D),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -350,12 +503,53 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
               ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Stack(
+                  children: [
+                    SizedBox(
+                      height: 248,
+                      width: double.infinity,
+                      child: item.imageUrl.trim().isEmpty
+                          ? const _RecommendationPlaceholderArt()
+                          : Image.network(
+                              item.imageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) =>
+                                  const _RecommendationPlaceholderArt(),
+                            ),
+                    ),
+                    Positioned(
+                      right: 14,
+                      bottom: 14,
+                      child: IconButton(
+                        onPressed: () async {
+                          Navigator.of(context).pop();
+                          await _toggleRecommendationSaved(item);
+                        },
+                        style: IconButton.styleFrom(
+                          backgroundColor: const Color(0xFFD7E37A),
+                          foregroundColor: const Color(0xFF171717),
+                        ),
+                        icon: Icon(
+                          _savedRecommendationIds.contains(item.id)
+                              ? Icons.bookmark_rounded
+                              : Icons.bookmark_add_outlined,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               Text(
                 item.title,
                 style: const TextStyle(
+                  fontFamily: 'Geologica',
                   color: Colors.white,
                   fontSize: 20,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
               const SizedBox(height: 10),
@@ -370,14 +564,10 @@ class _ProfilePageState extends State<ProfilePage> {
                       label: item.address,
                     ),
                   _MetaChip(
-                    icon: Icons.star_rounded,
-                    label: item.rating.toStringAsFixed(1),
-                  ),
-                  _MetaChip(
                     icon: Icons.auto_awesome_rounded,
-                    label: item.subcategory.isEmpty
-                        ? item.category
-                        : item.subcategory,
+                    label: recommendationTagLabel(
+                      item.subcategory.isEmpty ? item.category : item.subcategory,
+                    ),
                   ),
                 ],
               ),
@@ -386,36 +576,14 @@ class _ProfilePageState extends State<ProfilePage> {
                 Text(
                   item.description,
                   style: TextStyle(
+                    fontFamily: 'Geologica',
                     color: Colors.white.withOpacity(0.84),
+                    fontSize: 14,
                     height: 1.45,
+                    fontWeight: FontWeight.w300,
                   ),
                 ),
               ],
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _savedRecommendationIds.contains(item.id)
-                      ? () async {
-                          Navigator.of(context).pop();
-                          await _toggleRecommendationSaved(item);
-                        }
-                      : () async {
-                          Navigator.of(context).pop();
-                          await _toggleRecommendationSaved(item);
-                        },
-                  icon: Icon(
-                    _savedRecommendationIds.contains(item.id)
-                        ? Icons.bookmark_rounded
-                        : Icons.bookmark_add_outlined,
-                  ),
-                  label: Text(
-                    _savedRecommendationIds.contains(item.id)
-                        ? 'Убрать из избранного'
-                        : 'Сохранить',
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -470,20 +638,15 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return TravelAppShell(
       title: displayName.isEmpty ? 'Привет' : 'Привет, $displayName',
-      subtitle: 'Соберите поездку и посмотрите новые идеи для путешествий',
+      subtitle: '',
       currentTab: TravelNavTab.home,
-      headerAction: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: () => context.go('/preferences'),
-        child: Container(
+      headerAction: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Image.asset(
+          'assets/images/tur2tur_logo.png',
           width: 48,
           height: 48,
-          decoration: BoxDecoration(
-            color: const Color(0xFF2B2B2B),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white.withOpacity(0.06)),
-          ),
-          child: const Icon(Icons.tune_rounded, color: Colors.white),
+          fit: BoxFit.cover,
         ),
       ),
       body: _loading
@@ -542,14 +705,30 @@ class _ProfilePageState extends State<ProfilePage> {
                       const SizedBox(height: 28),
                       _SectionHeader(
                         title: 'Идеи для вас',
-                        trailing: TextButton(
-                          onPressed: () => context.go('/preferences?from=recommendations'),
-                          child: const Text('Настроить'),
-                        ),
+                          trailing: TextButton(
+                            style: TextButton.styleFrom(
+                              backgroundColor: const Color(0xFFD7E37A),
+                              foregroundColor: const Color(0xFF171717),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            textStyle: const TextStyle(
+                              fontFamily: 'Geologica',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w300,
+                            ),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                            onPressed: _openGlobalSurvey,
+                            child: const Text('Настроить'),
+                          ),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
-                        height: 324,
+                        height: 372,
                         child: _recommendationsLoading
                             ? const Center(
                                 child: CircularProgressIndicator(
@@ -561,7 +740,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                     title: 'Нет рекомендаций',
                                     subtitle: 'Заполните предпочтения, чтобы получить персональные подборки.',
                                     actionLabel: 'Открыть предпочтения',
-                                    onAction: () => context.go('/preferences?from=recommendations'),
+                                    onAction: _openGlobalSurvey,
                                   )
                                 : ListView.separated(
                                     scrollDirection: Axis.horizontal,
@@ -603,9 +782,10 @@ class _SectionHeader extends StatelessWidget {
           child: Text(
             title,
             style: const TextStyle(
+              fontFamily: 'Geologica',
               color: Colors.white,
               fontSize: 24,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w400,
             ),
           ),
         ),
@@ -679,11 +859,12 @@ class _StoriesRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: TextStyle(
+                      fontFamily: 'Geologica',
                       color: viewed
                           ? Colors.white.withOpacity(0.64)
                           : Colors.white,
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w300,
                     ),
                   ),
                 ],
@@ -762,9 +943,10 @@ class _TripCarouselCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
+                      fontFamily: 'Geologica',
                       color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -858,36 +1040,52 @@ class _RecommendationCarouselCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  height: 184,
+                  height: 212,
                   child: ClipRRect(
                     borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(28),
                     ),
-                    child: item.imageUrl.trim().isEmpty
-                        ? const _RecommendationPlaceholderArt()
-                        : Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              CorsSafeNetworkImage(
-                                url: item.imageUrl,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        item.imageUrl.trim().isEmpty
+                            ? const _RecommendationPlaceholderArt()
+                            : Image.network(
+                                item.imageUrl,
                                 fit: BoxFit.cover,
-                                fallback:
+                                errorBuilder: (_, __, ___) =>
                                     const _RecommendationPlaceholderArt(),
                               ),
-                              DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.bottomCenter,
-                                    end: Alignment.topCenter,
-                                    colors: [
-                                      Colors.black.withOpacity(0.45),
-                                      Colors.transparent,
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                Colors.black.withOpacity(0.45),
+                                Colors.transparent,
+                              ],
+                            ),
                           ),
+                        ),
+                        Positioned(
+                          right: 12,
+                          bottom: 12,
+                          child: IconButton(
+                            onPressed: onSave,
+                            style: IconButton.styleFrom(
+                              backgroundColor: const Color(0xFFD7E37A),
+                              foregroundColor: const Color(0xFF171717),
+                            ),
+                            icon: Icon(
+                              saved
+                                  ? Icons.bookmark_rounded
+                                  : Icons.bookmark_add_outlined,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 Expanded(
@@ -901,9 +1099,10 @@ class _RecommendationCarouselCard extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
+                            fontFamily: 'Geologica',
                             color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w400,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -912,40 +1111,28 @@ class _RecommendationCarouselCard extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
+                            fontFamily: 'Geologica',
                             color: Colors.white.withOpacity(0.72),
+                            fontSize: 13,
                             height: 1.35,
+                            fontWeight: FontWeight.w300,
                           ),
                         ),
                         const Spacer(),
-                        Row(
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
-                            Expanded(
-                              child: Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  _MetaChip(
-                                    icon: Icons.location_on_outlined,
-                                    label: item.city,
-                                  ),
-                                  _MetaChip(
-                                    icon: Icons.star_rounded,
-                                    label: item.rating.toStringAsFixed(1),
-                                  ),
-                                ],
-                              ),
+                            _MetaChip(
+                              icon: Icons.location_on_outlined,
+                              label: item.city,
                             ),
-                            const SizedBox(width: 12),
-                            IconButton(
-                              onPressed: onSave,
-                              style: IconButton.styleFrom(
-                                backgroundColor: const Color(0xFFD7E37A),
-                                foregroundColor: const Color(0xFF171717),
-                              ),
-                              icon: Icon(
-                                saved
-                                    ? Icons.bookmark_rounded
-                                    : Icons.bookmark_add_outlined,
+                            _MetaChip(
+                              icon: Icons.auto_awesome_rounded,
+                              label: recommendationTagLabel(
+                                item.subcategory.isEmpty
+                                    ? item.category
+                                    : item.subcategory,
                               ),
                             ),
                           ],
@@ -990,9 +1177,10 @@ class _MetaChip extends StatelessWidget {
               label,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
+                fontFamily: 'Geologica',
                 color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontSize: 11,
+                fontWeight: FontWeight.w300,
               ),
             ),
           ),
@@ -1382,6 +1570,72 @@ class _RecommendationPlaceholderArt extends StatelessWidget {
   }
 }
 
+class _PremiumPopupFeatureChip extends StatelessWidget {
+  const _PremiumPopupFeatureChip({
+    required this.icon,
+    required this.label,
+    this.fullWidth = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool fullWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    const accentColor = Color(0xFFD7E37A);
+    return Container(
+      width: fullWidth ? double.infinity : null,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(0.06),
+            accentColor.withOpacity(0.08),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: accentColor.withOpacity(0.26),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withOpacity(0.07),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 18,
+            color: accentColor,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Geologica',
+                color: Colors.white.withOpacity(0.88),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StoryImage extends StatelessWidget {
   final String url;
 
@@ -1408,10 +1662,11 @@ class _StoryImage extends StatelessWidget {
       );
     }
 
-    return CorsSafeNetworkImage(
-      url: url,
+    return Image.network(
+      url,
       fit: BoxFit.cover,
-      fallback: const DecoratedBox(
+      webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+      errorBuilder: (_, __, ___) => const DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [Color(0xFF3C3C3C), Color(0xFF1D1D1D)],

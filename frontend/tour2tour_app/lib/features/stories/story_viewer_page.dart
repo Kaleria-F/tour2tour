@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/widgets/cors_safe_network_image.dart';
-
 import '../interactions/interactions_repo.dart';
 import '../profile/profile_repo.dart';
+import '../recommendations/recommendation_labels.dart';
 import 'stories_repo.dart';
 
 class StoryViewerPage extends StatefulWidget {
@@ -154,22 +153,21 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
     }
   }
 
-  void _showPrevious() {
-    if (_currentIndex <= 0) return;
+  void _updateCurrentIndex(int nextIndex) {
+    if (nextIndex < 0 || nextIndex >= _stories.length) return;
+    final nextPlaceId = _effectivePlaceId(_stories[nextIndex]);
     setState(() {
-      _currentIndex -= 1;
-      _saved = _effectivePlaceId(_stories[_currentIndex]) != null &&
-          _savedPlaceIds.contains(_effectivePlaceId(_stories[_currentIndex]));
+      _currentIndex = nextIndex;
+      _saved = nextPlaceId != null && _savedPlaceIds.contains(nextPlaceId);
     });
   }
 
+  void _showPrevious() {
+    _updateCurrentIndex(_currentIndex - 1);
+  }
+
   void _showNext() {
-    if (_currentIndex >= _stories.length - 1) return;
-    setState(() {
-      _currentIndex += 1;
-      _saved = _effectivePlaceId(_stories[_currentIndex]) != null &&
-          _savedPlaceIds.contains(_effectivePlaceId(_stories[_currentIndex]));
-    });
+    _updateCurrentIndex(_currentIndex + 1);
   }
 
   @override
@@ -188,10 +186,12 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
             children: [
           story.imageUrl.trim().isEmpty
               ? _StoryViewerPlaceholder(title: story.title)
-              : CorsSafeNetworkImage(
-                  url: story.imageUrl,
+              : Image.network(
+                  story.imageUrl,
                   fit: BoxFit.cover,
-                  fallback: _StoryViewerPlaceholder(title: story.title),
+                  webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                  errorBuilder: (_, __, ___) =>
+                      _StoryViewerPlaceholder(title: story.title),
                 ),
           DecoratedBox(
             decoration: BoxDecoration(
@@ -323,12 +323,12 @@ class _StoryViewerPageState extends State<StoryViewerPage> {
                           if ((place.subcategory ?? '').isNotEmpty)
                             _StoryMetaChip(
                               icon: Icons.auto_awesome_rounded,
-                              label: place.subcategory!,
+                              label: recommendationTagLabel(place.subcategory!),
                             )
                           else if (place.category.isNotEmpty)
                             _StoryMetaChip(
                               icon: Icons.auto_awesome_rounded,
-                              label: place.category,
+                              label: recommendationTagLabel(place.category),
                             ),
                           if (place.rating != null)
                             _StoryMetaChip(

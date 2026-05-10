@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../config.dart';
@@ -19,6 +20,8 @@ class PremiumPage extends StatefulWidget {
 
 class _PremiumPageState extends State<PremiumPage> {
   static const _accentColor = Color(0xFFB6A1FF);
+  static const _surfaceColor = Color(0xFF1D1D1D);
+  static const _premiumOwnerName = 'Фролова Валерия Андреевна';
 
   UserMe? _me;
   bool _loading = true;
@@ -36,6 +39,7 @@ class _PremiumPageState extends State<PremiumPage> {
       if (!mounted) return;
       setState(() => _me = me);
     } catch (_) {
+      // Keep page usable even if profile request fails.
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -86,148 +90,215 @@ class _PremiumPageState extends State<PremiumPage> {
   @override
   Widget build(BuildContext context) {
     final isPremium = _me?.isPremium == true;
+    final inn = Config.premiumInn.trim();
+
     return TravelAppShell(
       title: 'Тур2Тур Pro',
-      subtitle: 'Быстрое создание точек маршрута и умное заполнение этапов',
+      subtitle: 'Быстрый ввод этапов маршрута и умное заполнение полей',
       currentTab: TravelNavTab.profile,
+      hideHeader: true,
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(color: _accentColor),
             )
-          : LayoutBuilder(
-              builder: (context, constraints) {
-                return SizedBox(
-                  height: constraints.maxHeight,
-                  child: Column(
+          : SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      const Expanded(
-                        child: Column(
-                          children: [
-                            _BenefitCard(
-                              icon: Icons.graphic_eq_rounded,
-                              title: 'Голосовой быстрый ввод',
-                              subtitle:
-                                  'Записывайте этап голосом, а приложение распознает речь и заполнит поля автоматически.',
+                      InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => Navigator.of(context).maybePop(),
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1D1D1D),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.06),
                             ),
-                            SizedBox(height: 10),
-                            _BenefitCard(
-                              icon: Icons.auto_awesome_rounded,
-                              title: 'Умное заполнение из текста',
-                              subtitle:
-                                  'Введите мысль в свободной форме, а поля этапа распределятся по местам без ручного ввода.',
-                            ),
-                            SizedBox(height: 10),
-                            _BenefitCard(
-                              icon: Icons.schedule_rounded,
-                              title: 'Быстрее, чем вручную',
-                              subtitle:
-                                  'Меньше переключений между полями и меньше шансов пропустить важные детали маршрута.',
-                            ),
-                          ],
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1D1D1D),
-                          borderRadius: BorderRadius.circular(24),
-                          border:
-                              Border.all(color: Colors.white.withOpacity(0.08)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: _accentColor.withOpacity(0.10),
-                              blurRadius: 24,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    'Стоимость Pro',
-                                    style: TextStyle(
-                                      fontFamily: 'Geologica',
-                                      color: Colors.white70,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w300,
-                                    ),
-                                  ),
-                                  SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        '299 ₽',
-                                        style: TextStyle(
-                                          fontFamily: 'Geologica',
-                                          color: Color(0xFF8C8C8C),
-                                          fontSize: 18,
-                                          decoration:
-                                              TextDecoration.lineThrough,
-                                          decorationColor: Color(0xFF8C8C8C),
-                                          fontWeight: FontWeight.w300,
-                                        ),
-                                      ),
-                                      SizedBox(width: 10),
-                                      Text(
-                                        '199 ₽',
-                                        style: TextStyle(
-                                          fontFamily: 'Geologica',
-                                          color: Colors.white,
-                                          fontSize: 34,
-                                          fontWeight: FontWeight.w300,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            SizedBox(
-                              height: 48,
-                              child: ElevatedButton(
-                                onPressed: isPremium ? null : _openCheckout,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _accentColor,
-                                  foregroundColor: const Color(0xFF161616),
-                                  disabledBackgroundColor:
-                                      _accentColor.withOpacity(0.55),
-                                  disabledForegroundColor:
-                                      const Color(0xFF161616).withOpacity(0.85),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(18),
-                                  ),
-                                ),
-                                child: Text(
-                                  isPremium
-                                      ? 'Уже подключено'
-                                      : _openingCheckout
-                                          ? 'Открываем...'
-                                          : 'Подключить',
-                                  style: const TextStyle(
-                                    fontFamily: 'Geologica',
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Тур2Тур Pro',
+                          style: TextStyle(
+                            fontFamily: 'Geologica',
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w300,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                );
-              },
+                  const SizedBox(height: 18),
+                  const _BenefitCard(
+                    icon: Icons.graphic_eq_rounded,
+                    title: 'Голосовой ввод',
+                    subtitle:
+                        'Запишите этап голосом, а приложение распознает речь и заполнит поля автоматически.',
+                  ),
+                  const SizedBox(height: 10),
+                  const _BenefitCard(
+                    icon: Icons.auto_awesome_rounded,
+                    title: 'Умное заполнение из текста',
+                    subtitle:
+                        'Введите мысль в свободной форме, а сервис сам распределит данные по полям этапа.',
+                  ),
+                  const SizedBox(height: 10),
+                  const _BenefitCard(
+                    icon: Icons.schedule_rounded,
+                    title: 'Быстрее, чем вручную',
+                    subtitle:
+                        'Меньше переключений между полями и меньше шансов упустить важные детали маршрута.',
+                  ),
+                  const SizedBox(height: 12),
+                  _PriceCard(
+                    isPremium: isPremium,
+                    openingCheckout: _openingCheckout,
+                    onCheckout: _openCheckout,
+                  ),
+                  const SizedBox(height: 12),
+                  const _ExpandableInfoCard(
+                    icon: Icons.sell_outlined,
+                    title: 'Что я получу?',
+                    body:
+                        'Цифровую подписку Тур2Тур Pro для travel-сервиса. Подписка открывает быстрый ввод этапов маршрута голосом и текстом, а также автоматическое заполнение полей этапа.',
+                  ),
+                  const SizedBox(height: 10),
+                  const _ExpandableInfoCard(
+                    icon: Icons.download_done_rounded,
+                    title: 'Как получить услугу после оплаты?',
+                    body:
+                        'После успешной оплаты доступ к Тур2Тур Pro активируется в аккаунте пользователя. Услуга предоставляется в цифровом виде внутри приложения и веб-версии без доставки физического товара.',
+                  ),
+                  const SizedBox(height: 10),
+                  _OfferInfoCard(
+                    ownerName: _premiumOwnerName,
+                    inn: inn,
+                  ),
+                ],
+              ),
             ),
+    );
+  }
+}
+
+class _PriceCard extends StatelessWidget {
+  const _PriceCard({
+    required this.isPremium,
+    required this.openingCheckout,
+    required this.onCheckout,
+  });
+
+  static const _accentColor = Color(0xFFB6A1FF);
+
+  final bool isPremium;
+  final bool openingCheckout;
+  final VoidCallback onCheckout;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1D1D1D),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: _accentColor.withOpacity(0.10),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Стоимость Pro',
+                  style: TextStyle(
+                    fontFamily: 'Geologica',
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w300,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Row(
+                  children: [
+                    Text(
+                      '399 ₽',
+                      style: TextStyle(
+                        fontFamily: 'Geologica',
+                        color: Color(0xFF8C8C8C),
+                        fontSize: 18,
+                        decoration: TextDecoration.lineThrough,
+                        decorationColor: Color(0xFF8C8C8C),
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      '299 ₽',
+                      style: TextStyle(
+                        fontFamily: 'Geologica',
+                        color: Colors.white,
+                        fontSize: 34,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 48,
+            child: ElevatedButton(
+              onPressed: isPremium || openingCheckout ? null : onCheckout,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _accentColor,
+                foregroundColor: const Color(0xFF161616),
+                disabledBackgroundColor: _accentColor.withOpacity(0.55),
+                disabledForegroundColor:
+                    const Color(0xFF161616).withOpacity(0.85),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              child: Text(
+                isPremium
+                    ? 'Уже подключено'
+                    : openingCheckout
+                        ? 'Открываем...'
+                        : 'Подключить',
+                style: const TextStyle(
+                  fontFamily: 'Geologica',
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -304,6 +375,292 @@ class _BenefitCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ExpandableInfoCard extends StatelessWidget {
+  const _ExpandableInfoCard({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  static const _surfaceColor = Color(0xFF1D1D1D);
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _surfaceColor,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          dividerColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+        ),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          collapsedShape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          iconColor: Colors.white70,
+          collapsedIconColor: Colors.white70,
+          leading: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: Colors.white70, size: 22),
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(
+              fontFamily: 'Geologica',
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          children: [
+            Text(
+              body,
+              style: TextStyle(
+                fontFamily: 'Geologica',
+                color: Colors.white.withOpacity(0.72),
+                fontSize: 13,
+                height: 1.42,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OfferInfoCard extends StatelessWidget {
+  const _OfferInfoCard({
+    required this.ownerName,
+    required this.inn,
+  });
+
+  static const _surfaceColor = Color(0xFF1D1D1D);
+  static const _offerAssetPath = 'assets/legal/tour2tour_public_offer.md';
+
+  final String ownerName;
+  final String inn;
+
+  Future<void> _openOffer(BuildContext context) async {
+    try {
+      final text = await rootBundle.loadString(_offerAssetPath);
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: Container(
+              decoration: BoxDecoration(
+                color: _surfaceColor,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.white.withOpacity(0.07)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 10, 12),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Публичная оферта',
+                            style: TextStyle(
+                              fontFamily: 'Geologica',
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                      child: SelectableText(
+                        text,
+                        style: TextStyle(
+                          fontFamily: 'Geologica',
+                          color: Colors.white.withOpacity(0.78),
+                          fontSize: 13,
+                          height: 1.5,
+                          fontWeight: FontWeight.w300,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось открыть файл оферты'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _surfaceColor,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          dividerColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+        ),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          collapsedShape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          iconColor: Colors.white70,
+          collapsedIconColor: Colors.white70,
+          leading: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.description_outlined,
+              color: Colors.white70,
+              size: 22,
+            ),
+          ),
+          title: const Text(
+            'Оферта и реквизиты',
+            style: TextStyle(
+              fontFamily: 'Geologica',
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white.withOpacity(0.06)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.attach_file_rounded,
+                      color: Colors.white70,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Публичная оферта Тур2Тур Pro',
+                          style: TextStyle(
+                            fontFamily: 'Geologica',
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Файл загружен в приложение',
+                          style: TextStyle(
+                            fontFamily: 'Geologica',
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w300,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => _openOffer(context),
+                    child: const Text('Открыть'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Исполнитель: $ownerName\nИНН: ${inn.isEmpty ? 'укажите ваш ИНН в PREMIUM_INN' : inn}',
+              style: TextStyle(
+                fontFamily: 'Geologica',
+                color: Colors.white.withOpacity(0.72),
+                fontSize: 13,
+                height: 1.42,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

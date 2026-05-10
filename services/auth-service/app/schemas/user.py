@@ -69,3 +69,10 @@ class EmailChangeRequestIn(BaseModel):
 class EmailChangeConfirmIn(BaseModel):
     new_email: EmailStr
     code: str
+
+
+class StageAssistantTrialOut(BaseModel):
+    limit: int
+    used: int
+    remaining: int
+    is_locked: bool

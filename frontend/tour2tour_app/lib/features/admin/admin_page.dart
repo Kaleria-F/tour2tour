@@ -76,7 +76,6 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
     final sourceCtrl = TextEditingController(text: place?.source ?? 'manual');
     final descriptionCtrl = TextEditingController(text: place?.description ?? '');
     final priceCtrl = TextEditingController(text: place?.priceLevel ?? 'middle');
-    final ratingCtrl = TextEditingController(text: place?.rating?.toString() ?? '');
     final tagsCtrl = TextEditingController(
       text: place == null ? '{"history": 5, "culture": 4}' : jsonEncode(place.tags),
     );
@@ -185,7 +184,6 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                       _adminField(subtypeCtrl, 'Подкатегория'),
                       _adminField(sourceCtrl, 'Источник'),
                       _adminField(priceCtrl, 'Уровень цены'),
-                      _adminField(ratingCtrl, 'Рейтинг'),
                       _adminField(descriptionCtrl, 'Описание', maxLines: 4),
                       _adminField(tagsCtrl, 'Теги JSON', maxLines: 4),
                     ],
@@ -209,7 +207,6 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         'source': sourceCtrl.text.trim(),
                         'description': descriptionCtrl.text.trim().isEmpty ? null : descriptionCtrl.text.trim(),
                         'price_level': priceCtrl.text.trim().isEmpty ? null : priceCtrl.text.trim(),
-                        'rating': double.tryParse(ratingCtrl.text.trim()),
                         'status': place?.status ?? 'approved',
                         'tags': Map<String, dynamic>.from(jsonDecode(tagsCtrl.text.trim()) as Map),
                       };
@@ -478,7 +475,6 @@ class _AdminPageState extends State<AdminPage> with SingleTickerProviderStateMix
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _pill('★ ${(place.rating ?? 0).toStringAsFixed(1)}'),
                           _pill(place.priceLevel ?? 'price?'),
                           _pill(place.status),
                         ],

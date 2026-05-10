@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 
+import 'core/session_coordinator.dart';
 import 'core/token_storage.dart';
 import 'api/api_client.dart';
 
@@ -31,7 +32,6 @@ import 'features/trips/create_trip_page.dart';
 import 'features/trips/trip_workspace_page.dart';
 import 'features/trips/trips_repo.dart';
 
-
 GoRouter buildRouter() {
   final tokenStorage = TokenStorage();
   final api = ApiClient(tokenStorage);
@@ -45,7 +45,7 @@ GoRouter buildRouter() {
   final trips = TripsRepo(api);
   final documents = DocumentsRepo(api);
 
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/login',
     routes: [
       GoRoute(
@@ -81,12 +81,16 @@ GoRouter buildRouter() {
       ),
       GoRoute(
         path: '/preferences',
-        builder: (_, state) => PreferencesPage(
-          repo: prefs,
-          auth: auth,
-          fromRecommendations:
-              state.uri.queryParameters['from'] == 'recommendations',
-        ),
+        builder: (_, state) {
+          final tripId = int.tryParse(state.uri.queryParameters['tripId'] ?? '');
+          return PreferencesPage(
+            repo: prefs,
+            auth: auth,
+            fromRecommendations:
+                state.uri.queryParameters['from'] == 'recommendations',
+            tripId: tripId,
+          );
+        },
       ),
       GoRoute(
         path: '/profile',
@@ -234,4 +238,10 @@ GoRouter buildRouter() {
       ),
     ],
   );
+
+  SessionCoordinator.instance.registerWebSessionExpiredHandler(() {
+    router.go('/login');
+  });
+
+  return router;
 }
