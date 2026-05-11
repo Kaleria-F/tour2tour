@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     smtp_from: str = Field(default="", alias="SMTP_FROM")
     smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
     smtp_use_ssl: bool = Field(default=False, alias="SMTP_USE_SSL")
+    internal_service_token: str = Field(default="", alias="INTERNAL_SERVICE_TOKEN")
 
     model_config = SettingsConfigDict(
         env_file=str(ENV_PATH),

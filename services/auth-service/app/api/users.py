@@ -3,11 +3,12 @@ import logging
 import secrets
 from collections import Counter, defaultdict
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import delete, select
 
 from app.core import auth_state
+from app.core.config import settings
 from app.core.mailer import send_email
 from app.db.deps import get_db
 from app.api.deps import get_current_user
@@ -26,6 +27,7 @@ from app.schemas.preferences import (
 from app.schemas.user import (
     EmailChangeConfirmIn,
     EmailChangeRequestIn,
+    PremiumGrantIn,
     StageAssistantTrialOut,
     UserMeOut,
     UserProfileUpdateIn,
@@ -67,6 +69,12 @@ def get_me(me: User = Depends(get_current_user)):
         totp_enabled=me.totp_enabled,
         passkey_enabled=me.passkey_enabled,
     )
+
+
+def _assert_internal_service_access(x_internal_token: str | None) -> None:
+    configured = settings.internal_service_token.strip()
+    if not configured or x_internal_token != configured:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 def _normalize_email(email: str | None) -> str:
@@ -213,6 +221,24 @@ def update_me(
     db.commit()
     db.refresh(me)
     return get_me(me)
+
+
+@router.post("/internal/users/{user_id}/premium", response_model=UserMeOut)
+def set_user_premium_status(
+    user_id: int,
+    payload: PremiumGrantIn,
+    db: Session = Depends(get_db),
+    x_internal_token: str | None = Header(default=None, alias="X-Internal-Token"),
+):
+    _assert_internal_service_access(x_internal_token)
+    user = db.execute(select(User).where(User.id == user_id)).scalars().first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_premium = payload.is_premium
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return get_me(user)
 
 
 @router.post("/me/request-email-change")

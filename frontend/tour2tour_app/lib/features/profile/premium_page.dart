@@ -1,18 +1,21 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:dio/dio.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../config.dart';
 import '../shared/travel_app_shell.dart';
+import '../payments/payments_repo.dart';
 import 'profile_repo.dart';
 
 class PremiumPage extends StatefulWidget {
   const PremiumPage({
     super.key,
     required this.profileRepo,
+    required this.paymentsRepo,
   });
 
   final ProfileRepo profileRepo;
+  final PaymentsRepo paymentsRepo;
 
   @override
   State<PremiumPage> createState() => _PremiumPageState();
@@ -47,20 +50,13 @@ class _PremiumPageState extends State<PremiumPage> {
 
   Future<void> _openCheckout() async {
     if (_openingCheckout) return;
-    final rawUrl = Config.premiumCheckoutUrl.trim();
-    if (rawUrl.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ссылка на оплату пока не настроена'),
-        ),
-      );
-      return;
-    }
 
     setState(() => _openingCheckout = true);
     try {
-      final uri = Uri.tryParse(rawUrl);
+      final session = await widget.paymentsRepo.createProCheckout(
+        source: 'premium_page',
+      );
+      final uri = Uri.tryParse(session.confirmationUrl);
       if (uri == null) {
         throw Exception('Invalid checkout url');
       }
@@ -75,6 +71,20 @@ class _PremiumPageState extends State<PremiumPage> {
           ),
         );
       }
+    } on DioException catch (error) {
+      if (!mounted) return;
+      final detail = error.response?.data is Map<String, dynamic>
+          ? ((error.response!.data['detail'] ?? '').toString())
+          : '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            detail.isNotEmpty
+                ? detail
+                : 'Не удалось создать платеж. Попробуйте позже.',
+          ),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -90,7 +100,7 @@ class _PremiumPageState extends State<PremiumPage> {
   @override
   Widget build(BuildContext context) {
     final isPremium = _me?.isPremium == true;
-    final inn = Config.premiumInn.trim();
+    const inn = '773771991088';
 
     return TravelAppShell(
       title: 'Тур2Тур Pro',
@@ -665,3 +675,4 @@ class _OfferInfoCard extends StatelessWidget {
     );
   }
 }
+

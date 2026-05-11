@@ -76,3 +76,7 @@ class StageAssistantTrialOut(BaseModel):
     used: int
     remaining: int
     is_locked: bool
+
+
+class PremiumGrantIn(BaseModel):
+    is_premium: bool = True

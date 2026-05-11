@@ -16,6 +16,7 @@ import 'features/preferences/preferences_repo.dart';
 import 'features/preferences/preferences_page.dart';
 import 'features/recommendations/recommendations_repo.dart';
 import 'features/interactions/interactions_repo.dart';
+import 'features/payments/payments_repo.dart';
 
 import 'features/documents/documents_repo.dart';
 import 'features/favorites/favorites_page.dart';
@@ -40,6 +41,7 @@ GoRouter buildRouter() {
   final prefs = PreferencesRepo(api);
   final recommendations = RecommendationsRepo(api);
   final interactions = InteractionsRepo(api);
+  final payments = PaymentsRepo(api);
   final profile = ProfileRepo(api);
   final stories = StoriesRepo(api);
   final trips = TripsRepo(api);
@@ -171,7 +173,10 @@ GoRouter buildRouter() {
       ),
       GoRoute(
         path: '/premium',
-        builder: (_, __) => PremiumPage(profileRepo: profile),
+        builder: (_, __) => PremiumPage(
+          profileRepo: profile,
+          paymentsRepo: payments,
+        ),
       ),
       GoRoute(
         path: '/favorites',

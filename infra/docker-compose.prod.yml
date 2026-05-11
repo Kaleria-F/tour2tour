@@ -89,6 +89,7 @@ services:
       SMTP_FROM: ${SMTP_FROM}
       SMTP_USE_TLS: ${SMTP_USE_TLS}
       SMTP_USE_SSL: ${SMTP_USE_SSL}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
     ports:
       - "8001:8000"
     depends_on:
@@ -160,6 +161,17 @@ services:
     build:
       context: ../services/payments-service
       dockerfile: Dockerfile
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ALG: HS256
+      AUTH_SERVICE_URL: http://auth-service:8000
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN}
+      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID}
+      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY}
+      YOOKASSA_API_BASE_URL: ${YOOKASSA_API_BASE_URL:-https://api.yookassa.ru/v3}
+      YOOKASSA_RETURN_URL: ${YOOKASSA_RETURN_URL:-https://24tour2tour.ru/premium}
+      PREMIUM_AMOUNT_RUB: ${PREMIUM_AMOUNT_RUB:-299.00}
+      PREMIUM_DESCRIPTION: ${PREMIUM_DESCRIPTION:-Подписка Тур2Тур Pro}
     ports:
       - "8004:8000"
     depends_on:
