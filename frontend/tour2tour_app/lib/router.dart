@@ -220,6 +220,19 @@ GoRouter buildRouter() {
           final plannedDays = payload['planned_days'] is int
               ? payload['planned_days'] as int
               : int.tryParse((payload['planned_days'] ?? '').toString());
+          final cardColor = payload['card_color']?.toString();
+          final cardBackground = payload['card_background']?.toString();
+          final cardIcon = payload['card_icon']?.toString();
+          if (tripId == null) {
+            return ProfilePage(
+              repo: profile,
+              tripsRepo: trips,
+              preferencesRepo: prefs,
+              recommendationsRepo: recommendations,
+              interactionsRepo: interactions,
+              storiesRepo: stories,
+            );
+          }
           return TripWorkspacePage(
             tripTitle: title,
             tripId: tripId,
@@ -227,6 +240,9 @@ GoRouter buildRouter() {
             startDate: startDate,
             endDate: endDate,
             plannedDays: plannedDays,
+            cardColor: cardColor,
+            cardBackground: cardBackground,
+            cardIcon: cardIcon,
             tripsRepo: trips,
             documentsRepo: documents,
             preferencesRepo: prefs,

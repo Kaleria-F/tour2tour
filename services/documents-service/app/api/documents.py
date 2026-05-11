@@ -1,9 +1,9 @@
-import uuid
 import logging
+import uuid
 from urllib.parse import quote, urlparse, urlunparse
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from botocore.exceptions import ClientError
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -11,51 +11,49 @@ from app.api.deps import get_current_user_id, get_db
 from app.core.config import settings
 from app.models.document import Document
 from app.schemas.document import (
+    DocumentItemOut,
     DownloadUrlRequest,
     DownloadUrlResponse,
-    DocumentItemOut,
     UploadCompleteRequest,
     UploadCompleteResponse,
     UploadInitRequest,
     UploadInitResponse,
 )
 from app.storage.s3_client import (
-    build_object_key,
-    build_s3_client,
-    build_s3_presign_client,
     ensure_bucket_cors,
     ensure_bucket_exists,
+    get_object_storage_client,
+    get_presign_client,
+    make_object_key,
 )
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 logger = logging.getLogger("documents-service")
 
-ALLOWED_CONTENT_TYPES = {
+SUPPORTED_CONTENT_TYPES = {
     "application/pdf",
-    "image/jpeg",
     "image/png",
+    "image/jpeg",
 }
 
-ALLOWED_EXTENSIONS = {
+SUPPORTED_EXTENSIONS = {
     ".pdf",
+    ".png",
     ".jpg",
     ".jpeg",
-    ".png",
 }
 
 
-def _rewrite_presigned_url(url: str) -> str:
+# keeps signature valid when public endpoint host must be used in browser
+# with path-style URLs
+
+def _rewrite_presigned_url(raw_url: str) -> str:
     if not settings.s3_public_endpoint:
-        return url
-
-    # For virtual-hosted style presigned URLs the bucket lives in the host
-    # (e.g. https://bucket.s3.example.com/key). Replacing the host with the
-    # bare public endpoint drops the bucket and breaks both CORS and the
-    # signature, so keep the original URL unchanged.
+        return raw_url
     if not settings.s3_force_path_style:
-        return url
+        return raw_url
 
-    src = urlparse(url)
+    src = urlparse(raw_url)
     dst = urlparse(settings.s3_public_endpoint)
     return urlunparse(
         (
@@ -69,42 +67,19 @@ def _rewrite_presigned_url(url: str) -> str:
     )
 
 
-def _extract_visible_file_name(object_key: str) -> str:
-    leaf = object_key.split("/")[-1]
-
-    # New format support: "<uuid>__<original_name>"
-    if "__" in leaf:
-        maybe_uuid, maybe_name = leaf.split("__", 1)
-        try:
-            uuid.UUID(maybe_uuid)
-            if maybe_name:
-                return maybe_name
-        except ValueError:
-            pass
-
-    # Backward-compatible format: "<uuid>-<original_name>"
-    if len(leaf) > 37 and leaf[36] == "-":
-        maybe_uuid = leaf[:36]
-        try:
-            uuid.UUID(maybe_uuid)
-            return leaf[37:]
-        except ValueError:
-            pass
-
-    return leaf
-
-
-def _normalize_name(file_name: str) -> str:
-    clean = file_name.replace("\\", "_").replace("/", "_").strip()
-    if not clean:
+def _sanitize_file_name(file_name: str) -> str:
+    cleaned = file_name.replace("\\", "_").replace("/", "_").strip()
+    if not cleaned:
         raise HTTPException(status_code=400, detail="Invalid file name")
-    ext = "." + clean.split(".")[-1].lower() if "." in clean else ""
-    if ext not in ALLOWED_EXTENSIONS:
+
+    dot_idx = cleaned.rfind(".")
+    extension = cleaned[dot_idx:].lower() if dot_idx >= 0 else ""
+    if extension not in SUPPORTED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Unsupported file extension")
-    return clean
+    return cleaned
 
 
-def _verify_magic(content_type: str, first_bytes: bytes) -> bool:
+def _detect_magic(content_type: str, first_bytes: bytes) -> bool:
     if content_type == "application/pdf":
         return first_bytes.startswith(b"%PDF")
     if content_type == "image/png":
@@ -114,39 +89,72 @@ def _verify_magic(content_type: str, first_bytes: bytes) -> bool:
     return False
 
 
-def _upsert_document_record(
-    *,
+def _file_name_from_object_key(object_key: str) -> str:
+    leaf = object_key.split("/")[-1]
+    if "__" in leaf:
+        maybe_uuid, maybe_name = leaf.split("__", 1)
+        try:
+            uuid.UUID(maybe_uuid)
+            if maybe_name:
+                return maybe_name
+        except ValueError:
+            pass
+    if len(leaf) > 37 and leaf[36] == "-":
+        maybe_uuid = leaf[:36]
+        try:
+            uuid.UUID(maybe_uuid)
+            return leaf[37:]
+        except ValueError:
+            pass
+    return leaf
+
+
+def _get_document_or_404(db: Session, user_id: int, object_key: str) -> Document:
+    doc = db.scalar(
+        select(Document).where(
+            Document.user_id == user_id,
+            Document.object_key == object_key,
+        )
+    )
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc
+
+
+def _upsert_document(
     db: Session,
+    *,
     user_id: int,
     trip_id: int,
     object_key: str,
     file_name: str,
     content_type: str,
-    size: int,
+    size_bytes: int,
 ) -> Document:
     existing = db.scalar(select(Document).where(Document.object_key == object_key))
-    if existing is None:
-        existing = Document(
-            user_id=user_id,
-            trip_id=trip_id,
-            object_key=object_key,
-            file_name=file_name,
-            content_type=content_type,
-            size_bytes=size,
-        )
-        db.add(existing)
-        db.commit()
-        db.refresh(existing)
-    return existing
+    if existing:
+        return existing
+
+    row = Document(
+        user_id=user_id,
+        trip_id=trip_id,
+        object_key=object_key,
+        file_name=file_name,
+        content_type=content_type,
+        size_bytes=size_bytes,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 @router.post("/storage/ensure-bucket")
-def ensure_bucket(
-    _: int = Depends(get_current_user_id),
-):
-    s3 = build_s3_client()
+def ensure_bucket(_: int = Depends(get_current_user_id)):
+    s3 = get_object_storage_client()
     ensure_bucket_exists(s3)
     ensure_bucket_cors(s3)
+
     try:
         s3.put_public_access_block(
             Bucket=settings.s3_bucket,
@@ -159,55 +167,37 @@ def ensure_bucket(
         )
     except ClientError:
         pass
-    return {"bucket": settings.s3_bucket, "status": "ok"}
+
+    return {"status": "ok", "bucket": settings.s3_bucket}
 
 
 @router.post("/upload-init", response_model=UploadInitResponse)
-def upload_init(
-    payload: UploadInitRequest,
-    user_id: int = Depends(get_current_user_id),
-):
-    if payload.content_type not in ALLOWED_CONTENT_TYPES:
+def upload_init(payload: UploadInitRequest, user_id: int = Depends(get_current_user_id)):
+    content_type = payload.content_type.lower().strip()
+    if content_type not in SUPPORTED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported content type")
     if payload.file_size_bytes > settings.max_upload_size_bytes:
         raise HTTPException(status_code=400, detail="File too large")
-    normalized_name = _normalize_name(payload.file_name)
 
-    s3 = build_s3_client()
+    file_name = _sanitize_file_name(payload.file_name)
+    s3 = get_object_storage_client()
     ensure_bucket_exists(s3)
     ensure_bucket_cors(s3)
-    s3_presign = build_s3_presign_client()
 
-    object_key = build_object_key(
-        user_id=user_id,
-        trip_id=payload.trip_id,
-        original_file_name=normalized_name,
-    )
-    params = {
-        "Bucket": settings.s3_bucket,
-        "Key": object_key,
-    }
-    # Do not sign Content-Type into the presigned PUT request.
-    # Browsers may normalize or omit this header on web uploads, which causes
-    # SignatureDoesNotMatch/403 even when the file bytes are valid.
-    # The uploaded object is still validated server-side in upload_complete().
+    object_key = make_object_key(user_id=user_id, trip_id=payload.trip_id, file_name=file_name)
+
     try:
-        upload_url = s3_presign.generate_presigned_url(
+        upload_url = get_presign_client().generate_presigned_url(
             ClientMethod="put_object",
-            Params=params,
+            Params={
+                "Bucket": settings.s3_bucket,
+                "Key": object_key,
+            },
             ExpiresIn=settings.s3_presign_ttl_seconds,
         )
-    except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate upload URL: {e}")
+    except ClientError as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to generate upload URL: {exc}")
 
-    logger.info(
-        "upload_init user_id=%s trip_id=%s object_key=%s content_type=%s size=%s",
-        user_id,
-        payload.trip_id,
-        object_key,
-        payload.content_type,
-        payload.file_size_bytes,
-    )
     return UploadInitResponse(
         object_key=object_key,
         upload_url=_rewrite_presigned_url(upload_url),
@@ -221,69 +211,53 @@ def upload_complete(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    prefix = f"users/{user_id}/trips/{payload.trip_id}/"
-    if not payload.object_key.startswith(prefix):
+    expected_prefix = f"users/{user_id}/trips/{payload.trip_id}/"
+    if not payload.object_key.startswith(expected_prefix):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    s3 = build_s3_client()
+    s3 = get_object_storage_client()
     try:
-        head = s3.head_object(Bucket=settings.s3_bucket, Key=payload.object_key)
-    except ClientError as e:
-        raise HTTPException(status_code=400, detail=f"Object is not uploaded: {e}")
-
-    content_type = (head.get("ContentType") or "").lower()
-    size = int(head.get("ContentLength") or 0)
-    if content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(status_code=400, detail="Unsupported content type")
-    if size <= 0 or size > settings.max_upload_size_bytes:
-        raise HTTPException(status_code=400, detail="Invalid or too large file")
-
-    try:
-        first_chunk = s3.get_object(
-            Bucket=settings.s3_bucket,
-            Key=payload.object_key,
-            Range="bytes=0-15",
-        )
-        first_bytes = first_chunk["Body"].read()
+        meta = s3.head_object(Bucket=settings.s3_bucket, Key=payload.object_key)
     except ClientError:
-        first_bytes = b""
+        raise HTTPException(status_code=400, detail="Uploaded object not found")
 
-    if not _verify_magic(content_type, first_bytes):
+    content_type = (meta.get("ContentType") or "").lower()
+    size_bytes = int(meta.get("ContentLength") or 0)
+
+    if content_type not in SUPPORTED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Unsupported content type")
+    if size_bytes <= 0 or size_bytes > settings.max_upload_size_bytes:
+        raise HTTPException(status_code=400, detail="Invalid file size")
+
+    try:
+        first_chunk = s3.get_object(Bucket=settings.s3_bucket, Key=payload.object_key, Range="bytes=0-15")
+        signature = first_chunk["Body"].read()
+    except ClientError:
+        signature = b""
+
+    if not _detect_magic(content_type, signature):
         raise HTTPException(status_code=400, detail="File signature validation failed")
 
-    if settings.enable_upload_scan:
-        # Placeholder: integrate ClamAV/external AV here.
-        logger.warning("upload_scan_enabled_but_not_integrated object_key=%s", payload.object_key)
-
-    existing = db.scalar(select(Document).where(Document.object_key == payload.object_key))
-    if existing is None:
-        existing = Document(
-            user_id=user_id,
-            trip_id=payload.trip_id,
-            object_key=payload.object_key,
-            file_name=_extract_visible_file_name(payload.object_key),
-            content_type=content_type,
-            size_bytes=size,
-        )
-        db.add(existing)
-        db.commit()
-        db.refresh(existing)
-
-    logger.info(
-        "upload_complete user_id=%s trip_id=%s object_key=%s content_type=%s size=%s",
-        user_id,
-        payload.trip_id,
-        payload.object_key,
-        content_type,
-        size,
+    doc = _upsert_document(
+        db,
+        user_id=user_id,
+        trip_id=payload.trip_id,
+        object_key=payload.object_key,
+        file_name=_file_name_from_object_key(payload.object_key),
+        content_type=content_type,
+        size_bytes=size_bytes,
     )
+
+    if settings.enable_upload_scan:
+        logger.warning("AV scan enabled but integration is not configured yet")
+
     return UploadCompleteResponse(
         status="ok",
         document=DocumentItemOut(
-            object_key=existing.object_key,
-            file_name=existing.file_name,
-            size_bytes=existing.size_bytes,
-            last_modified=existing.created_at,
+            object_key=doc.object_key,
+            file_name=doc.file_name,
+            size_bytes=doc.size_bytes,
+            last_modified=doc.created_at,
         ),
     )
 
@@ -296,67 +270,87 @@ async def upload_direct(
     user_id: int = Depends(get_current_user_id),
     db: Session = Depends(get_db),
 ):
-    normalized_name = _normalize_name(file_name)
-    content_type = (file.content_type or "").lower()
-    if content_type not in ALLOWED_CONTENT_TYPES:
+    cleaned_name = _sanitize_file_name(file_name)
+    content_type = (file.content_type or "").lower().strip()
+    if content_type not in SUPPORTED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported content type")
 
     payload = await file.read()
-    size = len(payload)
-    if size <= 0:
+    size_bytes = len(payload)
+    if size_bytes <= 0:
         raise HTTPException(status_code=400, detail="Empty file")
-    if size > settings.max_upload_size_bytes:
+    if size_bytes > settings.max_upload_size_bytes:
         raise HTTPException(status_code=400, detail="File too large")
-    if not _verify_magic(content_type, payload[:16]):
+    if not _detect_magic(content_type, payload[:16]):
         raise HTTPException(status_code=400, detail="File signature validation failed")
 
-    s3 = build_s3_client()
+    s3 = get_object_storage_client()
     ensure_bucket_exists(s3)
     ensure_bucket_cors(s3)
 
-    object_key = build_object_key(
-        user_id=user_id,
-        trip_id=trip_id,
-        original_file_name=normalized_name,
-    )
-    put_params = {
+    object_key = make_object_key(user_id=user_id, trip_id=trip_id, file_name=cleaned_name)
+
+    put_kwargs = {
         "Bucket": settings.s3_bucket,
         "Key": object_key,
         "Body": payload,
         "ContentType": content_type,
     }
     if settings.s3_sse_mode:
-        put_params["ServerSideEncryption"] = settings.s3_sse_mode
+        put_kwargs["ServerSideEncryption"] = settings.s3_sse_mode
 
     try:
-        s3.put_object(**put_params)
-    except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {e}")
+        s3.put_object(**put_kwargs)
+    except ClientError as exc:
+        code = (exc.response.get("Error") or {}).get("Code") or "Unknown"
+        message = (exc.response.get("Error") or {}).get("Message") or ""
+        logger.warning("S3 put_object failed code=%s message=%s", code, message)
 
-    document = _upsert_document_record(
-        db=db,
+        # Some S3-compatible providers reject SSE headers for specific buckets.
+        # Retry once without SSE to keep upload flow stable.
+        if "ServerSideEncryption" in put_kwargs and code in {
+            "InvalidArgument",
+            "InvalidRequest",
+            "NotImplemented",
+            "XNotImplemented",
+        }:
+            retry_kwargs = dict(put_kwargs)
+            retry_kwargs.pop("ServerSideEncryption", None)
+            try:
+                s3.put_object(**retry_kwargs)
+            except ClientError as retry_exc:
+                retry_code = (retry_exc.response.get("Error") or {}).get("Code") or "Unknown"
+                retry_message = (retry_exc.response.get("Error") or {}).get("Message") or ""
+                logger.error(
+                    "S3 retry without SSE failed code=%s message=%s",
+                    retry_code,
+                    retry_message,
+                )
+                raise HTTPException(status_code=500, detail=f"S3 upload failed ({retry_code})")
+        elif code in {"AccessDenied", "Unauthorized", "SignatureDoesNotMatch"}:
+            raise HTTPException(status_code=403, detail=f"S3 upload forbidden ({code})")
+        elif code in {"NoSuchBucket", "NotFound"}:
+            raise HTTPException(status_code=400, detail=f"S3 bucket not found ({settings.s3_bucket})")
+        else:
+            raise HTTPException(status_code=500, detail=f"S3 upload failed ({code})")
+
+    doc = _upsert_document(
+        db,
         user_id=user_id,
         trip_id=trip_id,
         object_key=object_key,
-        file_name=_extract_visible_file_name(object_key),
+        file_name=cleaned_name,
         content_type=content_type,
-        size=size,
+        size_bytes=size_bytes,
     )
-    logger.info(
-        "upload_direct user_id=%s trip_id=%s object_key=%s content_type=%s size=%s",
-        user_id,
-        trip_id,
-        object_key,
-        content_type,
-        size,
-    )
+
     return UploadCompleteResponse(
         status="ok",
         document=DocumentItemOut(
-            object_key=document.object_key,
-            file_name=document.file_name,
-            size_bytes=document.size_bytes,
-            last_modified=document.created_at,
+            object_key=doc.object_key,
+            file_name=doc.file_name,
+            size_bytes=doc.size_bytes,
+            last_modified=doc.created_at,
         ),
     )
 
@@ -372,15 +366,48 @@ def list_trip_documents(
         .where(Document.user_id == user_id, Document.trip_id == trip_id)
         .order_by(Document.created_at.desc())
     ).all()
+
     return [
         DocumentItemOut(
-            object_key=item.object_key,
-            file_name=item.file_name,
-            size_bytes=item.size_bytes,
-            last_modified=item.created_at,
+            object_key=row.object_key,
+            file_name=row.file_name,
+            size_bytes=row.size_bytes,
+            last_modified=row.created_at,
         )
-        for item in rows
+        for row in rows
     ]
+
+
+@router.post("/download-url", response_model=DownloadUrlResponse)
+def download_url(
+    payload: DownloadUrlRequest,
+    user_id: int = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    prefix = f"users/{user_id}/"
+    if not payload.object_key.startswith(prefix):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    _get_document_or_404(db, user_id, payload.object_key)
+
+    visible_name = _file_name_from_object_key(payload.object_key)
+    try:
+        url = get_presign_client().generate_presigned_url(
+            ClientMethod="get_object",
+            Params={
+                "Bucket": settings.s3_bucket,
+                "Key": payload.object_key,
+                "ResponseContentDisposition": f"inline; filename*=UTF-8''{quote(visible_name)}",
+            },
+            ExpiresIn=settings.s3_presign_ttl_seconds,
+        )
+    except ClientError as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to generate download URL: {exc}")
+
+    return DownloadUrlResponse(
+        download_url=_rewrite_presigned_url(url),
+        expires_in=settings.s3_presign_ttl_seconds,
+    )
 
 
 @router.delete("/object")
@@ -393,44 +420,14 @@ def delete_object(
     if not object_key.startswith(prefix):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    s3 = build_s3_client()
-    s3.delete_object(Bucket=settings.s3_bucket, Key=object_key)
-    row = db.scalar(select(Document).where(Document.object_key == object_key, Document.user_id == user_id))
-    if row is not None:
-        db.delete(row)
-        db.commit()
-    logger.info("delete_object user_id=%s object_key=%s", user_id, object_key)
-    return {"status": "ok"}
+    row = _get_document_or_404(db, user_id, object_key)
 
-
-@router.post("/download-url", response_model=DownloadUrlResponse)
-def download_url(
-    payload: DownloadUrlRequest,
-    user_id: int = Depends(get_current_user_id),
-):
-    # Security baseline: user can download only objects within own namespace.
-    prefix = f"users/{user_id}/"
-    if not payload.object_key.startswith(prefix):
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    s3 = build_s3_presign_client()
-    visible_name = _extract_visible_file_name(payload.object_key)
     try:
-        download_url_value = s3.generate_presigned_url(
-            ClientMethod="get_object",
-            Params={
-                "Bucket": settings.s3_bucket,
-                "Key": payload.object_key,
-                # Suggest original filename in browser download dialog.
-                "ResponseContentDisposition": f"inline; filename*=UTF-8''{quote(visible_name)}",
-            },
-            ExpiresIn=settings.s3_presign_ttl_seconds,
-        )
-    except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate download URL: {e}")
+        get_object_storage_client().delete_object(Bucket=settings.s3_bucket, Key=object_key)
+    except ClientError as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to delete file from storage: {exc}")
 
-    return DownloadUrlResponse(
-        download_url=_rewrite_presigned_url(download_url_value),
-        expires_in=settings.s3_presign_ttl_seconds,
-    )
-#новая
+    db.delete(row)
+    db.commit()
+
+    return {"status": "ok"}

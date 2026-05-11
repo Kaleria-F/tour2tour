@@ -91,7 +91,15 @@ CARD_COLORS = {
     "#7AB4E3",
 }
 
-CARD_BACKGROUNDS = {"orbit", "waves", "mountains", "sunset", "aurora"}
+CARD_BACKGROUNDS = {
+    "orbit",
+    "waves",
+    "mountains",
+    "sunset",
+    "aurora",
+    "city_text",
+    "brand_text",
+}
 CARD_ICONS = {"luggage", "flight", "terrain", "beach", "car", "forest", "camera"}
 
 
@@ -219,7 +227,7 @@ def _normalize_card_background(value: str | None) -> str:
     raw = (value or "").strip().lower()
     if raw in CARD_BACKGROUNDS:
         return raw
-    return "orbit"
+    return "brand_text"
 
 
 def _normalize_card_icon(value: str | None) -> str:

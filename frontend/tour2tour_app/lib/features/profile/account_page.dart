@@ -392,6 +392,9 @@ class _AccountPageState extends State<AccountPage> {
                                                 'start_date': trip.startDate,
                                                 'end_date': trip.endDate,
                                                 'planned_days': trip.plannedDays,
+                                                'card_color': trip.cardColor,
+                                                'card_background': trip.cardBackground,
+                                                'card_icon': trip.cardIcon,
                                               },
                                             );
                                           },

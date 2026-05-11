@@ -696,6 +696,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                         'start_date': trip.startDate,
                                         'end_date': trip.endDate,
                                         'planned_days': trip.plannedDays,
+                                        'card_color': trip.cardColor,
+                                        'card_background': trip.cardBackground,
+                                        'card_icon': trip.cardIcon,
                                       });
                                     },
                                   );
@@ -935,6 +938,7 @@ class _TripCarouselCard extends StatelessWidget {
                       color: cardColor,
                       background: cardBackground,
                       icon: _iconByKey(cardIcon),
+                      cityName: city,
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -1327,11 +1331,13 @@ class _TripPlaceholderArt extends StatelessWidget {
   final Color color;
   final String background;
   final IconData icon;
+  final String cityName;
 
   const _TripPlaceholderArt({
     required this.color,
     required this.background,
     required this.icon,
+    required this.cityName,
   });
 
   @override
@@ -1351,6 +1357,26 @@ class _TripPlaceholderArt extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             _backgroundShape(background, color),
+            if (background == 'city_text' || background == 'brand_text')
+              Positioned(
+                left: 18,
+                right: 18,
+                top: 16,
+                child: Text(
+                  background == 'brand_text'
+                      ? 'Тур2Тур'
+                      : (cityName.trim().isEmpty ? 'Город' : cityName.trim()),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Geologica',
+                    color: Colors.white.withOpacity(0.34),
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700,
+                    height: 1,
+                  ),
+                ),
+              ),
             Positioned(
               right: 22,
               top: 18,
@@ -1453,6 +1479,23 @@ class _TripPlaceholderArt extends StatelessWidget {
                 colors: [
                   color.withOpacity(0.30),
                   const Color(0xFF6D83FF).withOpacity(0.18),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+        );
+      case 'city_text':
+      case 'brand_text':
+        return Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withOpacity(0.42),
+                  const Color(0xFF201A2D).withOpacity(0.44),
                   Colors.transparent,
                 ],
               ),

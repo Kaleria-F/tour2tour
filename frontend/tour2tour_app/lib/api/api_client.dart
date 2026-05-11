@@ -35,7 +35,7 @@ class ApiClient {
           final isAuthRequest = error.requestOptions.path.startsWith('/auth/');
 
           if (kIsWeb &&
-              (statusCode == 401 || statusCode == 403) &&
+              statusCode == 401 &&
               hadBearerToken &&
               !isAuthRequest) {
             await tokenStorage.clear();

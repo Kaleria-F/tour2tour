@@ -26,6 +26,8 @@ class _CreateTripPageState extends State<CreateTripPage> {
   ];
 
   static const List<String> _cardBackgrounds = [
+    'brand_text',
+    'city_text',
     'orbit',
     'waves',
     'mountains',
@@ -55,7 +57,7 @@ class _CreateTripPageState extends State<CreateTripPage> {
   List<CitySuggestion> _lastNonEmptyCitySuggestions = const [];
   int _cityRequestId = 0;
   String _selectedCardColor = '#D7E37A';
-  String _selectedCardBackground = 'orbit';
+  String _selectedCardBackground = 'brand_text';
   String _selectedCardIcon = 'luggage';
 
   @override
@@ -303,6 +305,9 @@ class _CreateTripPageState extends State<CreateTripPage> {
           'start_date': trip.startDate,
           'end_date': trip.endDate,
           'planned_days': trip.plannedDays,
+          'card_color': trip.cardColor,
+          'card_background': trip.cardBackground,
+          'card_icon': trip.cardIcon,
         },
       );
     } finally {
@@ -670,6 +675,7 @@ class _CreateTripPageState extends State<CreateTripPage> {
                     background: bg,
                     icon: _iconByKey(_selectedCardIcon),
                     compact: true,
+                    titleText: _destinationCityController.text.trim(),
                   ),
                 ),
               ),
@@ -738,12 +744,14 @@ class _TripCardArt extends StatelessWidget {
   final String background;
   final IconData icon;
   final bool compact;
+  final String? titleText;
 
   const _TripCardArt({
     required this.color,
     required this.background,
     required this.icon,
     this.compact = false,
+    this.titleText,
   });
 
   @override
@@ -762,6 +770,28 @@ class _TripCardArt extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             _backgroundShape(background, color),
+            if (background == 'city_text' || background == 'brand_text')
+              Positioned(
+                left: compact ? 8 : 18,
+                right: compact ? 8 : 18,
+                top: compact ? 8 : 16,
+                child: Text(
+                  background == 'brand_text'
+                      ? 'Тур2Тур'
+                      : (titleText?.trim().isNotEmpty == true
+                          ? titleText!.trim()
+                          : 'Город'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Geologica',
+                    fontSize: compact ? 13 : 28,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withOpacity(0.34),
+                    height: 1.0,
+                  ),
+                ),
+              ),
             Positioned(
               right: compact ? 8 : 22,
               top: compact ? 6 : 18,
@@ -858,6 +888,23 @@ class _TripCardArt extends StatelessWidget {
                 colors: [
                   color.withOpacity(0.30),
                   const Color(0xFF6D83FF).withOpacity(0.18),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+        );
+      case 'city_text':
+      case 'brand_text':
+        return Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withOpacity(0.42),
+                  const Color(0xFF201A2D).withOpacity(0.44),
                   Colors.transparent,
                 ],
               ),
@@ -1183,5 +1230,3 @@ class _ModeChip extends StatelessWidget {
     );
   }
 }
-
-

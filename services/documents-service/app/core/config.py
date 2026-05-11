@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     s3_secret_key: str = Field(alias="S3_SECRET_KEY")
     s3_bucket: str = Field(alias="S3_BUCKET")
     s3_use_ssl: bool = Field(default=False, alias="S3_USE_SSL")
+    s3_verify_ssl: bool = Field(default=True, alias="S3_VERIFY_SSL")
     s3_force_path_style: bool = Field(default=True, alias="S3_FORCE_PATH_STYLE")
     s3_presign_ttl_seconds: int = Field(default=300, alias="S3_PRESIGN_TTL_SECONDS")
     s3_sse_mode: str | None = Field(default="AES256", alias="S3_SSE_MODE")

@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 from app.core.config import settings
 
 
-def _build_client(endpoint_url: str):
+def _build_s3_client(endpoint_url: str):
     addressing_style = "path" if settings.s3_force_path_style else "virtual"
     return boto3.client(
         "s3",
@@ -16,31 +16,40 @@ def _build_client(endpoint_url: str):
         aws_access_key_id=settings.s3_access_key,
         aws_secret_access_key=settings.s3_secret_key,
         use_ssl=settings.s3_use_ssl,
+        verify=settings.s3_verify_ssl,
         config=Config(s3={"addressing_style": addressing_style}),
     )
 
 
-def build_s3_client():
-    return _build_client(settings.s3_endpoint)
+def get_object_storage_client():
+    return _build_s3_client(settings.s3_endpoint)
 
 
-def build_s3_presign_client():
-    # Presigned URL must be signed for the same host that browser will call.
+def get_presign_client():
     endpoint = settings.s3_public_endpoint or settings.s3_endpoint
-    return _build_client(endpoint)
+    return _build_s3_client(endpoint)
 
 
 def ensure_bucket_exists(s3_client) -> None:
-    bucket = settings.s3_bucket
-    existing = [item["Name"] for item in s3_client.list_buckets().get("Buckets", [])]
-    if bucket in existing:
+    try:
+        s3_client.head_bucket(Bucket=settings.s3_bucket)
         return
+    except ClientError as exc:
+        code = str((exc.response.get("Error") or {}).get("Code") or "")
+        # Bucket exists but credentials cannot perform HeadBucket/ListBuckets.
+        # For managed S3 providers this is common; continue and let put/get fail
+        # later with a precise object-level error if access is really denied.
+        if code in {"403", "AccessDenied"}:
+            return
+        # Bucket does not exist or cannot be found for this account/region.
+        if code not in {"404", "NoSuchBucket", "NotFound"}:
+            raise
 
     if settings.s3_region == "us-east-1":
-        s3_client.create_bucket(Bucket=bucket)
+        s3_client.create_bucket(Bucket=settings.s3_bucket)
     else:
         s3_client.create_bucket(
-            Bucket=bucket,
+            Bucket=settings.s3_bucket,
             CreateBucketConfiguration={"LocationConstraint": settings.s3_region},
         )
 
@@ -62,11 +71,9 @@ def ensure_bucket_cors(s3_client) -> None:
             },
         )
     except ClientError:
-        # Some local MinIO setups may not support PutBucketCors depending on config/version.
-        # Do not block document workflow if this optional step is unavailable.
         return
 
 
-def build_object_key(user_id: int, trip_id: int, original_file_name: str) -> str:
-    safe_name = original_file_name.replace("\\", "_").replace("/", "_").strip()
-    return f"users/{user_id}/trips/{trip_id}/{uuid.uuid4()}-{safe_name}"
+def make_object_key(*, user_id: int, trip_id: int, file_name: str) -> str:
+    safe_name = file_name.replace("\\", "_").replace("/", "_").strip()
+    return f"users/{user_id}/trips/{trip_id}/{uuid.uuid4()}__{safe_name}"

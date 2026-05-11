@@ -15,7 +15,7 @@ Local environment is managed by `infra/docker-compose.yml`.
 - `rec-db` -> `5435`
 - `payments-db` -> `5436`
 - `redis` -> `6379`
-- `minio` -> `9000`, `9001`
+- external S3-compatible storage (configured via `.env`: `S3_ENDPOINT`, `S3_BUCKET`, credentials)
 
 ## Manual start
 

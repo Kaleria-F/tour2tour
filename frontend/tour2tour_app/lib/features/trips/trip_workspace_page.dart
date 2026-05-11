@@ -26,6 +26,9 @@ class TripWorkspacePage extends StatefulWidget {
   final DateTime? startDate;
   final DateTime? endDate;
   final int? plannedDays;
+  final String? cardColor;
+  final String? cardBackground;
+  final String? cardIcon;
   final TripsRepo tripsRepo;
   final DocumentsRepo documentsRepo;
   final PreferencesRepo preferencesRepo;
@@ -47,6 +50,9 @@ class TripWorkspacePage extends StatefulWidget {
     this.startDate,
     this.endDate,
     this.plannedDays,
+    this.cardColor,
+    this.cardBackground,
+    this.cardIcon,
   });
 
   @override
@@ -67,6 +73,9 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   late DateTime? _tripStartDate;
   late DateTime? _tripEndDate;
   late int? _tripPlannedDays;
+  late String _tripCardColor;
+  late String _tripCardBackground;
+  late String _tripCardIcon;
 
   int _currentIndex = 1;
   bool _showTripFavorites = false;
@@ -93,7 +102,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   List<TripDocument> _documents = const [];
   bool _documentsLoading = false;
   bool _uploadingDocument = false;
-  bool _bucketReady = false;
 
   static const _sectionTitles = [
     'Рекомендации',
@@ -163,6 +171,9 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     _tripStartDate = widget.startDate;
     _tripEndDate = widget.endDate;
     _tripPlannedDays = widget.plannedDays;
+    _tripCardColor = (widget.cardColor ?? '#D7E37A').trim();
+    _tripCardBackground = (widget.cardBackground ?? 'brand_text').trim().toLowerCase();
+    _tripCardIcon = (widget.cardIcon ?? 'luggage').trim().toLowerCase();
     _loadPremiumStatus();
     if (widget.tripId != null) {
       _loadExpenses();
@@ -197,6 +208,9 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         initialStartDate: _tripStartDate,
         initialEndDate: _tripEndDate,
         initialPlannedDays: _tripPlannedDays,
+        initialCardColor: _tripCardColor,
+        initialCardBackground: _tripCardBackground,
+        initialCardIcon: _tripCardIcon,
       ),
     );
     if (result == null) return;
@@ -357,6 +371,9 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         plannedDays: result.plannedDays,
         includePlannedDays: true,
         confirmTrim: confirmTrim,
+        cardColor: result.cardColor,
+        cardBackground: result.cardBackground,
+        cardIcon: result.cardIcon,
       );
       if (!mounted) return;
       if (updated == null) return;
@@ -365,6 +382,16 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         _tripStartDate = updated.startDate;
         _tripEndDate = updated.endDate;
         _tripPlannedDays = updated.plannedDays;
+        _tripCardColor = updated.cardColor?.trim().isNotEmpty == true
+            ? updated.cardColor!.trim()
+            : _tripCardColor;
+        _tripCardBackground =
+            updated.cardBackground?.trim().isNotEmpty == true
+                ? updated.cardBackground!.trim().toLowerCase()
+                : _tripCardBackground;
+        _tripCardIcon = updated.cardIcon?.trim().isNotEmpty == true
+            ? updated.cardIcon!.trim().toLowerCase()
+            : _tripCardIcon;
         _selectedRouteDay = _ensureSelectedRouteDay(
           _selectedRouteDay,
           stages: [..._stages]..sort((a, b) => a.position.compareTo(b.position)),
@@ -467,7 +494,10 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
   }
 
-  Future<void> _openAddStageDialog({String? presetAddressFromMap}) async {
+  Future<void> _openAddStageDialog({
+    String? presetAddressFromMap,
+    String? presetTitleFromMap,
+  }) async {
     if (widget.tripId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -478,6 +508,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
 
     final presetAddress = (presetAddressFromMap ?? '').trim();
+    final presetTitle = (presetTitleFromMap ?? '').trim();
     final payload = await Navigator.of(context).push<AddStagePayload>(
       MaterialPageRoute(
         builder: (_) => StageFormPage(
@@ -498,7 +529,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                   subtype: _lastStageType == 'transport'
                       ? 'road'
                       : (_stageSubtypes[_lastStageType]?.first ?? 'other'),
-                  title: presetAddress,
+                  title: presetTitle.isEmpty ? presetAddress : presetTitle,
                   address: presetAddress,
                   notes: null,
                 ),
@@ -1116,6 +1147,58 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
   Future<void> _deleteExpense(TripExpense expense) async {
     if (widget.tripId == null) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1D222A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withOpacity(0.1)),
+        ),
+        title: const Text(
+          'Удалить расход?',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'Geologica',
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          'Расход "${expense.description}" будет удалён без возможности восстановления.',
+          style: const TextStyle(
+            color: Color(0xFFB7BDC8),
+            fontFamily: 'Geologica',
+            height: 1.35,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            style: TextButton.styleFrom(foregroundColor: const Color(0xFFB7BDC8)),
+            child: const Text(
+              'Отмена',
+              style: TextStyle(fontFamily: 'Geologica', fontWeight: FontWeight.w600),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD7E37A),
+              foregroundColor: const Color(0xFF151515),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            child: const Text(
+              'Удалить',
+              style: TextStyle(fontFamily: 'Geologica', fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
 
     try {
       await widget.tripsRepo.deleteExpense(
@@ -1141,10 +1224,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       _documentsLoading = true;
     });
     try {
-      if (!_bucketReady) {
-        await widget.documentsRepo.ensureBucket();
-        _bucketReady = true;
-      }
       final items = await widget.documentsRepo.listTripDocuments(
         widget.tripId!,
       );
@@ -1213,10 +1292,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       _uploadingDocument = true;
     });
     try {
-      if (!_bucketReady) {
-        await widget.documentsRepo.ensureBucket();
-        _bucketReady = true;
-      }
       final uploaded = await widget.documentsRepo.uploadBytesDirect(
         tripId: widget.tripId!,
         fileName: targetFileName,
@@ -1502,7 +1577,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       );
       return;
     }
-    final result = await Navigator.of(context).push<String>(
+    final result = await Navigator.of(context).push<_MapAddStagePayload>(
       MaterialPageRoute(
         builder: (_) => _TripRouteMapPage(
           tripTitle: _tripTitle,
@@ -1514,9 +1589,13 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       ),
     );
     if (!mounted) return;
-    final mapAddress = (result ?? '').trim();
+    final mapAddress = (result?.address ?? '').trim();
+    final mapTitle = (result?.title ?? '').trim();
     if (mapAddress.isNotEmpty) {
-      await _openAddStageDialog(presetAddressFromMap: mapAddress);
+      await _openAddStageDialog(
+        presetAddressFromMap: mapAddress,
+        presetTitleFromMap: mapTitle,
+      );
     }
     if (!mounted) return;
     setState(() {
@@ -4910,6 +4989,9 @@ class _TripSettingsResult {
   final DateTime startDate;
   final DateTime endDate;
   final int? plannedDays;
+  final String cardColor;
+  final String cardBackground;
+  final String cardIcon;
 
   const _TripSettingsResult({
     this.action = _TripSettingsAction.save,
@@ -4917,6 +4999,9 @@ class _TripSettingsResult {
     required this.startDate,
     required this.endDate,
     required this.plannedDays,
+    required this.cardColor,
+    required this.cardBackground,
+    required this.cardIcon,
   });
 }
 
@@ -4928,6 +5013,9 @@ class _TripSettingsDialog extends StatefulWidget {
   final DateTime? initialStartDate;
   final DateTime? initialEndDate;
   final int? initialPlannedDays;
+  final String initialCardColor;
+  final String initialCardBackground;
+  final String initialCardIcon;
 
   const _TripSettingsDialog({
     required this.initialTitle,
@@ -4935,6 +5023,9 @@ class _TripSettingsDialog extends StatefulWidget {
     required this.initialStartDate,
     required this.initialEndDate,
     required this.initialPlannedDays,
+    required this.initialCardColor,
+    required this.initialCardBackground,
+    required this.initialCardIcon,
   });
 
   @override
@@ -4947,6 +5038,37 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
   late bool _usePlannedDays;
   late DateTime _startDate;
   late DateTime _endDate;
+  late String _selectedCardColor;
+  late String _selectedCardBackground;
+  late String _selectedCardIcon;
+
+  static const List<String> _cardColors = [
+    '#D7E37A',
+    '#B6A1FF',
+    '#E3BA7A',
+    '#A3E37A',
+    '#E37AA2',
+    '#7AE3BA',
+    '#7AB4E3',
+  ];
+  static const List<String> _cardBackgrounds = [
+    'brand_text',
+    'city_text',
+    'orbit',
+    'waves',
+    'mountains',
+    'sunset',
+    'aurora',
+  ];
+  static const List<String> _cardIcons = [
+    'luggage',
+    'flight',
+    'terrain',
+    'beach',
+    'car',
+    'forest',
+    'camera',
+  ];
 
   @override
   void initState() {
@@ -4960,6 +5082,9 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
     final now = DateTime.now();
     _startDate = widget.initialStartDate ?? DateTime(now.year, now.month, now.day);
     _endDate = widget.initialEndDate ?? _startDate;
+    _selectedCardColor = widget.initialCardColor;
+    _selectedCardBackground = widget.initialCardBackground;
+    _selectedCardIcon = widget.initialCardIcon;
   }
 
   @override
@@ -5122,6 +5247,9 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
         startDate: start,
         endDate: end,
         plannedDays: plannedDays,
+        cardColor: _selectedCardColor,
+        cardBackground: _selectedCardBackground,
+        cardIcon: _selectedCardIcon,
       ),
     );
   }
@@ -5233,6 +5361,105 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                   ),
                 ),
               const SizedBox(height: 16),
+              Text(
+                'Оформление карточки',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.88),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Geologica',
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: _cardColors.map((hex) {
+                  final selected = _selectedCardColor == hex;
+                  final color = _hexToColor(hex);
+                  return InkWell(
+                    onTap: () => setState(() => _selectedCardColor = hex),
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: selected ? Colors.white : Colors.white.withOpacity(0.22),
+                          width: selected ? 2 : 1,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 10),
+              const _SizedBoxH8(),
+              SizedBox(
+                height: 58,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _cardBackgrounds.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) {
+                    final bg = _cardBackgrounds[i];
+                    final selected = _selectedCardBackground == bg;
+                    return InkWell(
+                      onTap: () => setState(() => _selectedCardBackground = bg),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 58 * 2.0,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: selected
+                                ? const Color(0xFFD7E37A)
+                                : Colors.white.withOpacity(0.18),
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(13),
+                          child: _TripCardPreviewArt(
+                            color: _hexToColor(_selectedCardColor),
+                            background: bg,
+                            icon: _iconByKey(_selectedCardIcon),
+                            titleText: widget.city,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _cardIcons.map((key) {
+                  final selected = _selectedCardIcon == key;
+                  return InkWell(
+                    onTap: () => setState(() => _selectedCardIcon = key),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: selected
+                              ? const Color(0xFFD7E37A)
+                              : Colors.white.withOpacity(0.16),
+                        ),
+                      ),
+                      child: Icon(_iconByKey(key), size: 18, color: Colors.white),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -5307,6 +5534,9 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                           plannedDays: _usePlannedDays
                               ? int.tryParse(_daysCtrl.text.trim())
                               : null,
+                          cardColor: _selectedCardColor,
+                          cardBackground: _selectedCardBackground,
+                          cardIcon: _selectedCardIcon,
                         ),
                       );
                     },
@@ -5330,6 +5560,9 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                           startDate: _startDate,
                           endDate: _endDate,
                           plannedDays: widget.initialPlannedDays,
+                          cardColor: _selectedCardColor,
+                          cardBackground: _selectedCardBackground,
+                          cardIcon: _selectedCardIcon,
                         ),
                       );
                     },
@@ -5376,6 +5609,32 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
       ),
     );
   }
+
+  Color _hexToColor(String hex) {
+    final raw = hex.replaceAll('#', '').trim();
+    final value = int.tryParse(raw, radix: 16) ?? 0xD7E37A;
+    return Color(0xFF000000 | value);
+  }
+
+  IconData _iconByKey(String key) {
+    switch (key) {
+      case 'flight':
+        return Icons.flight_takeoff_rounded;
+      case 'terrain':
+        return Icons.terrain_rounded;
+      case 'beach':
+        return Icons.beach_access_rounded;
+      case 'car':
+        return Icons.directions_car_filled_rounded;
+      case 'forest':
+        return Icons.forest_rounded;
+      case 'camera':
+        return Icons.camera_alt_rounded;
+      case 'luggage':
+      default:
+        return Icons.luggage_rounded;
+    }
+  }
 }
 
 class _SettingsChip extends StatelessWidget {
@@ -5416,6 +5675,217 @@ class _SettingsChip extends StatelessWidget {
   }
 }
 
+class _TripCardPreviewArt extends StatelessWidget {
+  final Color color;
+  final String background;
+  final IconData icon;
+  final String titleText;
+
+  const _TripCardPreviewArt({
+    required this.color,
+    required this.background,
+    required this.icon,
+    required this.titleText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color.withOpacity(0.38), const Color(0xFF181818)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _backgroundShape(background, color),
+          if (background == 'city_text' || background == 'brand_text')
+            Positioned(
+              left: 6,
+              right: 6,
+              top: 6,
+              child: Text(
+                background == 'brand_text'
+                    ? 'Тур2Тур'
+                    : (titleText.trim().isEmpty ? 'Город' : titleText.trim()),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'Geologica',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withOpacity(0.34),
+                  height: 1.0,
+                ),
+              ),
+            ),
+          Positioned(
+            right: 7,
+            top: 6,
+            child: Icon(icon, size: 16, color: Colors.white.withOpacity(0.9)),
+          ),
+          Positioned(
+            left: 10,
+            right: 10,
+            bottom: 8,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.22),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _backgroundShape(String key, Color color) {
+    switch (key) {
+      case 'waves':
+        return Positioned(
+          left: -20,
+          top: 6,
+          child: Container(
+            width: 100,
+            height: 40,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color.withOpacity(0.26), Colors.transparent],
+              ),
+              borderRadius: BorderRadius.circular(30),
+            ),
+          ),
+        );
+      case 'mountains':
+        return Positioned.fill(
+          child: Align(
+            alignment: Alignment.bottomLeft,
+            child: SizedBox(
+              height: 30,
+              width: double.infinity,
+              child: CustomPaint(
+                painter: _MountPainter(color.withOpacity(0.2)),
+              ),
+            ),
+          ),
+        );
+      case 'sunset':
+        return Positioned(
+          left: -8,
+          top: 5,
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.26),
+              shape: BoxShape.circle,
+            ),
+          ),
+        );
+      case 'aurora':
+        return Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withOpacity(0.30),
+                  const Color(0xFF6D83FF).withOpacity(0.18),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+        );
+      case 'city_text':
+      case 'brand_text':
+        return Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withOpacity(0.42),
+                  const Color(0xFF201A2D).withOpacity(0.44),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+          ),
+        );
+      case 'orbit':
+      default:
+        return Positioned(
+          left: -12,
+          top: 10,
+          child: Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.16),
+              shape: BoxShape.circle,
+            ),
+          ),
+        );
+    }
+  }
+}
+
+class _SizedBoxH8 extends StatelessWidget {
+  const _SizedBoxH8();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(height: 8);
+}
+
+class _MountPainter extends CustomPainter {
+  final Color color;
+  _MountPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = color;
+    final path = Path()
+      ..moveTo(0, size.height)
+      ..lineTo(size.width * 0.22, size.height * 0.4)
+      ..lineTo(size.width * 0.4, size.height)
+      ..close();
+    final path2 = Path()
+      ..moveTo(size.width * 0.28, size.height)
+      ..lineTo(size.width * 0.55, size.height * 0.28)
+      ..lineTo(size.width * 0.84, size.height)
+      ..close();
+    canvas.drawPath(path, p);
+    canvas.drawPath(path2, p);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MountPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
 class _TripRouteMapPage extends StatefulWidget {
   final String tripTitle;
   final String destinationCity;
@@ -5439,6 +5909,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
   static const _yandexSuggestApiKey = 'e0dc35bf-6cce-44bf-a462-8f7bab2f8b92';
   static const _yandexGeocoderApiKey = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
   late final TextEditingController _searchCtrl;
+  late final FocusNode _searchFocusNode;
   late String _mapQuery;
   final Dio _suggestDio = Dio(
     BaseOptions(
@@ -5448,9 +5919,11 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
   );
   Timer? _suggestDebounce;
   bool _suggestLoading = false;
+  bool _showSuggestions = false;
   List<_MapSuggestItem> _suggestions = const [];
   String _lastSuggestQuery = '';
   String? _tripBoundsBbox;
+  String? _selectedSuggestionTitle;
 
   @override
   void initState() {
@@ -5458,6 +5931,8 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
     _mapQuery = '';
     _searchCtrl = TextEditingController(text: _mapQuery);
     _searchCtrl.addListener(_onSearchChanged);
+    _searchFocusNode = FocusNode();
+    _searchFocusNode.addListener(_onSearchFocusChanged);
     _resolveTripBounds();
   }
 
@@ -5466,8 +5941,19 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
     _searchCtrl.removeListener(_onSearchChanged);
     _suggestDebounce?.cancel();
     _searchCtrl.dispose();
+    _searchFocusNode.removeListener(_onSearchFocusChanged);
+    _searchFocusNode.dispose();
     _suggestDio.close(force: true);
     super.dispose();
+  }
+
+  void _onSearchFocusChanged() {
+    if (!mounted) return;
+    if (_searchFocusNode.hasFocus) {
+      setState(() => _showSuggestions = true);
+      _onSearchChanged();
+      return;
+    }
   }
 
   void _onSearchChanged() {
@@ -5567,12 +6053,28 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
   }
 
   void _onSuggestionTap(_MapSuggestItem item) {
-    final query = item.searchText;
+    final query = item.addressQuery;
+    _selectedSuggestionTitle = item.title.trim();
+    _suggestDebounce?.cancel();
     _searchCtrl.text = query;
     _searchCtrl.selection = TextSelection.collapsed(offset: _searchCtrl.text.length);
     setState(() {
-      _suggestions = const [];
-      _mapQuery = query;
+      _mapQuery = '';
+    });
+    Future.microtask(() {
+      if (!mounted) return;
+      setState(() {
+        _mapQuery = query;
+      });
+    });
+    Future.delayed(const Duration(milliseconds: 180), () {
+      if (!mounted) return;
+      setState(() {
+        _showSuggestions = false;
+        _suggestions = const [];
+        _suggestLoading = false;
+      });
+      _searchFocusNode.unfocus();
     });
   }
 
@@ -5677,9 +6179,18 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
       return;
     }
     setState(() {
+      _selectedSuggestionTitle = null;
+      _showSuggestions = false;
       _suggestions = const [];
-      _mapQuery = value;
+      _mapQuery = '';
     });
+    Future.microtask(() {
+      if (!mounted) return;
+      setState(() {
+        _mapQuery = value;
+      });
+    });
+    _searchFocusNode.unfocus();
   }
 
   String _fmtDate(DateTime date) {
@@ -5762,6 +6273,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                             Expanded(
                               child: TextField(
                                 controller: _searchCtrl,
+                                focusNode: _searchFocusNode,
                                 style: const TextStyle(color: Colors.white),
                                 textInputAction: TextInputAction.search,
                                 onSubmitted: (_) => _submitSearch(),
@@ -5780,7 +6292,8 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                           ],
                         ),
                       ),
-                      if (_suggestLoading || _suggestions.isNotEmpty)
+                      if (_showSuggestions &&
+                          (_suggestLoading || _suggestions.isNotEmpty))
                         Container(
                           margin: const EdgeInsets.only(top: 6),
                           decoration: BoxDecoration(
@@ -5877,7 +6390,12 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                             city: widget.destinationCity,
                             searchQuery: _mapQuery,
                             onAddRouteFromSearch: (address) {
-                              Navigator.of(context).pop(address);
+                              Navigator.of(context).pop(
+                                _MapAddStagePayload(
+                                  address: address.trim(),
+                                  title: (_selectedSuggestionTitle ?? '').trim(),
+                                ),
+                              );
                             },
                             stagePoints: widget.stagePoints,
                           ),
@@ -5912,6 +6430,34 @@ class _MapSuggestItem {
     if (s.isEmpty) return t;
     return '$t, $s';
   }
+
+  String get addressQuery {
+    final s = subtitle.trim();
+    if (s.isNotEmpty) {
+      if (s.contains('·')) {
+        final parts = s
+            .split('·')
+            .map((e) => e.trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        if (parts.isNotEmpty) {
+          return parts.last;
+        }
+      }
+      return s;
+    }
+    return title.trim();
+  }
+}
+
+class _MapAddStagePayload {
+  final String address;
+  final String title;
+
+  const _MapAddStagePayload({
+    required this.address,
+    required this.title,
+  });
 }
 
 class _StageVisualConfig {

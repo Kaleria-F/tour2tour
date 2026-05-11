@@ -123,7 +123,6 @@ $coreServices = @(
     "interactions-db",
     "payments-db",
     "redis",
-    "minio",
     "auth-service",
     "trips-service",
     "recommendations-service",
@@ -139,6 +138,8 @@ Assert-LastExitCode "Starting local stack"
 Write-Host "Waiting for databases..."
 Wait-ForPostgres -Service "auth-db" -User "auth" -Database "auth"
 Wait-ForPostgres -Service "trips-db" -User "trips" -Database "trips"
+Wait-ForPostgres -Service "places-db" -User "places" -Database "places"
+Wait-ForPostgres -Service "interactions-db" -User "interactions" -Database "interactions"
 
 Write-Host "Running auth migrations..."
 docker compose @composeArgs exec -T auth-service alembic upgrade head
@@ -147,6 +148,14 @@ Assert-LastExitCode "Running auth migrations"
 Write-Host "Running trips migrations..."
 docker compose @composeArgs exec -T trips-service alembic upgrade heads
 Assert-LastExitCode "Running trips migrations"
+
+Write-Host "Running places migrations..."
+docker compose @composeArgs exec -T places-service alembic upgrade head
+Assert-LastExitCode "Running places migrations"
+
+Write-Host "Running interactions migrations..."
+docker compose @composeArgs exec -T interactions-service alembic upgrade head
+Assert-LastExitCode "Running interactions migrations"
 
 Seed-LocalAuthUser -Email "local.test@tour2tour.dev" -Password "Test123!"
 
