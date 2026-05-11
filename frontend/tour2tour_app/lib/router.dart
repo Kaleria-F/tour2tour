@@ -119,7 +119,7 @@ GoRouter buildRouter() {
               : payloadMap['story'] is StoryItem
                   ? payloadMap['story'] as StoryItem
                   : null;
-          final stories = payloadMap['stories'] is List
+          final storyItems = payloadMap['stories'] is List
               ? (payloadMap['stories'] as List)
                   .whereType<StoryItem>()
                   .toList()
@@ -131,6 +131,7 @@ GoRouter buildRouter() {
             return StoryViewerPage(
               profileRepo: profile,
               interactionsRepo: interactions,
+              storiesRepo: stories,
               story: StoryItem(
                 id: '',
                 title: 'История не найдена',
@@ -148,10 +149,11 @@ GoRouter buildRouter() {
           }
           return StoryViewerPage(
             story: story,
-            stories: stories,
+            stories: storyItems,
             initialIndex: initialIndex,
             profileRepo: profile,
             interactionsRepo: interactions,
+            storiesRepo: stories,
           );
         },
       ),

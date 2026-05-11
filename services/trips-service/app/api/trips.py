@@ -307,10 +307,13 @@ def _extract_json_object(raw_text: str) -> dict:
 def _normalize_stage_assistant_draft(
     raw: dict,
     *,
-    requested_stage_type: str,
+    requested_stage_type: str | None,
     source_text: str,
 ) -> StageAssistantDraftOut:
-    stage_type = requested_stage_type
+    stage_type = requested_stage_type or _normalize_detected_stage_type(
+        raw_stage_type=raw.get("stage_type"),
+        source_text=source_text,
+    )
     subtype = str(raw.get("subtype") or "").strip().lower()
     if subtype not in STAGE_SUBTYPES.get(stage_type, set()):
         subtype = _DEFAULT_SUBTYPE_BY_TYPE.get(stage_type, next(iter(STAGE_SUBTYPES[stage_type])))
@@ -345,6 +348,150 @@ def _normalize_stage_assistant_draft(
         time_mode=time_mode,
         source_text=source_text.strip(),
     )
+
+
+def _normalize_detected_stage_type(*, raw_stage_type, source_text: str) -> str:
+    candidate = str(raw_stage_type or "").strip().lower()
+    if candidate in STAGE_SUBTYPES:
+        return candidate
+
+    text = source_text.lower()
+    quick_groups = [
+        ("food", ("хочу поесть", "поесть", "покушать", "перекус", "кафе", "ресторан", "ужин", "обед", "завтрак", "кофе", "бар", "фастфуд")),
+        ("stay", ("хочу отдохнуть", "отдохнуть", "заселиться", "заселение", "выезд", "ночевка", "переночевать", "отель", "гостиниц", "апартамент", "хостел", "жилье", "проживание")),
+        ("transport", ("доехать", "добраться", "поездка", "дорога", "перелет", "рейс", "самолет", "поезд", "электричк", "автобус", "такси", "машин", "метро", "трансфер", "паром")),
+        ("document", ("билет", "брониров", "бронь", "страховк", "виза", "документ", "полис", "подтверждение", "ваучер")),
+        ("shopping", ("шопинг", "покупк", "купить", "магазин", "рынок", "сувенир", "торгов", "тц", "маркет")),
+        ("place", ("достопримеч", "музей", "галере", "парк", "экскурси", "храм", "собор", "театр", "выставк", "смотров", "хочу посмотреть", "хочу сходить", "посетить")),
+        ("activity", ("погулять", "прогулк", "развлеч", "катани", "активност", "спорт", "плавать", "пляж", "концерт", "квест", "парк аттракционов")),
+    ]
+    for stage_type, keywords in quick_groups:
+        if any(keyword in text for keyword in keywords):
+            return stage_type
+
+    keyword_groups = [
+        (
+            "food",
+            (
+                "хочу поесть",
+                "поесть",
+                "покушать",
+                "перекус",
+                "кафе",
+                "ресторан",
+                "ужин",
+                "обед",
+                "завтрак",
+                "кофе",
+                "бар",
+                "фастфуд",
+            ),
+        ),
+        (
+            "stay",
+            (
+                "хочу отдохнуть",
+                "отдохнуть",
+                "заселиться",
+                "заселение",
+                "выезд",
+                "ночевка",
+                "переночевать",
+                "отель",
+                "гостиниц",
+                "апартамент",
+                "хостел",
+                "жилье",
+                "проживание",
+            ),
+        ),
+        (
+            "transport",
+            (
+                "доехать",
+                "добраться",
+                "поездка",
+                "дорога",
+                "перелет",
+                "рейс",
+                "самолет",
+                "поезд",
+                "электричк",
+                "автобус",
+                "такси",
+                "машин",
+                "метро",
+                "трансфер",
+                "паром",
+            ),
+        ),
+        (
+            "document",
+            (
+                "билет",
+                "брониров",
+                "бронь",
+                "страховк",
+                "виза",
+                "документ",
+                "полис",
+                "подтверждение",
+                "ваучер",
+            ),
+        ),
+        (
+            "shopping",
+            (
+                "шопинг",
+                "покупк",
+                "купить",
+                "магазин",
+                "рынок",
+                "сувенир",
+                "торгов",
+                "тц",
+                "маркет",
+            ),
+        ),
+        (
+            "place",
+            (
+                "достопримеч",
+                "музей",
+                "галере",
+                "парк",
+                "экскурси",
+                "храм",
+                "собор",
+                "театр",
+                "выставк",
+                "смотров",
+                "хочу посмотреть",
+                "хочу сходить",
+                "посетить",
+            ),
+        ),
+        (
+            "activity",
+            (
+                "погулять",
+                "прогулк",
+                "развлеч",
+                "катани",
+                "активност",
+                "спорт",
+                "плавать",
+                "пляж",
+                "концерт",
+                "квест",
+                "парк аттракционов",
+            ),
+        ),
+    ]
+    for stage_type, keywords in keyword_groups:
+        if any(keyword in text for keyword in keywords):
+            return stage_type
+    return "place"
 
 
 def _speechkit_transcribe_lpcm(audio_bytes: bytes) -> str:
@@ -402,14 +549,16 @@ def _extract_pcm_from_upload(file: UploadFile, content: bytes) -> bytes:
 
 def _generate_stage_assistant_draft(
     *,
-    stage_type: str,
+    stage_type: str | None,
     source_text: str,
     route_day=None,
 ) -> StageAssistantDraftOut:
     api_key, folder_id = _require_yandex_credentials()
-    normalized_type = stage_type.strip().lower()
-    if normalized_type not in STAGE_SUBTYPES:
+    normalized_type = stage_type.strip().lower() if stage_type else None
+    if normalized_type is not None and normalized_type not in STAGE_SUBTYPES:
         raise HTTPException(status_code=400, detail="Invalid stage type")
+    requested_stage_type = normalized_type
+    normalized_type = normalized_type or "place"
 
     system_prompt = (
         "Ты заполняешь поля этапа маршрута для travel-приложения. "
@@ -432,11 +581,18 @@ def _generate_stage_assistant_draft(
     system_prompt = (
         "You fill route stage fields for a travel app. "
         "Return only one JSON object without markdown or explanations. "
-        "The stage type is already selected by the user and must not be changed. "
-        "Use only allowed subtypes for that stage type. "
-        "Response fields: subtype, title, start_location, end_location, address, "
+        "Response fields: stage_type, subtype, title, start_location, end_location, address, "
         "start_time_text, end_time_text, duration_minutes, cost_rub, notes. "
         "Return time only as HH:MM or null. "
+        "If the stage type is explicitly provided by the user, keep that stage type and use only allowed subtypes for it. "
+        "If the stage type is not provided, infer it from the user's intent. "
+        "Use food if the user wants to eat, drink coffee, have breakfast, lunch, dinner, visit a cafe, bar, restaurant, or snack. "
+        "Use stay if the user wants to rest, sleep, check in, stay in a hotel, hostel, apartment, or spend the night. "
+        "Use transport if the user describes moving somewhere, a road, transfer, flight, train, bus, taxi, metro, ferry, or driving. "
+        "Use place if the user wants to visit a museum, gallery, park, attraction, excursion, exhibition, sightseeing spot, or landmark. "
+        "Use activity if the user wants to walk, relax on a beach, do sport, entertainment, a concert, or another activity. "
+        "Use shopping if the user wants to shop, buy something, visit a market, mall, or souvenir store. "
+        "Use document if the user mentions a ticket, booking, reservation, voucher, insurance, visa, or another travel document. "
         "If the user mentions a specific name of a place, hotel, apartment, restaurant, museum, park, event, route, or venue, "
         "you must put that exact specific name into the title field. "
         "Do not replace a mentioned proper name with a generic subtype label like Hotel, Restaurant, Museum, Flight, or Road. "
@@ -444,12 +600,25 @@ def _generate_stage_assistant_draft(
         "If the user gave a duration but no explicit end time, fill duration_minutes. "
         "If data is missing, use null. Keep the title short and clear. Do not invent facts."
     )
-    user_prompt = (
-        f"Stage type: {normalized_type}\n"
-        f"Route day: {route_day.isoformat() if route_day else 'not specified'}\n"
-        f"Allowed subtypes: {', '.join(sorted(STAGE_SUBTYPES[normalized_type]))}\n"
-        f"User text:\n{source_text.strip()}"
-    )
+    if requested_stage_type is None:
+        stage_options = "\n".join(
+            f"- {name}: {', '.join(sorted(subtypes))}"
+            for name, subtypes in STAGE_SUBTYPES.items()
+        )
+        user_prompt = (
+            "Selected stage type: not provided\n"
+            f"Route day: {route_day.isoformat() if route_day else 'not specified'}\n"
+            "Available stage types and subtypes:\n"
+            f"{stage_options}\n"
+            f"User text:\n{source_text.strip()}"
+        )
+    else:
+        user_prompt = (
+            f"Selected stage type: {normalized_type}\n"
+            f"Route day: {route_day.isoformat() if route_day else 'not specified'}\n"
+            f"Allowed subtypes for this stage type: {', '.join(sorted(STAGE_SUBTYPES[normalized_type]))}\n"
+            f"User text:\n{source_text.strip()}"
+        )
     body = {
         "modelUri": f"gpt://{folder_id}/yandexgpt-lite",
         "completionOptions": {
@@ -488,7 +657,7 @@ def _generate_stage_assistant_draft(
 
     return _normalize_stage_assistant_draft(
         raw_object,
-        requested_stage_type=normalized_type,
+        requested_stage_type=requested_stage_type,
         source_text=source_text,
     )
 

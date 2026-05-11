@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -1115,11 +1116,13 @@ class TripsRepo {
   Future<String?> transcribeStageAudio({
     required Uint8List audioBytes,
     String filename = 'stage-voice.raw',
+    String? mimeType,
   }) async {
     final formData = FormData.fromMap({
       'audio': MultipartFile.fromBytes(
         audioBytes,
         filename: filename,
+        contentType: mimeType == null ? null : MediaType.parse(mimeType),
       ),
     });
     final res = await api.dio.post(
@@ -1134,7 +1137,7 @@ class TripsRepo {
   }
 
   Future<StageAssistantDraft?> createStageDraftFromText({
-    required String stageType,
+    String? stageType,
     required String text,
     DateTime? routeDay,
   }) async {

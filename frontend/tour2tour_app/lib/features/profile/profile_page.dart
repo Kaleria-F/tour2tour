@@ -604,7 +604,7 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     }
     if (!mounted) return;
-    context.push(
+    await context.push(
       '/story-viewer',
       extra: {
         'story': story,
@@ -612,6 +612,14 @@ class _ProfilePageState extends State<ProfilePage> {
         'initialIndex': storyIndex < 0 ? 0 : storyIndex,
       },
     );
+    if (!mounted) return;
+    try {
+      final viewedIds = await widget.storiesRepo.readViewedIds();
+      if (!mounted) return;
+      setState(() {
+        _viewedStoryIds = viewedIds;
+      });
+    } catch (_) {}
   }
 
   @override

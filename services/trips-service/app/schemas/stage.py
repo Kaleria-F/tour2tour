@@ -84,7 +84,7 @@ class StageSuggestionOut(BaseModel):
 
 
 class StageAssistantDraftRequest(BaseModel):
-    stage_type: str = Field(..., min_length=1, max_length=32)
+    stage_type: str | None = Field(None, min_length=1, max_length=32)
     text: str = Field(..., min_length=1, max_length=4000)
     route_day: date | None = None
 

@@ -1,12 +1,15 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:record/record.dart';
 
+import '../../core/web_microphone_access.dart';
 import '../documents/documents_repo.dart';
 import '../favorites/favorites_page.dart';
 import '../interactions/interactions_repo.dart';
@@ -93,6 +96,15 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   bool _addingSuggestedStage = false;
   List<StageSuggestion> _stageSuggestions = const [];
   final Set<String> _hiddenSuggestionKeys = <String>{};
+  final AudioRecorder _routeAssistantRecorder = AudioRecorder();
+  StreamSubscription<Uint8List>? _routeAssistantStreamSub;
+  final List<int> _routeAssistantAudioBytes = <int>[];
+  Timer? _routeAssistantTimer;
+  Timer? _routeAssistantHoldTimer;
+  bool _routeAssistantRecording = false;
+  bool _routeAssistantProcessing = false;
+  bool _routeAssistantPointerDown = false;
+  int _routeAssistantSecondsLeft = 30;
 
   String _sortMode = 'none';
   String _categoryFilter = 'all';
@@ -125,7 +137,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     'transport': Color(0xFF7AE3BA), // #7ae3ba
     'shopping': Color(0xFFA3E37A), // #a3e37a
     'entertainment': Color(0xFFB6A1FF), // #b6a1ff
-    'other': Color(0xFF7AB4E3), // гармоничный 6-й (голубой)
+    'other': Color(0xFF7AB4E3), // РіР°СЂРјРѕРЅРёС‡РЅС‹Р№ 6-Р№ (РіРѕР»СѓР±РѕР№)
   };
 
   static const _stageTypeLabels = {
@@ -181,6 +193,15 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
   }
 
+  @override
+  void dispose() {
+    _routeAssistantHoldTimer?.cancel();
+    _routeAssistantTimer?.cancel();
+    _routeAssistantStreamSub?.cancel();
+    _routeAssistantRecorder.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadPremiumStatus() async {
     try {
       final me = await widget.profileRepo.getMe();
@@ -223,18 +244,18 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         if (!mounted) return;
         if (updated == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Не удалось перенести путешествие в архив')),
+            const SnackBar(content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ РїРµСЂРµРЅРµСЃС‚Рё РїСѓС‚РµС€РµСЃС‚РІРёРµ РІ Р°СЂС…РёРІ')),
           );
           return;
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Путешествие перенесено в архив')),
+          const SnackBar(content: Text('РџСѓС‚РµС€РµСЃС‚РІРёРµ РїРµСЂРµРЅРµСЃРµРЅРѕ РІ Р°СЂС…РёРІ')),
         );
         context.go('/profile');
       } catch (_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось перенести путешествие в архив')),
+          const SnackBar(content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ РїРµСЂРµРЅРµСЃС‚Рё РїСѓС‚РµС€РµСЃС‚РІРёРµ РІ Р°СЂС…РёРІ')),
         );
       }
       return;
@@ -245,23 +266,23 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         builder: (_) => AlertDialog(
           backgroundColor: const Color(0xFF1E1F24),
           title: const Text(
-            'Удалить путешествие?',
+            'РЈРґР°Р»РёС‚СЊ РїСѓС‚РµС€РµСЃС‚РІРёРµ?',
             style: TextStyle(color: Colors.white),
           ),
           content: const Text(
-            'Путешествие и связанные с ним этапы/расходы будут удалены без возможности восстановления.',
+            'РџСѓС‚РµС€РµСЃС‚РІРёРµ Рё СЃРІСЏР·Р°РЅРЅС‹Рµ СЃ РЅРёРј СЌС‚Р°РїС‹/СЂР°СЃС…РѕРґС‹ Р±СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹ Р±РµР· РІРѕР·РјРѕР¶РЅРѕСЃС‚Рё РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.',
             style: TextStyle(color: Colors.white70, height: 1.35),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
               style: TextButton.styleFrom(foregroundColor: Colors.white70),
-              child: const Text('Отмена'),
+              child: const Text('РћС‚РјРµРЅР°'),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
               style: TextButton.styleFrom(foregroundColor: const Color(0xFFD7E37A)),
-              child: const Text('Удалить'),
+              child: const Text('РЈРґР°Р»РёС‚СЊ'),
             ),
           ],
         ),
@@ -271,13 +292,13 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         await widget.tripsRepo.deleteTrip(widget.tripId!);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Путешествие удалено')),
+          const SnackBar(content: Text('РџСѓС‚РµС€РµСЃС‚РІРёРµ СѓРґР°Р»РµРЅРѕ')),
         );
         context.go('/profile');
       } catch (_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось удалить путешествие')),
+          const SnackBar(content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РїСѓС‚РµС€РµСЃС‚РІРёРµ')),
         );
       }
       return;
@@ -315,7 +336,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Подтвердите изменение',
+                    'РџРѕРґС‚РІРµСЂРґРёС‚Рµ РёР·РјРµРЅРµРЅРёРµ',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -324,7 +345,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'Новый выбранный период меньше предыдущего. Если продолжить, последние дни, не входящие в новый период, будут удалены вместе с маршрутами и данными этих дней.',
+                    'РќРѕРІС‹Р№ РІС‹Р±СЂР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ РјРµРЅСЊС€Рµ РїСЂРµРґС‹РґСѓС‰РµРіРѕ. Р•СЃР»Рё РїСЂРѕРґРѕР»Р¶РёС‚СЊ, РїРѕСЃР»РµРґРЅРёРµ РґРЅРё, РЅРµ РІС…РѕРґСЏС‰РёРµ РІ РЅРѕРІС‹Р№ РїРµСЂРёРѕРґ, Р±СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹ РІРјРµСЃС‚Рµ СЃ РјР°СЂС€СЂСѓС‚Р°РјРё Рё РґР°РЅРЅС‹РјРё СЌС‚РёС… РґРЅРµР№.',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 15,
@@ -340,7 +361,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         style: TextButton.styleFrom(
                           foregroundColor: const Color(0xFFB16E4B),
                         ),
-                        child: const Text('Отмена'),
+                        child: const Text('РћС‚РјРµРЅР°'),
                       ),
                       const SizedBox(width: 8),
                       TextButton(
@@ -348,7 +369,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         style: TextButton.styleFrom(
                           foregroundColor: const Color(0xFFB16E4B),
                         ),
-                        child: const Text('ОК'),
+                        child: const Text('РћРљ'),
                       ),
                     ],
                   ),
@@ -401,12 +422,12 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       await _loadExpenses();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Параметры маршрута обновлены')),
+        const SnackBar(content: Text('РџР°СЂР°РјРµС‚СЂС‹ РјР°СЂС€СЂСѓС‚Р° РѕР±РЅРѕРІР»РµРЅС‹')),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось обновить параметры маршрута')),
+        const SnackBar(content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РїР°СЂР°РјРµС‚СЂС‹ РјР°СЂС€СЂСѓС‚Р°')),
       );
     }
   }
@@ -494,6 +515,389 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
   }
 
+  DateTime? _currentAssistantRouteDay() {
+    final ordered = [..._stages]..sort((a, b) => a.position.compareTo(b.position));
+    return _ensureSelectedRouteDay(_selectedRouteDay, stages: ordered);
+  }
+
+  DateTime? _parseAssistantTimeText(String? hhmm) {
+    final value = (hhmm ?? '').trim();
+    if (value.isEmpty || !value.contains(':')) return null;
+    final parts = value.split(':');
+    if (parts.length != 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    final base = _currentAssistantRouteDay() ?? DateTime.now();
+    return DateTime(base.year, base.month, base.day, hour, minute);
+  }
+
+  AddStagePayload _buildAssistantPayloadFromDraft(StageAssistantDraft draft) {
+    return AddStagePayload(
+      stageType: draft.stageType,
+      subtype: draft.subtype,
+      title: draft.title,
+      startLocation: draft.startLocation,
+      endLocation: draft.endLocation,
+      address: draft.address,
+      startTime: _parseAssistantTimeText(draft.startTimeText),
+      endTime: _parseAssistantTimeText(draft.endTimeText),
+      durationMinutes: draft.durationMinutes,
+      costRub: draft.costRub,
+      notes: draft.notes,
+    );
+  }
+
+  Future<void> _submitStagePayload(AddStagePayload payload) async {
+    if (widget.tripId == null) return;
+    setState(() {
+      _addingStage = true;
+      _lastStageType = payload.stageType;
+    });
+
+    try {
+      final created = await widget.tripsRepo.createStage(
+        tripId: widget.tripId!,
+        stageType: payload.stageType,
+        subtype: payload.subtype,
+        title: payload.title,
+        startLocation: payload.startLocation,
+        endLocation: payload.endLocation,
+        address: payload.address,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        startTime: payload.startTime,
+        endTime: payload.endTime,
+        durationMinutes: payload.durationMinutes,
+        costRub: payload.costRub,
+        referenceNumber: payload.referenceNumber,
+        notes: payload.notes,
+        websiteUrl: payload.websiteUrl,
+        rating: payload.rating,
+        documentKey: payload.documentKey,
+      );
+      if (!mounted) return;
+      if (created != null) {
+        await _loadStages();
+        await _loadExpenses();
+        if (!mounted) return;
+        setState(() {
+          _selectedStageId = created.id;
+        });
+        await _loadSuggestionsForStage(created);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось добавить этап маршрута')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _addingStage = false;
+        });
+      }
+    }
+  }
+
+  void _showRouteAssistantSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            message,
+            style: const TextStyle(
+              fontFamily: 'Geologica',
+              color: Color(0xFF171717),
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFFD7E37A),
+          width: 430,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      );
+  }
+
+  String _friendlyAssistantErrorMessage(
+    Object error, {
+    required String fallback,
+  }) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      final detail = error.response?.data;
+      final detailText = detail is Map
+          ? detail['detail']?.toString()
+          : detail?.toString();
+      final normalized = (detailText ?? '').toLowerCase();
+      if (normalized.contains('unknown api key') || normalized.contains('unauthorized')) {
+        return 'Сервис быстрого ввода временно недоступен. Попробуйте позже.';
+      }
+      if (normalized.contains('speech was not recognized')) {
+        return 'Не удалось распознать речь. Попробуйте сказать фразу четче.';
+      }
+      if (normalized.contains('audio payload is empty')) {
+        return 'Запись получилась пустой. Нажмите и удерживайте кнопку чуть дольше.';
+      }
+      if (normalized.contains('invalid wav') ||
+          normalized.contains('16 khz') ||
+          normalized.contains('mono audio') ||
+          normalized.contains('16-bit pcm')) {
+        return 'Не удалось обработать аудио в этом браузере. Попробуйте Chrome или Edge.';
+      }
+      if (status == 401 || status == 403) {
+        return 'Сессия истекла. Войдите в аккаунт снова.';
+      }
+      if (status == 500 || status == 502 || status == 503) {
+        return 'Сервис временно недоступен. Попробуйте еще раз чуть позже.';
+      }
+      if (error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout) {
+        return 'Нет соединения с сервером. Проверьте интернет и попробуйте снова.';
+      }
+    }
+    return fallback;
+  }
+
+  Future<void> _processAssistantSourceText(String sourceText) async {
+    final normalized = sourceText.trim();
+    if (normalized.isEmpty || widget.tripId == null) return;
+    setState(() => _routeAssistantProcessing = true);
+    try {
+      final draft = await widget.tripsRepo.createStageDraftFromText(
+        text: normalized,
+        routeDay: _currentAssistantRouteDay(),
+      );
+      if (!mounted) return;
+      if (draft == null) {
+        _showRouteAssistantSnackBar('Не удалось обработать описание этапа');
+        return;
+      }
+      final payload = await Navigator.of(context).push<AddStagePayload>(
+        MaterialPageRoute(
+          builder: (_) => StageFormPage(
+            stageTypeLabels: _stageTypeLabels,
+            stageSubtypes: _stageSubtypes,
+            initialType: draft.stageType,
+            destinationCity: widget.destinationCity,
+            tripsRepo: widget.tripsRepo,
+            isPremium: _hasPremium,
+            routeDay: _currentAssistantRouteDay(),
+            initial: _buildAssistantPayloadFromDraft(draft),
+            onUploadDocument: _pickAndUploadDocumentForStage,
+          ),
+        ),
+      );
+      if (payload != null) {
+        await _submitStagePayload(payload);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      _showRouteAssistantSnackBar(
+        _friendlyAssistantErrorMessage(
+          error,
+          fallback: 'Не удалось обработать описание этапа',
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _routeAssistantProcessing = false);
+      }
+    }
+  }
+
+  Future<void> _openRouteAssistantTextEntry() async {
+    if (widget.tripId == null) {
+      _showRouteAssistantSnackBar('Сначала нужно открыть конкретное путешествие.');
+      return;
+    }
+    final text = await showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => const _RouteAssistantTextDialog(),
+    );
+    if (text == null || text.trim().isEmpty) return;
+    await _processAssistantSourceText(text);
+  }
+
+  Future<void> _startRouteAssistantRecording() async {
+    if (_routeAssistantRecording || _routeAssistantProcessing || widget.tripId == null) {
+      return;
+    }
+    try {
+      if (kIsWeb) {
+        final granted = await requestBrowserMicrophoneAccess();
+        if (!granted) {
+          _showRouteAssistantSnackBar(
+            'Разрешите доступ к микрофону в браузере для голосового ввода.',
+          );
+          return;
+        }
+      }
+      final hasPermission = await _routeAssistantRecorder.hasPermission();
+      if (!hasPermission) {
+        _showRouteAssistantSnackBar(
+          'Разрешите доступ к микрофону в браузере для голосового ввода.',
+        );
+        return;
+      }
+      _routeAssistantTimer?.cancel();
+      _routeAssistantStreamSub?.cancel();
+      _routeAssistantAudioBytes.clear();
+
+      if (kIsWeb) {
+        await _routeAssistantRecorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.wav,
+            sampleRate: 16000,
+            numChannels: 1,
+          ),
+          path: 'route_assistant_recording.wav',
+        );
+      } else {
+        final stream = await _routeAssistantRecorder.startStream(
+          const RecordConfig(
+            encoder: AudioEncoder.pcm16bits,
+            sampleRate: 16000,
+            numChannels: 1,
+          ),
+        );
+        _routeAssistantStreamSub = stream.listen((chunk) {
+          _routeAssistantAudioBytes.addAll(chunk);
+        });
+      }
+      if (!mounted) return;
+      setState(() {
+        _routeAssistantRecording = true;
+        _routeAssistantSecondsLeft = 30;
+      });
+      _routeAssistantTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        if (_routeAssistantSecondsLeft <= 1) {
+          timer.cancel();
+          _stopRouteAssistantRecordingIfNeeded();
+          return;
+        }
+        setState(() {
+          _routeAssistantSecondsLeft -= 1;
+        });
+      });
+    } catch (_) {
+      _showRouteAssistantSnackBar('Не удалось начать запись');
+    }
+  }
+
+  void _handleRouteAssistantWebPointerDown() {
+    if (_routeAssistantProcessing) return;
+    _routeAssistantPointerDown = true;
+    _routeAssistantHoldTimer?.cancel();
+    _routeAssistantHoldTimer = Timer(const Duration(milliseconds: 180), () {
+      if (_routeAssistantPointerDown && !_routeAssistantRecording) {
+        _startRouteAssistantRecording();
+      }
+    });
+  }
+
+  Future<void> _handleRouteAssistantWebPointerUp() async {
+    _routeAssistantHoldTimer?.cancel();
+    final wasRecording = _routeAssistantRecording;
+    _routeAssistantPointerDown = false;
+    if (wasRecording) {
+      await _stopRouteAssistantRecordingIfNeeded();
+      return;
+    }
+    if (!_routeAssistantProcessing) {
+      await _openRouteAssistantTextEntry();
+    }
+  }
+
+  Future<void> _handleRouteAssistantWebPointerCancel() async {
+    _routeAssistantHoldTimer?.cancel();
+    final wasRecording = _routeAssistantRecording;
+    _routeAssistantPointerDown = false;
+    if (wasRecording) {
+      await _stopRouteAssistantRecordingIfNeeded();
+    }
+  }
+
+  Future<void> _stopRouteAssistantRecordingIfNeeded() async {
+    if (!_routeAssistantRecording) return;
+    _routeAssistantTimer?.cancel();
+    _routeAssistantTimer = null;
+    setState(() {
+      _routeAssistantRecording = false;
+      _routeAssistantSecondsLeft = 30;
+      _routeAssistantProcessing = true;
+    });
+
+    try {
+      Uint8List audioBytes;
+      String filename;
+      String mimeType;
+      if (kIsWeb) {
+        final path = await _routeAssistantRecorder.stop();
+        if (path == null || path.isEmpty) {
+          throw Exception('empty audio');
+        }
+        final response = await Dio().get<List<int>>(
+          path,
+          options: Options(responseType: ResponseType.bytes),
+        );
+        final bytes = response.data;
+        if (bytes == null || bytes.isEmpty) {
+          throw Exception('empty audio');
+        }
+        audioBytes = Uint8List.fromList(bytes);
+        filename = 'stage-voice.wav';
+        mimeType = 'audio/wav';
+      } else {
+        await _routeAssistantRecorder.stop();
+        await _routeAssistantStreamSub?.cancel();
+        _routeAssistantStreamSub = null;
+        if (_routeAssistantAudioBytes.isEmpty) {
+          throw Exception('empty audio');
+        }
+        audioBytes = Uint8List.fromList(_routeAssistantAudioBytes);
+        filename = 'stage-voice.raw';
+        mimeType = 'application/octet-stream';
+      }
+      final transcript = await widget.tripsRepo.transcribeStageAudio(
+        audioBytes: audioBytes,
+        filename: filename,
+        mimeType: mimeType,
+      );
+      if (!mounted) return;
+      if (transcript == null || transcript.trim().isEmpty) {
+        _showRouteAssistantSnackBar('Не удалось распознать голосовое');
+        return;
+      }
+      await _processAssistantSourceText(transcript);
+    } catch (error) {
+      if (!mounted) return;
+      _showRouteAssistantSnackBar(
+        _friendlyAssistantErrorMessage(
+          error,
+          fallback: 'Не удалось распознать голосовое',
+        ),
+      );
+    } finally {
+      _routeAssistantAudioBytes.clear();
+      if (mounted) {
+        setState(() => _routeAssistantProcessing = false);
+      }
+    }
+  }
+
   Future<void> _openAddStageDialog({
     String? presetAddressFromMap,
     String? presetTitleFromMap,
@@ -538,6 +942,8 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       ),
     );
     if (payload == null) return;
+    await _submitStagePayload(payload);
+    return;
 
     setState(() {
       _addingStage = true;
@@ -979,7 +1385,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         );
       case 'activity':
         return const _StageVisualConfig(
-          iconColor: Color(0xFF7AB4E3), // гармоничный голубой
+          iconColor: Color(0xFF7AB4E3), // РіР°СЂРјРѕРЅРёС‡РЅС‹Р№ РіРѕР»СѓР±РѕР№
           backgroundColor: Color(0x1A7AB4E3),
           borderColor: Color(0x337AB4E3),
         );
@@ -1721,8 +2127,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                             tripsRepo: widget.tripsRepo,
                                             tripId: widget.tripId,
                                             city: widget.destinationCity,
-                                            titleOverride:
-                                                '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043d\u043e\u0435 \u043c\u0430\u0440\u0448\u0440\u0443\u0442\u0430',
+                                            titleOverride: 'Сохраненные места',
                                             embedded: true,
                                             onBack: _closeTripFavoritesView,
                                           )
@@ -1838,12 +2243,14 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         )
                       : const Icon(Icons.add_road_rounded, size: 16),
                   label: const Text(
-                    'Добавить этап',
+                    'Этап',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              _buildRouteAssistantButton(),
             ],
           ),
           const SizedBox(height: 10),
@@ -1885,6 +2292,90 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     if (action == _StageDetailsAction.delete) {
       await _deleteStage(stage);
     }
+  }
+
+  Widget _buildRouteAssistantButton() {
+    final progress = ((30 - _routeAssistantSecondsLeft) / 30).clamp(0.0, 1.0);
+    final button = AnimatedScale(
+      duration: const Duration(milliseconds: 120),
+      scale: _routeAssistantRecording ? 1.08 : 1,
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: CircularProgressIndicator(
+                value: _routeAssistantRecording ? progress : 0,
+                strokeWidth: 3,
+                backgroundColor: Colors.white.withOpacity(0.12),
+                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFB6A1FF)),
+              ),
+            ),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: const Color(0xFFB6A1FF),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFB6A1FF).withOpacity(0.28),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  const Icon(
+                    Icons.auto_awesome_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  if (_routeAssistantRecording)
+                    Positioned(
+                      bottom: 3,
+                      child: Text(
+                        '$_routeAssistantSecondsLeft',
+                        style: const TextStyle(
+                          fontFamily: 'Geologica',
+                          color: Colors.white,
+                          fontSize: 8,
+                          fontWeight: FontWeight.w300,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (kIsWeb) {
+      return Listener(
+        onPointerDown: (_) => _handleRouteAssistantWebPointerDown(),
+        onPointerUp: (_) => _handleRouteAssistantWebPointerUp(),
+        onPointerCancel: (_) => _handleRouteAssistantWebPointerCancel(),
+        child: button,
+      );
+    }
+
+    return GestureDetector(
+      onTap: _routeAssistantRecording || _routeAssistantProcessing
+          ? null
+          : _openRouteAssistantTextEntry,
+      onLongPressStart: (_) => _startRouteAssistantRecording(),
+      onLongPressEnd: (_) => _stopRouteAssistantRecordingIfNeeded(),
+      onLongPressCancel: _stopRouteAssistantRecordingIfNeeded,
+      child: button,
+    );
   }
 
   Widget _buildRouteTimelineSection({required List<TripStage> stages}) {
@@ -3158,7 +3649,7 @@ class _StageTypePickerPage extends StatelessWidget {
                           const SizedBox(width: 10),
                           const Expanded(
                             child: Text(
-                              'Выберите тип этапа',
+                              'Р’С‹Р±РµСЂРёС‚Рµ С‚РёРї СЌС‚Р°РїР°',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -3252,7 +3743,7 @@ class _StageFormPage extends StatefulWidget {
     this.routeDay,
     this.onUploadDocument,
     this.initial,
-    this.submitLabel = 'Добавить',
+    this.submitLabel = 'Р”РѕР±Р°РІРёС‚СЊ',
   });
 
   @override
@@ -3262,44 +3753,44 @@ class _StageFormPage extends StatefulWidget {
 class _StageFormPageState extends State<_StageFormPage> {
   static final RegExp _moneyInputPattern = RegExp(r'^\d*([.,]\d{0,2})?$');
   static const Map<String, String> _subtypeLabels = <String, String>{
-    'road': 'Дорога',
-    'airplane': 'Самолет',
-    'train': 'Поезд',
-    'car': 'Автомобиль',
-    'bus': 'Автобус',
-    'public_transport': 'Общественный транспорт',
-    'walk': 'Пешком',
-    'taxi': 'Такси',
-    'bicycle': 'Велосипед',
-    'attraction': 'Достопримечательность',
-    'excursion': 'Экскурсия',
-    'museum': 'Музей',
-    'park': 'Парк',
-    'event': 'Мероприятие',
-    'nature': 'Природный объект',
-    'hotel': 'Отель',
-    'hostel': 'Хостел',
-    'apartment': 'Апартаменты',
-    'overnight': 'Ночевка',
-    'rest': 'Сон / отдых',
-    'restaurant': 'Ресторан',
-    'cafe': 'Кафе',
-    'fastfood': 'Фастфуд',
-    'breakfast': 'Завтрак',
-    'lunch': 'Обед',
-    'dinner': 'Ужин',
-    'to_go': 'Взять с собой',
-    'mall': 'Торговый центр',
-    'market': 'Рынок',
-    'souvenirs': 'Сувениры',
-    'shopping': 'Покупки',
-    'sport': 'Спорт',
-    'entertainment': 'Развлечения',
-    'beach': 'Пляж',
-    'tickets': 'Билеты',
-    'visa': 'Виза',
-    'insurance': 'Страховка',
-    'booking': 'Бронь',
+    'road': 'Р”РѕСЂРѕРіР°',
+    'airplane': 'РЎР°РјРѕР»РµС‚',
+    'train': 'РџРѕРµР·Рґ',
+    'car': 'РђРІС‚РѕРјРѕР±РёР»СЊ',
+    'bus': 'РђРІС‚РѕР±СѓСЃ',
+    'public_transport': 'РћР±С‰РµСЃС‚РІРµРЅРЅС‹Р№ С‚СЂР°РЅСЃРїРѕСЂС‚',
+    'walk': 'РџРµС€РєРѕРј',
+    'taxi': 'РўР°РєСЃРё',
+    'bicycle': 'Р’РµР»РѕСЃРёРїРµРґ',
+    'attraction': 'Р”РѕСЃС‚РѕРїСЂРёРјРµС‡Р°С‚РµР»СЊРЅРѕСЃС‚СЊ',
+    'excursion': 'Р­РєСЃРєСѓСЂСЃРёСЏ',
+    'museum': 'РњСѓР·РµР№',
+    'park': 'РџР°СЂРє',
+    'event': 'РњРµСЂРѕРїСЂРёСЏС‚РёРµ',
+    'nature': 'РџСЂРёСЂРѕРґРЅС‹Р№ РѕР±СЉРµРєС‚',
+    'hotel': 'РћС‚РµР»СЊ',
+    'hostel': 'РҐРѕСЃС‚РµР»',
+    'apartment': 'РђРїР°СЂС‚Р°РјРµРЅС‚С‹',
+    'overnight': 'РќРѕС‡РµРІРєР°',
+    'rest': 'РЎРѕРЅ / РѕС‚РґС‹С…',
+    'restaurant': 'Р РµСЃС‚РѕСЂР°РЅ',
+    'cafe': 'РљР°С„Рµ',
+    'fastfood': 'Р¤Р°СЃС‚С„СѓРґ',
+    'breakfast': 'Р—Р°РІС‚СЂР°Рє',
+    'lunch': 'РћР±РµРґ',
+    'dinner': 'РЈР¶РёРЅ',
+    'to_go': 'Р’Р·СЏС‚СЊ СЃ СЃРѕР±РѕР№',
+    'mall': 'РўРѕСЂРіРѕРІС‹Р№ С†РµРЅС‚СЂ',
+    'market': 'Р С‹РЅРѕРє',
+    'souvenirs': 'РЎСѓРІРµРЅРёСЂС‹',
+    'shopping': 'РџРѕРєСѓРїРєРё',
+    'sport': 'РЎРїРѕСЂС‚',
+    'entertainment': 'Р Р°Р·РІР»РµС‡РµРЅРёСЏ',
+    'beach': 'РџР»СЏР¶',
+    'tickets': 'Р‘РёР»РµС‚С‹',
+    'visa': 'Р’РёР·Р°',
+    'insurance': 'РЎС‚СЂР°С…РѕРІРєР°',
+    'booking': 'Р‘СЂРѕРЅСЊ',
   };
 
   final _formKey = GlobalKey<FormState>();
@@ -3408,17 +3899,17 @@ class _StageFormPageState extends State<_StageFormPage> {
       return '';
     }
     if (_stageType == 'transport' && _subtype == 'road') {
-      return 'Дорога';
+      return 'Р”РѕСЂРѕРіР°';
     }
     return _prettySubtype(_subtype);
   }
 
   String _startTimeLabel() {
-    return _stageType == 'transport' ? 'Время отправления' : 'Время начала';
+    return _stageType == 'transport' ? 'Р’СЂРµРјСЏ РѕС‚РїСЂР°РІР»РµРЅРёСЏ' : 'Р’СЂРµРјСЏ РЅР°С‡Р°Р»Р°';
   }
 
   String _endTimeLabel() {
-    return _stageType == 'transport' ? 'Время прибытия' : 'Время окончания';
+    return _stageType == 'transport' ? 'Р’СЂРµРјСЏ РїСЂРёР±С‹С‚РёСЏ' : 'Р’СЂРµРјСЏ РѕРєРѕРЅС‡Р°РЅРёСЏ';
   }
 
   DateTime _defaultCalendarDateTime() {
@@ -3467,9 +3958,9 @@ class _StageFormPageState extends State<_StageFormPage> {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: current?.hour ?? 12, minute: current?.minute ?? 0),
-      helpText: 'Выберите время',
-      cancelText: 'Отмена',
-      confirmText: 'ОК',
+      helpText: 'Р’С‹Р±РµСЂРёС‚Рµ РІСЂРµРјСЏ',
+      cancelText: 'РћС‚РјРµРЅР°',
+      confirmText: 'РћРљ',
       builder: (context, child) {
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
@@ -3617,7 +4108,7 @@ class _StageFormPageState extends State<_StageFormPage> {
       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w400),
       decoration: InputDecoration(
         labelText: label,
-        hintText: 'Выбрать',
+        hintText: 'Р’С‹Р±СЂР°С‚СЊ',
         suffixIcon: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -3642,7 +4133,7 @@ class _StageFormPageState extends State<_StageFormPage> {
       validator: (value) {
         final raw = (value ?? '').trim();
         if (raw.isEmpty) return null;
-        if (_parseTime(raw, null) == null) return 'Формат времени: HH:MM';
+        if (_parseTime(raw, null) == null) return 'Р¤РѕСЂРјР°С‚ РІСЂРµРјРµРЅРё: HH:MM';
         return null;
       },
     );
@@ -3653,7 +4144,7 @@ class _StageFormPageState extends State<_StageFormPage> {
     final cs = Theme.of(context).colorScheme;
     final stageTypeItems = Map<String, String>.from(widget.stageTypeLabels);
     if (!stageTypeItems.containsKey(_stageType)) {
-      stageTypeItems[_stageType] = _stageType == 'document' ? 'Документ' : _stageType;
+      stageTypeItems[_stageType] = _stageType == 'document' ? 'Р”РѕРєСѓРјРµРЅС‚' : _stageType;
     }
     final subtypes = widget.stageSubtypes[_stageType] ?? const <String>[];
     final isTransport = _stageType == 'transport';
@@ -3687,9 +4178,9 @@ class _StageFormPageState extends State<_StageFormPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              widget.submitLabel == 'Сохранить'
-                                  ? 'Редактирование этапа'
-                                  : 'Новый этап',
+                              widget.submitLabel == 'РЎРѕС…СЂР°РЅРёС‚СЊ'
+                                  ? 'Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ СЌС‚Р°РїР°'
+                                  : 'РќРѕРІС‹Р№ СЌС‚Р°Рї',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w400,
@@ -3727,7 +4218,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                             child: ListView(
                               padding: const EdgeInsets.only(bottom: 8),
                               children: [
-                                _bubble('Быстрое создание', [
+                                _bubble('Р‘С‹СЃС‚СЂРѕРµ СЃРѕР·РґР°РЅРёРµ', [
                                   Wrap(
                                     spacing: 8,
                                     runSpacing: 8,
@@ -3774,7 +4265,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                     }).toList(),
                                   ),
                                 ], cs.primary),
-                                _bubble('Основное', [
+                                _bubble('РћСЃРЅРѕРІРЅРѕРµ', [
                                   TextFormField(
                                     controller: _titleCtrl,
                                     onChanged: (value) {
@@ -3786,9 +4277,9 @@ class _StageFormPageState extends State<_StageFormPage> {
                                       color: Colors.white,
                                       fontWeight: FontWeight.w600,
                                     ),
-                                    decoration: const InputDecoration(labelText: 'Название'),
+                                    decoration: const InputDecoration(labelText: 'РќР°Р·РІР°РЅРёРµ'),
                                     validator: (v) =>
-                                        (v ?? '').trim().isEmpty ? 'Введите название' : null,
+                                        (v ?? '').trim().isEmpty ? 'Р’РІРµРґРёС‚Рµ РЅР°Р·РІР°РЅРёРµ' : null,
                                   ),
                                   const SizedBox(height: 8),
                                   if (isTransport) ...[
@@ -3798,7 +4289,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         color: Colors.white,
                                         fontWeight: FontWeight.w600,
                                       ),
-                                      decoration: const InputDecoration(labelText: 'Откуда'),
+                                      decoration: const InputDecoration(labelText: 'РћС‚РєСѓРґР°'),
                                     ),
                                     const SizedBox(height: 8),
                                     TextFormField(
@@ -3807,7 +4298,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         color: Colors.white,
                                         fontWeight: FontWeight.w600,
                                       ),
-                                      decoration: const InputDecoration(labelText: 'Куда'),
+                                      decoration: const InputDecoration(labelText: 'РљСѓРґР°'),
                                     ),
                                   ] else ...[
                                     TextFormField(
@@ -3818,10 +4309,10 @@ class _StageFormPageState extends State<_StageFormPage> {
                                       ),
                                       decoration: InputDecoration(
                                         labelText: isStay
-                                            ? 'Адрес проживания'
+                                            ? 'РђРґСЂРµСЃ РїСЂРѕР¶РёРІР°РЅРёСЏ'
                                             : isFood
-                                                ? 'Место / адрес'
-                                                : 'Адрес / место',
+                                                ? 'РњРµСЃС‚Рѕ / Р°РґСЂРµСЃ'
+                                                : 'РђРґСЂРµСЃ / РјРµСЃС‚Рѕ',
                                       ),
                                     ),
                                   ],
@@ -3830,11 +4321,11 @@ class _StageFormPageState extends State<_StageFormPage> {
                                     segments: const [
                                       ButtonSegment<String>(
                                         value: 'duration',
-                                        label: Text('Продолжительность'),
+                                        label: Text('РџСЂРѕРґРѕР»Р¶РёС‚РµР»СЊРЅРѕСЃС‚СЊ'),
                                       ),
                                       ButtonSegment<String>(
                                         value: 'range',
-                                        label: Text('Промежуток'),
+                                        label: Text('РџСЂРѕРјРµР¶СѓС‚РѕРє'),
                                       ),
                                     ],
                                     selected: {_transportTimeMode},
@@ -3885,7 +4376,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         fontWeight: FontWeight.w600,
                                       ),
                                       decoration: const InputDecoration(
-                                        labelText: 'Продолжительность, мин',
+                                        labelText: 'РџСЂРѕРґРѕР»Р¶РёС‚РµР»СЊРЅРѕСЃС‚СЊ, РјРёРЅ',
                                       ),
                                       keyboardType: TextInputType.number,
                                     ),
@@ -3910,7 +4401,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   ],
                                 ], Colors.cyan),
                                 const SizedBox(height: 2),
-                                _bubble('Детали', [
+                                _bubble('Р”РµС‚Р°Р»Рё', [
                                     if (subtypes.isNotEmpty) ...[
                                       DropdownButtonFormField<String>(
                                         value: (_subtype.isNotEmpty && subtypes.contains(_subtype))
@@ -3922,7 +4413,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         ),
                                         dropdownColor: const Color(0xFF2B2B2B),
                                         iconEnabledColor: Colors.white70,
-                                        decoration: const InputDecoration(labelText: 'Подтип'),
+                                        decoration: const InputDecoration(labelText: 'РџРѕРґС‚РёРї'),
                                         items: subtypes
                                             .map(
                                               (e) => DropdownMenuItem(
@@ -3974,7 +4465,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                           fontWeight: FontWeight.w600,
                                         ),
                                         decoration: InputDecoration(
-                                          labelText: isFood ? 'Сколько потрачу, руб' : 'Стоимость, руб',
+                                          labelText: isFood ? 'РЎРєРѕР»СЊРєРѕ РїРѕС‚СЂР°С‡Сѓ, СЂСѓР±' : 'РЎС‚РѕРёРјРѕСЃС‚СЊ, СЂСѓР±',
                                         ),
                                         keyboardType:
                                             const TextInputType.numberWithOptions(decimal: true),
@@ -4011,8 +4502,8 @@ class _StageFormPageState extends State<_StageFormPage> {
                                               : const Icon(Icons.upload_file_rounded),
                                           label: Text(
                                             _docCtrl.text.trim().isEmpty
-                                                ? 'Загрузить документ'
-                                                : 'Документ загружен',
+                                                ? 'Р—Р°РіСЂСѓР·РёС‚СЊ РґРѕРєСѓРјРµРЅС‚'
+                                                : 'Р”РѕРєСѓРјРµРЅС‚ Р·Р°РіСЂСѓР¶РµРЅ',
                                           ),
                                         ),
                                       ),
@@ -4024,7 +4515,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         color: Colors.white,
                                         fontWeight: FontWeight.w600,
                                       ),
-                                      decoration: const InputDecoration(labelText: 'Комментарий'),
+                                      decoration: const InputDecoration(labelText: 'РљРѕРјРјРµРЅС‚Р°СЂРёР№'),
                                       maxLines: 3,
                                     ),
                                 ], Colors.greenAccent),
@@ -4151,7 +4642,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              widget.submitLabel == 'Добавить' ? 'Новый этап' : 'Редактирование этапа',
+                              widget.submitLabel == 'Р”РѕР±Р°РІРёС‚СЊ' ? 'РќРѕРІС‹Р№ СЌС‚Р°Рї' : 'Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ СЌС‚Р°РїР°',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -4189,13 +4680,13 @@ class _StageFormPageState extends State<_StageFormPage> {
                             child: ListView(
                             padding: const EdgeInsets.only(bottom: 8),
                             children: [
-                              _bubble('Тип этапа', [
+                              _bubble('РўРёРї СЌС‚Р°РїР°', [
                                 DropdownButtonFormField<String>(
                                   value: _stageType,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                   dropdownColor: const Color(0xFF2B2B2B),
                                   iconEnabledColor: Colors.white70,
-                                  decoration: const InputDecoration(labelText: 'Тип'),
+                                  decoration: const InputDecoration(labelText: 'РўРёРї'),
                                   items: stageTypeItems.entries
                                       .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
                                       .toList(),
@@ -4213,7 +4704,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                   dropdownColor: const Color(0xFF2B2B2B),
                                   iconEnabledColor: Colors.white70,
-                                  decoration: const InputDecoration(labelText: 'Подтип'),
+                                  decoration: const InputDecoration(labelText: 'РџРѕРґС‚РёРї'),
                                   items: subtypes
                                       .map(
                                         (e) => DropdownMenuItem(
@@ -4253,47 +4744,47 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   },
                                 ),
                               ], cs.primary),
-                              _bubble('Основное', [
+                              _bubble('РћСЃРЅРѕРІРЅРѕРµ', [
                                 TextFormField(
                                   controller: _titleCtrl,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                  decoration: const InputDecoration(labelText: 'Название'),
-                                  validator: (v) => (v ?? '').trim().isEmpty ? 'Введите название' : null,
+                                  decoration: const InputDecoration(labelText: 'РќР°Р·РІР°РЅРёРµ'),
+                                  validator: (v) => (v ?? '').trim().isEmpty ? 'Р’РІРµРґРёС‚Рµ РЅР°Р·РІР°РЅРёРµ' : null,
                                 ),
                                 const SizedBox(height: 8),
                                 TextFormField(
                                   controller: _addressCtrl,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                  decoration: const InputDecoration(labelText: 'Адрес / место'),
+                                  decoration: const InputDecoration(labelText: 'РђРґСЂРµСЃ / РјРµСЃС‚Рѕ'),
                                 ),
                               ], Colors.cyan),
-                              _bubble('Логистика и время', [
+                              _bubble('Р›РѕРіРёСЃС‚РёРєР° Рё РІСЂРµРјСЏ', [
                                 if (isTransport) ...[
                                   TextFormField(
                                     controller: _startLocationCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: const InputDecoration(labelText: 'Откуда'),
+                                    decoration: const InputDecoration(labelText: 'РћС‚РєСѓРґР°'),
                                   ),
                                   const SizedBox(height: 8),
                                   TextFormField(
                                     controller: _endLocationCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: const InputDecoration(labelText: 'Куда'),
+                                    decoration: const InputDecoration(labelText: 'РљСѓРґР°'),
                                   ),
                                   const SizedBox(height: 8),
                                 ],
                                 Row(children: [
-                                  Expanded(child: _timeField(isTransport ? 'Время отправления' : 'Время начала', _startTimeCtrl)),
+                                  Expanded(child: _timeField(isTransport ? 'Р’СЂРµРјСЏ РѕС‚РїСЂР°РІР»РµРЅРёСЏ' : 'Р’СЂРµРјСЏ РЅР°С‡Р°Р»Р°', _startTimeCtrl)),
                                   const SizedBox(width: 8),
-                                  Expanded(child: _timeField(isTransport ? 'Время прибытия' : 'Время окончания', _endTimeCtrl)),
+                                  Expanded(child: _timeField(isTransport ? 'Р’СЂРµРјСЏ РїСЂРёР±С‹С‚РёСЏ' : 'Р’СЂРµРјСЏ РѕРєРѕРЅС‡Р°РЅРёСЏ', _endTimeCtrl)),
                                 ]),
                               ], Colors.amber),
-                              _bubble('Финансы и детали', [
+                              _bubble('Р¤РёРЅР°РЅСЃС‹ Рё РґРµС‚Р°Р»Рё', [
                                 if (!isDocument) ...[
                                   TextFormField(
                                     controller: _costCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: InputDecoration(labelText: isFood ? 'Сколько потрачу, руб' : 'Стоимость, руб'),
+                                    decoration: InputDecoration(labelText: isFood ? 'РЎРєРѕР»СЊРєРѕ РїРѕС‚СЂР°С‡Сѓ, СЂСѓР±' : 'РЎС‚РѕРёРјРѕСЃС‚СЊ, СЂСѓР±'),
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     inputFormatters: [
                                       FilteringTextInputFormatter.allow(_moneyInputPattern),
@@ -4302,12 +4793,12 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   const SizedBox(height: 8),
                                 ],
                               ], Colors.greenAccent),
-                              _bubble('Файлы и заметки', [
+                              _bubble('Р¤Р°Р№Р»С‹ Рё Р·Р°РјРµС‚РєРё', [
                                 if (isTransport || isStay) ...[
                                   TextFormField(
                                     controller: _docCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: const InputDecoration(labelText: 'Ключ документа'),
+                                    decoration: const InputDecoration(labelText: 'РљР»СЋС‡ РґРѕРєСѓРјРµРЅС‚Р°'),
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -4335,8 +4826,8 @@ class _StageFormPageState extends State<_StageFormPage> {
                                           : const Icon(Icons.upload_file_rounded),
                                       label: Text(
                                         _docCtrl.text.trim().isEmpty
-                                            ? 'Загрузить документ'
-                                            : 'Документ загружен',
+                                            ? 'Р—Р°РіСЂСѓР·РёС‚СЊ РґРѕРєСѓРјРµРЅС‚'
+                                            : 'Р”РѕРєСѓРјРµРЅС‚ Р·Р°РіСЂСѓР¶РµРЅ',
                                       ),
                                     ),
                                   ),
@@ -4345,7 +4836,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                 TextFormField(
                                   controller: _notesCtrl,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                  decoration: const InputDecoration(labelText: 'Комментарий'),
+                                  decoration: const InputDecoration(labelText: 'РљРѕРјРјРµРЅС‚Р°СЂРёР№'),
                                   maxLines: 3,
                                 ),
                               ], Colors.pinkAccent),
@@ -5274,7 +5765,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Редактировать маршрут',
+                'Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ РјР°СЂС€СЂСѓС‚',
                 textAlign: TextAlign.left,
                 style: TextStyle(
                   color: Colors.white,
@@ -5288,7 +5779,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                 textAlign: TextAlign.left,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  labelText: 'Название',
+                  labelText: 'РќР°Р·РІР°РЅРёРµ',
                   alignLabelWithHint: true,
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
@@ -5300,7 +5791,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Город: ${widget.city}',
+                'Р“РѕСЂРѕРґ: ${widget.city}',
                 textAlign: TextAlign.left,
                 style: TextStyle(color: Colors.white.withOpacity(0.75)),
               ),
@@ -5311,12 +5802,12 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                 alignment: WrapAlignment.start,
                 children: [
                   _SettingsChip(
-                    label: 'Точные даты',
+                    label: 'РўРѕС‡РЅС‹Рµ РґР°С‚С‹',
                     selected: !_usePlannedDays,
                     onTap: () => setState(() => _usePlannedDays = false),
                   ),
                   _SettingsChip(
-                    label: 'Количество дней',
+                    label: 'РљРѕР»РёС‡РµСЃС‚РІРѕ РґРЅРµР№',
                     selected: _usePlannedDays,
                     onTap: () => setState(() => _usePlannedDays = true),
                   ),
@@ -5333,7 +5824,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                   textAlign: TextAlign.left,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    labelText: 'Количество дней',
+                    labelText: 'РљРѕР»РёС‡РµСЃС‚РІРѕ РґРЅРµР№',
                     alignLabelWithHint: true,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
@@ -5354,7 +5845,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                       border: Border.all(color: Colors.white.withOpacity(0.12)),
                     ),
                     child: Text(
-                      '${_fmtDate(_startDate)} — ${_fmtDate(_endDate)}',
+                      '${_fmtDate(_startDate)} вЂ” ${_fmtDate(_endDate)}',
                       textAlign: TextAlign.left,
                       style: const TextStyle(color: Colors.white),
                     ),
@@ -5362,7 +5853,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                 ),
               const SizedBox(height: 16),
               Text(
-                'Оформление карточки',
+                'РћС„РѕСЂРјР»РµРЅРёРµ РєР°СЂС‚РѕС‡РєРё',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.88),
                   fontSize: 14,
@@ -5475,7 +5966,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                             side: const BorderSide(color: Color(0xFF3A4751)),
                           ),
                           title: const Text(
-                            'Архивировать путешествие?',
+                            'РђСЂС…РёРІРёСЂРѕРІР°С‚СЊ РїСѓС‚РµС€РµСЃС‚РІРёРµ?',
                             style: TextStyle(
                               color: Color(0xFFF2F4F8),
                               fontFamily: 'Geologica',
@@ -5483,7 +5974,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                             ),
                           ),
                           content: const Text(
-                            'Путешествие исчезнет с главной страницы и останется только в списке поездок профиля.',
+                            'РџСѓС‚РµС€РµСЃС‚РІРёРµ РёСЃС‡РµР·РЅРµС‚ СЃ РіР»Р°РІРЅРѕР№ СЃС‚СЂР°РЅРёС†С‹ Рё РѕСЃС‚Р°РЅРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РІ СЃРїРёСЃРєРµ РїРѕРµР·РґРѕРє РїСЂРѕС„РёР»СЏ.',
                             style: TextStyle(
                               color: Color(0xFFB7BDC8),
                               fontFamily: 'Geologica',
@@ -5493,7 +5984,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                             TextButton(
                               onPressed: () => Navigator.of(ctx).pop(false),
                               child: const Text(
-                                'Отмена',
+                                'РћС‚РјРµРЅР°',
                                 style: TextStyle(
                                   color: Color(0xFFB7BDC8),
                                   fontFamily: 'Geologica',
@@ -5512,7 +6003,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                                 elevation: 0,
                               ),
                               child: const Text(
-                                'Архивировать',
+                                'РђСЂС…РёРІРёСЂРѕРІР°С‚СЊ',
                                 style: TextStyle(
                                   fontFamily: 'Geologica',
                                   fontWeight: FontWeight.w700,
@@ -5549,7 +6040,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                       ),
                     ),
                     icon: const Icon(Icons.archive_outlined, size: 16),
-                    label: const Text('Архивировать'),
+                    label: const Text('РђСЂС…РёРІРёСЂРѕРІР°С‚СЊ'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () {
@@ -5575,7 +6066,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                       ),
                     ),
                     icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                    label: const Text('Удалить'),
+                    label: const Text('РЈРґР°Р»РёС‚СЊ'),
                   ),
                 ],
               ),
@@ -5586,7 +6077,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     style: TextButton.styleFrom(foregroundColor: Colors.white70),
-                    child: const Text('Отмена'),
+                    child: const Text('РћС‚РјРµРЅР°'),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
@@ -5599,7 +6090,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                       ),
                       elevation: 0,
                     ),
-                    child: const Text('Сохранить'),
+                    child: const Text('РЎРѕС…СЂР°РЅРёС‚СЊ'),
                   ),
                 ],
               ),
@@ -5709,8 +6200,8 @@ class _TripCardPreviewArt extends StatelessWidget {
               top: 6,
               child: Text(
                 background == 'brand_text'
-                    ? 'Тур2Тур'
-                    : (titleText.trim().isEmpty ? 'Город' : titleText.trim()),
+                    ? 'РўСѓСЂ2РўСѓСЂ'
+                    : (titleText.trim().isEmpty ? 'Р“РѕСЂРѕРґ' : titleText.trim()),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -6174,7 +6665,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
     final value = _searchCtrl.text.trim();
     if (value.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите адрес для поиска')),
+        const SnackBar(content: Text('Р’РІРµРґРёС‚Рµ Р°РґСЂРµСЃ РґР»СЏ РїРѕРёСЃРєР°')),
       );
       return;
     }
@@ -6237,7 +6728,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                           ),
                         ),
                         icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                        label: const Text('К этапам'),
+                        label: const Text('Рљ СЌС‚Р°РїР°Рј'),
                       ),
                       const SizedBox(height: 10),
                       Text(
@@ -6279,7 +6770,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                                 onSubmitted: (_) => _submitSearch(),
                                 decoration: InputDecoration(
                                   isDense: true,
-                                  hintText: 'Введите адрес',
+                                  hintText: 'Р’РІРµРґРёС‚Рµ Р°РґСЂРµСЃ',
                                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
                                   border: InputBorder.none,
                                 ),
@@ -6287,7 +6778,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                             ),
                             TextButton(
                               onPressed: _submitSearch,
-                              child: const Text('Найти'),
+                              child: const Text('РќР°Р№С‚Рё'),
                             ),
                           ],
                         ),
@@ -6316,7 +6807,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                                       ),
                                       SizedBox(width: 10),
                                       Text(
-                                        'Ищем подсказки...',
+                                        'РС‰РµРј РїРѕРґСЃРєР°Р·РєРё...',
                                         style: TextStyle(color: Colors.white70, fontSize: 13),
                                       ),
                                     ],
@@ -6434,9 +6925,9 @@ class _MapSuggestItem {
   String get addressQuery {
     final s = subtitle.trim();
     if (s.isNotEmpty) {
-      if (s.contains('·')) {
+      if (s.contains('В·')) {
         final parts = s
-            .split('·')
+            .split('В·')
             .map((e) => e.trim())
             .where((e) => e.isNotEmpty)
             .toList();
@@ -6726,6 +7217,142 @@ class _NightPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _RouteAssistantTextDialog extends StatefulWidget {
+  const _RouteAssistantTextDialog();
+
+  @override
+  State<_RouteAssistantTextDialog> createState() => _RouteAssistantTextDialogState();
+}
+
+class _RouteAssistantTextDialogState extends State<_RouteAssistantTextDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF1D222A),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(26),
+        side: BorderSide(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 430),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFB6A1FF).withOpacity(0.18),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: Color(0xFFB6A1FF),
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Быстрый ввод',
+                      style: TextStyle(
+                        fontFamily: 'Geologica',
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _controller,
+                autofocus: true,
+                minLines: 4,
+                maxLines: 6,
+                style: const TextStyle(
+                  fontFamily: 'Geologica',
+                  color: Colors.white,
+                  fontWeight: FontWeight.w300,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Например: в 19:00 хочу поужинать в White Rabbit, потрачу около 2500 руб, важно место с красивым видом',
+                  hintStyle: TextStyle(
+                    fontFamily: 'Geologica',
+                    color: Colors.white.withOpacity(0.45),
+                    fontWeight: FontWeight.w300,
+                  ),
+                  filled: true,
+                  fillColor: Colors.white.withOpacity(0.06),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.all(16),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Отмена',
+                      style: TextStyle(
+                        fontFamily: 'Geologica',
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  ElevatedButton(
+                    onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFB6A1FF),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    ),
+                    child: const Text(
+                      'Заполнить',
+                      style: TextStyle(
+                        fontFamily: 'Geologica',
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 

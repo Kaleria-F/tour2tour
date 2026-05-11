@@ -39,6 +39,7 @@ class FavoritesPage extends StatefulWidget {
 }
 
 class _FavoritesPageState extends State<FavoritesPage> {
+  static const _primaryColor = Color(0xFFD7E37A);
   bool _loading = true;
   String? _error;
   List<FavoriteCityGroup> _groups = const [];
@@ -90,6 +91,31 @@ class _FavoritesPageState extends State<FavoritesPage> {
         'trip_title': item.tripTitle,
       };
 
+  void _showFeedback(String message) {
+    final width = MediaQuery.of(context).size.width;
+    final snackWidth = width > 462 ? 430.0 : width - 32;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        width: snackWidth,
+        backgroundColor: _primaryColor,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+        content: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: 'Geologica',
+            color: Color(0xFF171717),
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
+
   void _removeLocal(String placeId) {
     setState(() {
       _groups = _groups
@@ -118,18 +144,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
         metadata: _metadata(item),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('РЈР±СЂР°РЅРѕ РёР· СЃРѕС…СЂР°РЅРµРЅРЅРѕРіРѕ')),
-      );
+      _showFeedback('Убрано из сохраненного');
     } catch (_) {
       if (!mounted) return;
       await _load();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РјРµСЃС‚Рѕ РёР· СЃРѕС…СЂР°РЅРµРЅРЅРѕРіРѕ'),
-        ),
-      );
+      _showFeedback('Не удалось удалить место из сохраненного');
     }
   }
 
@@ -151,9 +171,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
     if (created == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ РґРѕР±Р°РІРёС‚СЊ РјРµСЃС‚Рѕ РІ РјР°СЂС€СЂСѓС‚')),
-      );
+      _showFeedback('Не удалось добавить место в маршрут');
       return;
     }
 
@@ -165,9 +183,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
       metadata: _metadata(item),
     );
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Р”РѕР±Р°РІР»РµРЅРѕ РІ РјР°СЂС€СЂСѓС‚: ${item.title}')),
-    );
+    _showFeedback('Добавлено в маршрут: ${item.title}');
   }
 
   Future<void> _openFavoriteDetails(FavoritePlace item) async {
@@ -357,7 +373,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final filteredItems = hasCityFilter
         ? _groups.expand((group) => group.items).toList()
         : const <FavoritePlace>[];
-    final title = widget.titleOverride ?? 'РР·Р±СЂР°РЅРЅРѕРµ';
+    final title = widget.titleOverride ?? 'Избранное';
     final subtitle = widget.subtitleOverride ?? '';
     final content = _buildContent(hasCityFilter, filteredItems);
 
@@ -420,7 +436,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
               ),
               const SizedBox(height: 10),
               Text(
-                'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ СЃРѕС…СЂР°РЅРµРЅРЅС‹Рµ РјРµСЃС‚Р°',
+                'Не удалось загрузить сохраненные места',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontFamily: 'Geologica',
@@ -530,7 +546,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '${visibleItems.length} РјРµСЃС‚',
+                                '${visibleItems.length} мест',
                                 style: TextStyle(
                                   fontFamily: 'Geologica',
                                   color: Colors.white.withOpacity(0.64),
@@ -765,7 +781,7 @@ class _GlassFolderFront extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '$count РјРµСЃС‚',
+                  '$count мест',
                   style: TextStyle(
                     fontFamily: 'Geologica',
                     color: Colors.white.withOpacity(0.72),

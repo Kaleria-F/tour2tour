@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:record/record.dart';
 
+import '../../core/web_microphone_access.dart';
 import 'trips_repo.dart';
 
 class AddStagePayload {
@@ -286,6 +287,7 @@ class _StageFormPageState extends State<StageFormPage> {
   StreamSubscription<Uint8List>? _audioStreamSub;
   Timer? _recordTimer;
   final List<int> _recordedAudioBytes = <int>[];
+  String? _recordedAudioUrl;
   bool _uploadingStageDocument = false;
   bool _processingAssistant = false;
   bool _recordingVoice = false;
@@ -1026,20 +1028,24 @@ class _StageFormPageState extends State<StageFormPage> {
       );
       if (!mounted) return;
       if (draft == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось обработать описание этапа')),
-        );
+        _showAssistantSnackBar('Не удалось обработать описание этапа');
         return;
       }
       _applyAssistantDraft(draft);
       if (_assistantLocked) {
         await _showAssistantPremiumPopup();
       }
+    } on DioException catch (e) {
+      if (!mounted) return;
+      _showAssistantSnackBar(
+        _friendlyAssistantErrorMessage(
+          error: e,
+          fallback: 'Не удалось обработать описание этапа',
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось обработать описание этапа')),
-      );
+      _showAssistantSnackBar('Не удалось обработать описание этапа');
     } finally {
       if (mounted) {
         setState(() => _processingAssistant = false);
@@ -1053,28 +1059,44 @@ class _StageFormPageState extends State<StageFormPage> {
       return;
     }
     if (_processingAssistant || _recordingVoice || _assistantHasText) return;
-    final hasPermission = await _audioRecorder.hasPermission();
+    var hasPermission = await _audioRecorder.hasPermission();
+    if (kIsWeb && !hasPermission) {
+      hasPermission = await requestBrowserMicrophoneAccess();
+    }
     if (!hasPermission) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Нужен доступ к микрофону')),
+      _showAssistantSnackBar(
+        'Разрешите доступ к микрофону в браузере для голосового ввода',
       );
       return;
     }
     _recordTimer?.cancel();
     await _audioStreamSub?.cancel();
+    _audioStreamSub = null;
     _recordedAudioBytes.clear();
+    _recordedAudioUrl = null;
     try {
-      final stream = await _audioRecorder.startStream(
-        const RecordConfig(
-          encoder: AudioEncoder.pcm16bits,
-          sampleRate: 16000,
-          numChannels: 1,
-        ),
-      );
-      _audioStreamSub = stream.listen((chunk) {
-        _recordedAudioBytes.addAll(chunk);
-      });
+      if (kIsWeb) {
+        await _audioRecorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.wav,
+            sampleRate: 16000,
+            numChannels: 1,
+          ),
+          path: 'stage_assistant_recording.wav',
+        );
+      } else {
+        final stream = await _audioRecorder.startStream(
+          const RecordConfig(
+            encoder: AudioEncoder.pcm16bits,
+            sampleRate: 16000,
+            numChannels: 1,
+          ),
+        );
+        _audioStreamSub = stream.listen((chunk) {
+          _recordedAudioBytes.addAll(chunk);
+        });
+      }
       if (!mounted) return;
       setState(() {
         _recordingVoice = true;
@@ -1094,9 +1116,7 @@ class _StageFormPageState extends State<StageFormPage> {
       });
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось начать запись')),
-      );
+      _showAssistantSnackBar('Не удалось начать запись');
     }
   }
 
@@ -1108,9 +1128,24 @@ class _StageFormPageState extends State<StageFormPage> {
   Future<void> _stopVoiceRecordingAndProcess() async {
     if (!_recordingVoice && _recordedAudioBytes.isEmpty) return;
     _recordTimer?.cancel();
-    await _audioRecorder.stop();
+    final recordedPath = await _audioRecorder.stop();
     await _audioStreamSub?.cancel();
     _audioStreamSub = null;
+    if (kIsWeb && (recordedPath?.isNotEmpty ?? false)) {
+      _recordedAudioUrl = recordedPath;
+      try {
+        final res = await Dio().get<List<int>>(
+          recordedPath!,
+          options: Options(responseType: ResponseType.bytes),
+        );
+        final bytes = res.data;
+        if (bytes != null && bytes.isNotEmpty) {
+          _recordedAudioBytes
+            ..clear()
+            ..addAll(bytes);
+        }
+      } catch (_) {}
+    }
     if (!mounted) return;
     setState(() {
       _recordingVoice = false;
@@ -1122,20 +1157,18 @@ class _StageFormPageState extends State<StageFormPage> {
         _recordSecondsLeft = 30;
         _processingAssistant = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Голосовое не записалось')),
-      );
+      _showAssistantSnackBar('Голосовое не записалось');
       return;
     }
     try {
       final transcript = await widget.tripsRepo.transcribeStageAudio(
         audioBytes: Uint8List.fromList(_recordedAudioBytes),
+        filename: kIsWeb ? 'stage-voice.wav' : 'stage-voice.raw',
+        mimeType: kIsWeb ? 'audio/wav' : 'application/octet-stream',
       );
       if (!mounted) return;
       if (transcript == null || transcript.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Не удалось распознать голосовое')),
-        );
+        _showAssistantSnackBar('Не удалось распознать голосовое');
         return;
       }
       final recognizedText = transcript.trim();
@@ -1146,13 +1179,20 @@ class _StageFormPageState extends State<StageFormPage> {
         _processingAssistant = false;
       });
       await _fillFieldsFromAssistantText(sourceText: recognizedText);
+    } on DioException catch (e) {
+      if (!mounted) return;
+      _showAssistantSnackBar(
+        _friendlyAssistantErrorMessage(
+          error: e,
+          fallback: 'Не удалось распознать голосовое',
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось распознать голосовое')),
-      );
+      _showAssistantSnackBar('Не удалось распознать голосовое');
     } finally {
       _recordedAudioBytes.clear();
+      _recordedAudioUrl = null;
       if (mounted) {
         setState(() {
           _recordSecondsLeft = 30;
@@ -1161,6 +1201,86 @@ class _StageFormPageState extends State<StageFormPage> {
         });
       }
     }
+  }
+
+  String? _extractDioErrorMessage(DioException error) {
+    final data = error.response?.data;
+    if (data is Map<String, dynamic>) {
+      final detail = data['detail']?.toString().trim();
+      if (detail != null && detail.isNotEmpty) {
+        return detail;
+      }
+      final message = data['message']?.toString().trim();
+      if (message != null && message.isNotEmpty) {
+        return message;
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) {
+      return data.trim();
+    }
+    return error.message?.trim();
+  }
+
+  void _showAssistantSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: const Color(0xFFD7E37A),
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontFamily: 'Geologica',
+            color: Color(0xFF171717),
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _friendlyAssistantErrorMessage({
+    required DioException error,
+    required String fallback,
+  }) {
+    final raw = (_extractDioErrorMessage(error) ?? '').trim();
+    final lower = raw.toLowerCase();
+    final statusCode = error.response?.statusCode;
+
+    if (lower.contains('unauthorized') ||
+        lower.contains('unknown api key') ||
+        lower.contains('api key')) {
+      return 'Сервис голосового ввода временно недоступен. Попробуйте позже.';
+    }
+    if (lower.contains('speech was not recognized')) {
+      return 'Не удалось распознать речь. Попробуйте сказать фразу чётче.';
+    }
+    if (lower.contains('audio payload is empty')) {
+      return 'Запись получилась пустой. Нажмите и удерживайте кнопку чуть дольше.';
+    }
+    if (lower.contains('audio payload is too large')) {
+      return 'Голосовое получилось слишком длинным. Попробуйте более короткую запись.';
+    }
+    if (lower.contains('invalid wav file') ||
+        lower.contains('16 kHz audio') ||
+        lower.contains('16-bit pcm') ||
+        lower.contains('mono audio')) {
+      return 'Не удалось обработать аудио в этом браузере. Попробуйте Chrome или Edge.';
+    }
+    if (lower.contains('speechkit request failed')) {
+      return 'Сервис распознавания речи временно недоступен. Попробуйте позже.';
+    }
+    if (statusCode == 401 || statusCode == 403) {
+      return 'Сессия истекла. Войдите в аккаунт снова.';
+    }
+    if (statusCode == 500 || statusCode == 502 || statusCode == 503) {
+      return 'Сервис временно недоступен. Попробуйте ещё раз чуть позже.';
+    }
+    if (error.type == DioExceptionType.connectionError ||
+        error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.sendTimeout) {
+      return 'Нет соединения с сервером. Проверьте интернет и попробуйте снова.';
+    }
+    return fallback;
   }
 
   Widget _buildAssistantComposer() {
@@ -1677,12 +1797,14 @@ class _StageFormPageState extends State<StageFormPage> {
   }
 
   Widget _timeField(String label, TextEditingController controller) {
+    final shouldPickEndTimeNext = identical(controller, _startTimeCtrl) &&
+        _transportTimeMode == 'range';
     return TextFormField(
       controller: controller,
       readOnly: true,
       onTap: () => _pickTime(
         controller,
-        nextController: identical(controller, _startTimeCtrl) ? _endTimeCtrl : null,
+        nextController: shouldPickEndTimeNext ? _endTimeCtrl : null,
       ),
       style: const TextStyle(
         fontFamily: 'Geologica',
@@ -1707,7 +1829,7 @@ class _StageFormPageState extends State<StageFormPage> {
               icon: const Icon(Icons.access_time_rounded, color: Colors.white70),
               onPressed: () => _pickTime(
                 controller,
-                nextController: identical(controller, _startTimeCtrl) ? _endTimeCtrl : null,
+                nextController: shouldPickEndTimeNext ? _endTimeCtrl : null,
               ),
             ),
           ],
