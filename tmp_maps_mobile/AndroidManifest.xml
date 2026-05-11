@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Based on https://github.com/evernote/android-job/blob/master/library/src/main/AndroidManifest.xml -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.yandex.maps.mobile"
+    android:versionCode="100000"
+    android:versionName="1.0.0" >
+
+    <uses-sdk
+        android:minSdkVersion="26"
+        tools:overrideLibrary="androidx.car.app" />
+
+    <uses-feature
+        android:glEsVersion="0x00030000"
+        android:required="true" />
+
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application tools:ignore="AllowBackup" >
+        <meta-data
+            android:name="yandex.maps.runtime.stl.linkage"
+            android:value="static" />
+
+        <service
+            android:name="com.yandex.runtime.connectivity.internal.ConnectivityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+    </application>
+
+</manifest>

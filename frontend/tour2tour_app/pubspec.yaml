@@ -45,8 +45,7 @@ dependencies:
   syncfusion_flutter_pdfviewer: ^30.2.7
   url_launcher: ^6.3.2
   shared_preferences: ^2.5.3
-  yandex_maps_mapkit:
-    version: ^4.33.1-beta
+  yandex_maps_mapkit_lite: ^4.33.1-beta
 
 dev_dependencies:
   flutter_test:

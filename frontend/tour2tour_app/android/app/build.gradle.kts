@@ -1,8 +1,16 @@
-plugins {
+﻿plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+configurations.all {
+    resolutionStrategy.dependencySubstitution {
+        substitute(module("com.yandex.android:maps.mobile"))
+            .using(module("com.yandex.maps:maps.mobile:4.33.1-beta-lite-flutter"))
+            .because("yandex_maps_mapkit_lite requires Flutter-specific native symbols")
+    }
 }
 
 android {
@@ -20,11 +28,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.tour2tour_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -32,8 +37,6 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -45,6 +48,5 @@ flutter {
 
 dependencies {
     implementation("com.google.android.gms:play-services-location:21.1.0")
-    // Зависимость Work Manager. Добавлена для использования офлайн-карт.
     implementation("androidx.work:work-runtime:2.9.0")
 }

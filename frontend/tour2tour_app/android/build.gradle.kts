@@ -2,6 +2,7 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        maven("https://maven.yandex.ru/repo/maps-mobile/")
     }
 }
 
@@ -17,6 +18,14 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+    configurations.all {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "com.yandex.android" && requested.name == "maps.mobile") {
+                useTarget("com.yandex.maps:maps.mobile:4.33.1-beta-lite-flutter")
+                because("Flutter Yandex MapKit requires flutter-specific maps.mobile artifact")
+            }
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

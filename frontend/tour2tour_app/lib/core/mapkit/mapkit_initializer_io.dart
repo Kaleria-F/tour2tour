@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:yandex_maps_mapkit/init.dart' as init;
+import 'package:yandex_maps_mapkit_lite/init.dart' as init;
+
+bool _mapkitReady = true;
 
 Future<void> initializeMapkit(String apiKey) async {
   if (apiKey.isEmpty) return;
@@ -7,6 +9,15 @@ Future<void> initializeMapkit(String apiKey) async {
   // The SDK works on mobile targets only.
   if (defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS) {
-    await init.initMapkit(apiKey: apiKey);
+    try {
+      await init.initMapkit(apiKey: apiKey);
+      _mapkitReady = true;
+    } catch (e, st) {
+      _mapkitReady = false;
+      debugPrint('MapKit init failed: $e');
+      debugPrintStack(stackTrace: st);
+    }
   }
 }
+
+bool get isMapkitReady => _mapkitReady;

@@ -6,10 +6,12 @@ import 'dart:ui';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:yandex_maps_mapkit/mapkit.dart' as ymk;
-import 'package:yandex_maps_mapkit/yandex_map.dart';
+import 'package:yandex_maps_mapkit_lite/mapkit.dart' as ymk;
+import 'package:yandex_maps_mapkit_lite/mapkit_factory.dart' as ymk_factory;
+import 'package:yandex_maps_mapkit_lite/yandex_map.dart';
 
 import '../../../config.dart';
+import '../../../core/mapkit/mapkit_initializer.dart';
 
 class YandexCityMap extends StatefulWidget {
   final String? city;
@@ -29,7 +31,7 @@ class YandexCityMap extends StatefulWidget {
   State<YandexCityMap> createState() => _YandexCityMapState();
 }
 
-class _YandexCityMapState extends State<YandexCityMap> {
+class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserver {
   static const _geocoderApiKey = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
   static const _fallbackCenter = ymk.Point(latitude: 55.755814, longitude: 37.617635);
 
@@ -59,6 +61,28 @@ class _YandexCityMapState extends State<YandexCityMap> {
   String? _lastSearchAddress;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startMapkitIfNeeded();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _startMapkitIfNeeded();
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        _stopMapkitIfNeeded();
+        break;
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant YandexCityMap oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (_map == null) return;
@@ -81,9 +105,25 @@ class _YandexCityMapState extends State<YandexCityMap> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopMapkitIfNeeded();
     _clearAllMapObjects();
     _dio.close(force: true);
     super.dispose();
+  }
+
+  void _startMapkitIfNeeded() {
+    if (!_isMobileTarget || !isMapkitReady) return;
+    try {
+      ymk_factory.mapkit.onStart();
+    } catch (_) {}
+  }
+
+  void _stopMapkitIfNeeded() {
+    if (!_isMobileTarget || !isMapkitReady) return;
+    try {
+      ymk_factory.mapkit.onStop();
+    } catch (_) {}
   }
 
   bool get _isMobileTarget =>
@@ -103,6 +143,22 @@ class _YandexCityMapState extends State<YandexCityMap> {
         child: Text(
           'Карта поддерживается на Android/iOS',
           style: TextStyle(color: Colors.white.withOpacity(0.85)),
+        ),
+      );
+    }
+    if (!isMapkitReady) {
+      return Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.14)),
+          color: const Color(0xFF131A2D),
+        ),
+        padding: const EdgeInsets.all(16),
+        alignment: Alignment.center,
+        child: Text(
+          'Карта временно недоступна на этом устройстве.\nПроверьте Android-конфигурацию MapKit.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white.withOpacity(0.88), height: 1.35),
         ),
       );
     }
@@ -291,11 +347,13 @@ class _YandexCityMapState extends State<YandexCityMap> {
       );
     }
 
-    ymk.Point? focus = _averagePoint(resolved.map((e) => e.point).toList());
-    if (focus == null) {
-      focus = await _geocode((widget.city ?? '').trim()) ?? _fallbackCenter;
+    final cityQuery = (widget.city ?? '').trim();
+    ymk.Point? focus;
+    if (cityQuery.isNotEmpty) {
+      focus = await _geocode(cityQuery);
       if (!mounted || revision != _renderRev) return;
     }
+    focus ??= _averagePoint(resolved.map((e) => e.point).toList()) ?? _fallbackCenter;
 
     for (var i = 0; i < resolved.length; i++) {
       final place = map.mapObjects.addPlacemarkWithPoint(resolved[i].point);
