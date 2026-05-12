@@ -35,7 +35,7 @@ extension _TripWorkspaceBudgetSection on _TripWorkspacePageState {
             children: [
               Expanded(
                 child: Text(
-                  'Общие расходы: ${total.toStringAsFixed(2)} руб.',
+                  'Общая сумма: ${total.toStringAsFixed(2)} руб.',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
@@ -45,7 +45,7 @@ extension _TripWorkspaceBudgetSection on _TripWorkspacePageState {
                 ),
               ),
               IconButton(
-                tooltip: 'Диаграмма расходов',
+                tooltip: 'Аналитика расходов',
                 onPressed: () {
                   setState(() {
                     _showBudgetAnalytics = true;
@@ -199,7 +199,7 @@ extension _TripWorkspaceBudgetSection on _TripWorkspacePageState {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.add),
-              label: const Text('Добавить расходы'),
+              label: const Text('Добавить расход'),
             ),
           ),
           const SizedBox(height: 12),
@@ -409,4 +409,5 @@ extension _TripWorkspaceBudgetSection on _TripWorkspacePageState {
     );
   }
 }
+
 

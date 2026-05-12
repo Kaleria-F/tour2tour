@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+﻿import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:dio/dio.dart';
@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:record/record.dart';
 
+import '../../core/mapkit/mapkit_initializer.dart';
 import '../../core/web_microphone_access.dart';
 import '../documents/documents_repo.dart';
 import '../favorites/favorites_page.dart';
@@ -141,7 +142,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     'transport': Color(0xFF7AE3BA), // #7ae3ba
     'shopping': Color(0xFFA3E37A), // #a3e37a
     'entertainment': Color(0xFFB6A1FF), // #b6a1ff
-    'other': Color(0xFF7AB4E3), // РіР°СЂРјРѕРЅРёС‡РЅС‹Р№ 6-Р№ (РіРѕР»СѓР±РѕР№)
+    'other': Color(0xFF7AB4E3), // Р С–Р В°РЎР‚Р СР С•Р Р…Р С‘РЎвЂЎР Р…РЎвЂ№Р в„– 6-Р в„– (Р С–Р С•Р В»РЎС“Р В±Р С•Р в„–)
   };
 
   static const _stageTypeLabels = {
@@ -149,7 +150,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     'place': 'Посещение места',
     'stay': 'Отдых / проживание',
     'food': 'Еда',
-    'shopping': 'Шопинг',
+    'shopping': 'Шоппинг',
     'activity': 'Активность',
   };
 
@@ -1389,7 +1390,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         );
       case 'activity':
         return const _StageVisualConfig(
-          iconColor: Color(0xFF7AB4E3), // РіР°СЂРјРѕРЅРёС‡РЅС‹Р№ РіРѕР»СѓР±РѕР№
+          iconColor: Color(0xFF7AB4E3), // Р С–Р В°РЎР‚Р СР С•Р Р…Р С‘РЎвЂЎР Р…РЎвЂ№Р в„– Р С–Р С•Р В»РЎС“Р В±Р С•Р в„–
           backgroundColor: Color(0x1A7AB4E3),
           borderColor: Color(0x337AB4E3),
         );
@@ -1959,12 +1960,21 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
 
     for (final stage in orderedStages) {
-      final address = ((stage.address ?? '').trim().isNotEmpty
-              ? (stage.address ?? '').trim()
-              : ((stage.endLocation ?? '').trim().isNotEmpty
-                  ? (stage.endLocation ?? '').trim()
-                  : (stage.startLocation ?? '').trim()))
-          .trim();
+      final cityNorm = city.trim().toLowerCase();
+      final candidates = <String>[
+        (stage.address ?? '').trim(),
+        (stage.endLocation ?? '').trim(),
+        (stage.startLocation ?? '').trim(),
+      ].where((e) => e.isNotEmpty).toList();
+      if (candidates.isEmpty) continue;
+      candidates.sort((a, b) => b.length.compareTo(a.length));
+      var address = candidates.first;
+      if (address.toLowerCase() == cityNorm && candidates.length > 1) {
+        address = candidates.firstWhere(
+          (c) => c.toLowerCase() != cityNorm,
+          orElse: () => address,
+        );
+      }
       if (address.isEmpty) continue;
       final time = stageTimeRange(stage);
       final duration = stage.durationMinutes != null && stage.durationMinutes! > 0
@@ -1972,11 +1982,22 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           : '';
       stagePoints.add({
         'title': stage.title.trim(),
+        'stage_type': stage.stageType,
+        'subtype': stage.subtype,
+        'start_location': (stage.startLocation ?? '').trim(),
+        'end_location': (stage.endLocation ?? '').trim(),
         'address': address,
         'order': '$routeOrder',
         'time': time.isNotEmpty ? time : duration,
+        'start_time': fmtHm(stage.startTime),
+        'end_time': fmtHm(stage.endTime),
         'cost': stage.costRub == null ? '' : '${stage.costRub!.toStringAsFixed(2)} руб.',
+        'duration': duration,
+        'reference_number': (stage.referenceNumber ?? '').trim(),
         'notes': (stage.notes ?? '').trim(),
+        'website_url': (stage.websiteUrl ?? '').trim(),
+        'rating': stage.rating == null ? '' : stage.rating!.toStringAsFixed(1),
+        'document_key': (stage.documentKey ?? '').trim(),
       });
       routeOrder += 1;
     }
@@ -2388,7 +2409,7 @@ class _AddExpenseDialog extends StatefulWidget {
   const _AddExpenseDialog({
     required this.categories,
     this.initial,
-    this.title = 'Добавить расходы',
+    this.title = 'Добавить расход',
     this.submitLabel = 'Создать',
   });
 
@@ -4075,6 +4096,7 @@ class _RouteTimelineState extends State<_RouteTimeline> {
   final Map<int, int> _dragOffsetByStageId = <int, int>{};
   final Map<int, double> _dragRawOffsetMinutesByStageId = <int, double>{};
   final Set<int> _draggingStageIds = <int>{};
+  int? _activeDragStageId;
   final ScrollController _scrollController = ScrollController();
   String _itemsSignature = '';
 
@@ -4090,6 +4112,10 @@ class _RouteTimelineState extends State<_RouteTimeline> {
   @override
   void didUpdateWidget(covariant _RouteTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_activeDragStageId != null &&
+        !widget.items.any((e) => e.stage.id == _activeDragStageId)) {
+      _activeDragStageId = null;
+    }
     final nextSig = _buildItemsSignature(widget.items);
     if (nextSig != _itemsSignature) {
       _itemsSignature = nextSig;
@@ -4252,31 +4278,39 @@ class _RouteTimelineState extends State<_RouteTimeline> {
                     ),
                   ],
                   for (final item in visible)
-                    Builder(
-                      builder: (_) {
-                        final clusterId = clusterByItem[item] ?? 0;
-                        final columnsInCluster = clusterMaxColumns[clusterId] ?? 1;
-                        final blockWidth =
-                            (contentWidth - gap * (columnsInCluster - 1)) /
-                                columnsInCluster;
-                        final win = _windowWithOffset(item);
-                        return Positioned(
-                          top: verticalInset +
-                              ((win.start - dayStart) / 60) * _pxPerHour +
-                              2,
-                          left: contentLeft + (layout[item]! * (blockWidth + gap)),
-                          width: blockWidth,
-                          height: (((win.end - win.start) / 60) * _pxPerHour)
-                              .clamp(34, timelineHeight),
-                          child: GestureDetector(
+                    KeyedSubtree(
+                      key: ValueKey<int>(item.stage.id),
+                      child: Builder(
+                        builder: (_) {
+                          final clusterId = clusterByItem[item] ?? 0;
+                          final columnsInCluster = clusterMaxColumns[clusterId] ?? 1;
+                          final blockWidth =
+                              (contentWidth - gap * (columnsInCluster - 1)) /
+                                  columnsInCluster;
+                          final win = _windowWithOffset(item);
+                          return Positioned(
+                            top: verticalInset +
+                                ((win.start - dayStart) / 60) * _pxPerHour +
+                                2,
+                            left: contentLeft + (layout[item]! * (blockWidth + gap)),
+                            width: blockWidth,
+                            height: (((win.end - win.start) / 60) * _pxPerHour)
+                                .clamp(34, timelineHeight),
+                            child: GestureDetector(
                             onVerticalDragStart: (_) {
+                              if (_activeDragStageId != null &&
+                                  _activeDragStageId != item.stage.id) {
+                                return;
+                              }
                               setState(() {
+                                _activeDragStageId = item.stage.id;
                                 _draggingStageIds.add(item.stage.id);
                                 _dragRawOffsetMinutesByStageId[item.stage.id] =
                                     (_dragOffsetByStageId[item.stage.id] ?? 0).toDouble();
                               });
                             },
                             onVerticalDragUpdate: (details) {
+                              if (_activeDragStageId != item.stage.id) return;
                               final currentRaw =
                                   _dragRawOffsetMinutesByStageId[item.stage.id] ?? 0.0;
                               final nextRaw =
@@ -4293,6 +4327,7 @@ class _RouteTimelineState extends State<_RouteTimeline> {
                               });
                             },
                             onVerticalDragEnd: (_) async {
+                              if (_activeDragStageId != item.stage.id) return;
                               final offset = _dragOffsetByStageId[item.stage.id] ?? 0;
                               final duration = (item.endMin - item.startMin).clamp(15, 24 * 60);
                               final start = (item.startMin + offset).clamp(0, 24 * 60 - duration);
@@ -4304,13 +4339,18 @@ class _RouteTimelineState extends State<_RouteTimeline> {
                                 _draggingStageIds.remove(item.stage.id);
                                 _dragOffsetByStageId.remove(item.stage.id);
                                 _dragRawOffsetMinutesByStageId.remove(item.stage.id);
+                                if (_activeDragStageId == item.stage.id) {
+                                  _activeDragStageId = null;
+                                }
                               });
                             },
                             onVerticalDragCancel: () {
+                              if (_activeDragStageId != item.stage.id) return;
                               setState(() {
                                 _draggingStageIds.remove(item.stage.id);
                                 _dragOffsetByStageId.remove(item.stage.id);
                                 _dragRawOffsetMinutesByStageId.remove(item.stage.id);
+                                _activeDragStageId = null;
                               });
                             },
                             child: InkWell(
@@ -4371,9 +4411,10 @@ class _RouteTimelineState extends State<_RouteTimeline> {
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      },
+                            ),
+                          );
+                        },
+                      ),
                     ),
                 ],
               );
@@ -5462,6 +5503,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
   bool _showSuggestions = false;
   List<_MapSuggestItem> _suggestions = const [];
   String _lastSuggestQuery = '';
+  bool _applyingSuggestionSelection = false;
   String? _tripBoundsBbox;
   double? _tripCenterLat;
   double? _tripCenterLon;
@@ -5491,6 +5533,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
     super.dispose();
   }
 
+
   void _onSearchFocusChanged() {
     if (!mounted) return;
     if (_searchFocusNode.hasFocus) {
@@ -5502,6 +5545,11 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
 
   void _onSearchChanged() {
     final query = _searchCtrl.text.trim();
+    if (!_applyingSuggestionSelection &&
+        _selectedSuggestionTitle != null &&
+        query != _mapQuery.trim()) {
+      _selectedSuggestionTitle = null;
+    }
     _suggestDebounce?.cancel();
     _suggestDebounce = Timer(const Duration(milliseconds: 280), () {
       _loadSuggest(query);
@@ -5572,6 +5620,18 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
           title = _normalizeSuggestText(title);
           subtitle = _normalizeSuggestText(subtitle);
           if (title.isEmpty && subtitle.isEmpty) continue;
+          final uri = _normalizeSuggestText('${map['uri'] ?? ''}');
+          final kind = _normalizeSuggestText('${map['kind'] ?? map['type'] ?? ''}').toLowerCase();
+          final searchTextRaw = _normalizeSuggestText('${map['search_text'] ?? ''}');
+          final displayTextRaw = _normalizeSuggestText('${map['display_text'] ?? ''}');
+          final isBiz = _isBusinessSuggest(
+            title: title,
+            subtitle: subtitle,
+            uri: uri,
+            kind: kind,
+            searchText: searchTextRaw,
+            displayText: displayTextRaw,
+          );
           double? centerLat;
           double? centerLon;
           final centerRaw = map['center'];
@@ -5595,8 +5655,11 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
             _MapSuggestItem(
               title: title.isEmpty ? subtitle : title,
               subtitle: subtitle,
+              searchText: searchTextRaw,
+              displayText: displayTextRaw,
               centerLat: centerLat,
               centerLon: centerLon,
+              isBusiness: isBiz,
             ),
           );
           if (parsed.length >= 5) break;
@@ -5619,10 +5682,11 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
 
   void _onSuggestionTap(_MapSuggestItem item) {
     final query = item.addressQuery;
-    _selectedSuggestionTitle = item.title.trim();
+    _selectedSuggestionTitle = item.stageTitle;
     _searchPointLat = item.centerLat;
     _searchPointLon = item.centerLon;
     _suggestDebounce?.cancel();
+    _applyingSuggestionSelection = true;
     _searchCtrl.text = query;
     _searchCtrl.selection = TextSelection.collapsed(offset: _searchCtrl.text.length);
     setState(() {
@@ -5642,6 +5706,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
         _suggestLoading = false;
       });
       _searchFocusNode.unfocus();
+      _applyingSuggestionSelection = false;
     });
   }
 
@@ -5696,6 +5761,40 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
       out = out.substring(1);
     }
     return out;
+  }
+
+  bool _looksLikeAddressText(String value) {
+    final text = value.toLowerCase().trim();
+    if (text.isEmpty) return false;
+    final hasDigits = RegExp(r'\d').hasMatch(text);
+    final addressWords = RegExp(
+      r'\b(ул\.?|улиц|просп|пр-т|пр\.?|пер\.?|переул|пл\.?|площад|наб\.?|набереж|шоссе|ш\.?|бульв|бул\.?|д\.?|дом|корп\.?|корпус|стр\.?|строен|кв\.?|квартир)\b',
+      caseSensitive: false,
+    );
+    return addressWords.hasMatch(text) || hasDigits;
+  }
+
+  bool _isBusinessSuggest({
+    required String title,
+    required String subtitle,
+    required String uri,
+    required String kind,
+    required String searchText,
+    required String displayText,
+  }) {
+    if (uri.trim().isNotEmpty) return true;
+    if (kind.contains('biz') || kind.contains('business') || kind.contains('org')) {
+      return true;
+    }
+    final titleLooksAddress = _looksLikeAddressText(title);
+    final searchLooksAddress = _looksLikeAddressText(searchText);
+    final displayLooksAddress = _looksLikeAddressText(displayText);
+    // If title is not address-like and subtitle is present, most often this is organization.
+    if (!titleLooksAddress && subtitle.trim().isNotEmpty) return true;
+    // If the entered/result text clearly looks like an address, classify as geo-address.
+    if (searchLooksAddress || displayLooksAddress || titleLooksAddress) return false;
+    // Conservative fallback: treat as business only when we have a distinct title + subtitle pair.
+    return title.trim().isNotEmpty && subtitle.trim().isNotEmpty;
   }
 
   Future<void> _resolveTripBounds() async {
@@ -6031,17 +6130,23 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
 class _MapSuggestItem {
   final String title;
   final String subtitle;
+  final String searchText;
+  final String displayText;
   final double? centerLat;
   final double? centerLon;
+  final bool isBusiness;
 
   const _MapSuggestItem({
     required this.title,
     required this.subtitle,
+    this.searchText = '',
+    this.displayText = '',
     this.centerLat,
     this.centerLon,
+    this.isBusiness = false,
   });
 
-  String get searchText {
+  String get fullSearchText {
     final t = title.trim();
     final s = subtitle.trim();
     if (t.isEmpty) return s;
@@ -6050,6 +6155,20 @@ class _MapSuggestItem {
   }
 
   String get addressQuery {
+    if (!isBusiness) {
+      final titleTrim = title.trim();
+      final subtitleTrim = subtitle.trim();
+      final searchTrim = searchText.trim();
+      final displayTrim = displayText.trim();
+      if (titleTrim.isNotEmpty && subtitleTrim.isNotEmpty) {
+        return '$titleTrim, $subtitleTrim';
+      }
+      if (displayTrim.isNotEmpty) return displayTrim;
+      if (searchTrim.isNotEmpty) return searchTrim;
+      if (titleTrim.isNotEmpty) return titleTrim;
+      return subtitleTrim;
+    }
+
     final s = subtitle.trim();
     if (s.isNotEmpty) {
       if (s.contains('·')) {
@@ -6064,6 +6183,11 @@ class _MapSuggestItem {
       }
       return s;
     }
+    return title.trim();
+  }
+
+  String get stageTitle {
+    if (!isBusiness) return '';
     return title.trim();
   }
 }
@@ -6481,6 +6605,7 @@ class _RouteAssistantTextDialogState extends State<_RouteAssistantTextDialog> {
     );
   }
 }
+
 
 
 

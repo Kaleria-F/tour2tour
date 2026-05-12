@@ -21,8 +21,8 @@ subprojects {
     configurations.all {
         resolutionStrategy.eachDependency {
             if (requested.group == "com.yandex.android" && requested.name == "maps.mobile") {
-                useTarget("com.yandex.maps:maps.mobile:4.33.1-beta-lite-flutter")
-                because("Flutter Yandex MapKit requires flutter-specific maps.mobile artifact")
+                useTarget("com.yandex.maps:maps.mobile:4.33.1-beta-full-flutter")
+                because("Flutter Yandex MapKit full requires flutter-specific maps.mobile artifact")
             }
         }
     }

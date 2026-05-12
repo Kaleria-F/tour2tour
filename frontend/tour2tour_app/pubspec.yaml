@@ -45,7 +45,7 @@ dependencies:
   syncfusion_flutter_pdfviewer: ^30.2.7
   url_launcher: ^6.3.2
   shared_preferences: ^2.5.3
-  yandex_maps_mapkit_lite: ^4.33.1-beta
+  yandex_maps_mapkit: ^4.33.1-beta
 
 dev_dependencies:
   flutter_test:
@@ -98,3 +98,13 @@ flutter:
           weight: 700
         - asset: assets/fonts/Geologica-ExtraBold.ttf
           weight: 800
+    # Local Roboto alias for Flutter Web fallback.
+    # Prevents runtime fetch from fonts.gstatic.com in restricted/offline networks.
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Geologica-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Geologica-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Geologica-Bold.ttf
+          weight: 700

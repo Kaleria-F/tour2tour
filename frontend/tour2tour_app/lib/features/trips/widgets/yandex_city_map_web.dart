@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:html' as html;
+import 'dart:js_util' as js_util;
 import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/material.dart';
@@ -62,6 +63,11 @@ class _YandexCityMapState extends State<YandexCityMap> {
         if (raw is String) address = raw.trim();
       } else if (detail is String) {
         address = detail.trim();
+      } else if (detail != null) {
+        try {
+          final raw = js_util.getProperty(detail, 'address');
+          if (raw is String) address = raw.trim();
+        } catch (_) {}
       }
       if (address == null || address.isEmpty) return;
       widget.onAddRouteFromSearch!(address);
@@ -112,9 +118,20 @@ class _YandexCityMapState extends State<YandexCityMap> {
               'title': (point['title'] ?? '').trim(),
               'address': (point['address'] ?? '').trim(),
               'order': (point['order'] ?? '').trim(),
+              'stage_type': (point['stage_type'] ?? '').trim(),
+              'subtype': (point['subtype'] ?? '').trim(),
               'time': (point['time'] ?? '').trim(),
+              'start_time': (point['start_time'] ?? '').trim(),
+              'end_time': (point['end_time'] ?? '').trim(),
               'cost': (point['cost'] ?? '').trim(),
+              'duration': (point['duration'] ?? '').trim(),
+              'start_location': (point['start_location'] ?? '').trim(),
+              'end_location': (point['end_location'] ?? '').trim(),
+              'reference_number': (point['reference_number'] ?? '').trim(),
               'notes': (point['notes'] ?? '').trim(),
+              'website_url': (point['website_url'] ?? '').trim(),
+              'rating': (point['rating'] ?? '').trim(),
+              'document_key': (point['document_key'] ?? '').trim(),
             })
         .where((point) => (point['address'] ?? '').isNotEmpty)
         .toList();

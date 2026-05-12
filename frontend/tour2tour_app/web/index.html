@@ -14,7 +14,7 @@
     This is a placeholder for base href that will be replaced by the value of
     the `--base-href` argument provided to `flutter build`.
   -->
-  <base href="$FLUTTER_BASE_HREF">
+  <base href="/">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
@@ -275,8 +275,65 @@
         return button;
       }
 
+      function ensureZoomControls(state) {
+        if (!state || !state.container || !state.map) return null;
+        if (state.zoomControls) return state.zoomControls;
+
+        const wrap = document.createElement('div');
+        wrap.style.position = 'absolute';
+        wrap.style.right = '10px';
+        wrap.style.top = '12px';
+        wrap.style.zIndex = '7';
+        wrap.style.display = 'flex';
+        wrap.style.flexDirection = 'column';
+        wrap.style.gap = '8px';
+        wrap.style.pointerEvents = 'auto';
+
+        function mkBtn(label, delta) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = label;
+          btn.style.width = '40px';
+          btn.style.height = '40px';
+          btn.style.border = '1px solid rgba(255,255,255,.24)';
+          btn.style.borderRadius = '12px';
+          btn.style.padding = '0';
+          btn.style.background = 'rgba(19,24,41,.92)';
+          btn.style.color = '#D7E37A';
+          btn.style.fontSize = '24px';
+          btn.style.lineHeight = '1';
+          btn.style.fontWeight = '700';
+          btn.style.cursor = 'pointer';
+          btn.style.display = 'inline-flex';
+          btn.style.alignItems = 'center';
+          btn.style.justifyContent = 'center';
+          btn.style.boxShadow = '0 6px 18px rgba(0,0,0,.28)';
+          btn.addEventListener('click', () => {
+            const zoom = Number(state.currentZoom || 11);
+            const nextZoom = Math.max(2, Math.min(20, zoom + delta));
+            state.currentZoom = nextZoom;
+            try {
+              state.map.update({
+                location: { zoom: nextZoom, duration: 180 },
+              });
+            } catch (_) {}
+          });
+          return btn;
+        }
+
+        wrap.appendChild(mkBtn('+', 1));
+        wrap.appendChild(mkBtn('−', -1));
+        state.container.appendChild(wrap);
+        state.zoomControls = wrap;
+        return wrap;
+      }
+
       function syncBottomControls(state) {
-        if (!state || !state.container || !state.routePanel || !state.addRouteButton) return;
+        if (!state || !state.container || !state.addRouteButton) return;
+        if (!state.routePanel || state.routePanel.style.display === 'none') {
+          state.addRouteButton.style.bottom = '34px';
+          return;
+        }
         const panel = state.routePanel;
         const button = state.addRouteButton;
         const bottom = parseFloat((panel.style.bottom || '34').replace('px', '')) || 34;
@@ -361,11 +418,18 @@
         panel.style.fontSize = '13px';
         panel.style.width = 'max-content';
         panel.style.maxWidth = 'calc(100% - 176px)';
+        panel.style.display = 'none';
+
+        const rowTop = document.createElement('div');
+        rowTop.style.display = 'flex';
+        rowTop.style.alignItems = 'center';
+        rowTop.style.justifyContent = 'space-between';
+        rowTop.style.gap = '8px';
+        rowTop.style.marginBottom = '6px';
 
         const tabs = document.createElement('div');
         tabs.style.display = 'flex';
         tabs.style.gap = '6px';
-        tabs.style.marginBottom = '6px';
 
         function mkBtn(icon, mode, title) {
           const btn = document.createElement('button');
@@ -421,6 +485,28 @@
         tabs.appendChild(btnWalk);
         tabs.appendChild(btnBike);
 
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.textContent = '✕';
+        closeBtn.title = 'Закрыть';
+        closeBtn.setAttribute('aria-label', 'Закрыть');
+        closeBtn.style.border = '1px solid rgba(255,255,255,.24)';
+        closeBtn.style.borderRadius = '999px';
+        closeBtn.style.width = '36px';
+        closeBtn.style.height = '36px';
+        closeBtn.style.padding = '0';
+        closeBtn.style.background = 'transparent';
+        closeBtn.style.color = 'rgba(223,230,255,.9)';
+        closeBtn.style.cursor = 'pointer';
+        closeBtn.style.fontSize = '16px';
+        closeBtn.style.display = 'inline-flex';
+        closeBtn.style.alignItems = 'center';
+        closeBtn.style.justifyContent = 'center';
+        closeBtn.addEventListener('click', () => closeRouteBuilder(state));
+
+        rowTop.appendChild(tabs);
+        rowTop.appendChild(closeBtn);
+
         const info = document.createElement('div');
         info.textContent = 'Выберите 2 точки на карте';
         info.style.color = 'rgba(223,230,255,.9)';
@@ -428,7 +514,7 @@
         info.style.fontSize = '13px';
         info.style.lineHeight = '1.2';
 
-        panel.appendChild(tabs);
+        panel.appendChild(rowTop);
         panel.appendChild(info);
         state.container.appendChild(panel);
         state.routePanel = panel;
@@ -436,6 +522,67 @@
         state.routeModeButtons = [btnCar, btnWalk, btnBike];
         syncBottomControls(state);
         return panel;
+      }
+
+      function ensureRouteStartButton(state) {
+        if (!state || !state.container) return null;
+        if (state.routeStartButton) return state.routeStartButton;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Построить маршрут';
+        btn.style.position = 'absolute';
+        btn.style.left = '12px';
+        btn.style.bottom = '34px';
+        btn.style.zIndex = '7';
+        btn.style.pointerEvents = 'auto';
+        btn.style.border = '1px solid rgba(255,255,255,.24)';
+        btn.style.borderRadius = '999px';
+        btn.style.padding = '9px 14px';
+        btn.style.background = 'rgba(19,24,41,.92)';
+        btn.style.color = '#D7E37A';
+        btn.style.fontSize = '13px';
+        btn.style.fontWeight = '700';
+        btn.style.cursor = 'pointer';
+        btn.style.boxShadow = '0 6px 18px rgba(0,0,0,.28)';
+        btn.style.fontFamily = '"Geologica", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        btn.addEventListener('click', () => openRouteBuilder(state));
+        state.container.appendChild(btn);
+        state.routeStartButton = btn;
+        return btn;
+      }
+
+      function updateRouteBuilderUi(state) {
+        if (!state) return;
+        ensureRoutePanel(state);
+        ensureRouteStartButton(state);
+        const active = Boolean(state.routeBuilderActive);
+        if (state.routePanel) {
+          state.routePanel.style.display = active ? 'block' : 'none';
+        }
+        if (state.routeStartButton) {
+          state.routeStartButton.style.display = active ? 'none' : 'inline-flex';
+        }
+        syncBottomControls(state);
+      }
+
+      function openRouteBuilder(state) {
+        if (!state) return;
+        state.routeBuilderActive = true;
+        state.selectedPointIndexes = [];
+        clearRoute(state);
+        hideStageInfo(state);
+        updateMarkerSelectionVisual(state);
+        setRouteInfo(state, 'Выберите 2 точки на карте');
+        updateRouteBuilderUi(state);
+      }
+
+      function closeRouteBuilder(state) {
+        if (!state) return;
+        state.routeBuilderActive = false;
+        state.selectedPointIndexes = [];
+        clearRoute(state);
+        updateMarkerSelectionVisual(state);
+        updateRouteBuilderUi(state);
       }
 
       function updateRouteModeVisual(state) {
@@ -519,6 +666,7 @@
         if (!state || !state.stageInfoCard) return;
         state.stageInfoCard.style.opacity = '0';
         state.stageInfoCard.style.transform = 'translateY(20px)';
+        state.stageInfoCard.style.pointerEvents = 'none';
         state.selectedStageInfo = null;
       }
 
@@ -550,6 +698,7 @@
         }
         state.stageInfoCard.style.opacity = '1';
         state.stageInfoCard.style.transform = 'translateY(0)';
+        state.stageInfoCard.style.pointerEvents = 'auto';
       }
 
       function bindLongPress(element, callback) {
@@ -590,6 +739,7 @@
 
       async function buildRouteIfReady(state) {
         if (!state) return;
+        if (!state.routeBuilderActive) return;
         clearRoute(state);
         const idxs = state.selectedPointIndexes || [];
         if (idxs.length !== 2) {
@@ -810,15 +960,22 @@
             selectedSuggestionMarker: null,
             addRouteButton: null,
             routePanel: null,
+            routeStartButton: null,
             routeInfo: null,
             routeModeButtons: [],
             routeMode: 'driving-car',
+            routeBuilderActive: false,
             selectedPointIndexes: [],
             routeFeature: null,
+            currentZoom: 11,
+            zoomControls: null,
           };
           mapState.set(container, state);
           ensureAddRouteButton(state);
           ensureRoutePanel(state);
+          ensureRouteStartButton(state);
+          updateRouteBuilderUi(state);
+          ensureZoomControls(state);
           updateRouteModeVisual(state);
         }
 
@@ -828,9 +985,11 @@
         state.markersMeta = [];
         const center = points.length ? averageCenter(points) : focusCoords;
         const zoom = points.length > 1 ? 10 : 11;
+        state.currentZoom = zoom;
         state.map.update({
           location: { center: center, zoom: zoom, duration: 300 },
         });
+        ensureZoomControls(state);
 
         points.forEach((point, pointIndex) => {
           const markerElement = createMarkerElement({
@@ -840,6 +999,10 @@
           markerElement.style.cursor = 'pointer';
           markerElement.addEventListener('click', async (ev) => {
             ev.stopPropagation();
+            if (!state.routeBuilderActive) {
+              showStageInfo(state, point);
+              return;
+            }
             const arr = state.selectedPointIndexes || [];
             const existing = arr.indexOf(pointIndex);
             if (existing >= 0) {
@@ -851,9 +1014,6 @@
             state.selectedPointIndexes = arr;
             updateMarkerSelectionVisual(state);
             await buildRouteIfReady(state);
-          });
-          bindLongPress(markerElement, () => {
-            showStageInfo(state, point);
           });
           markerElement.title = point.title || '';
           const marker = new YMapMarker(
@@ -871,8 +1031,9 @@
         });
         updateMarkerSelectionVisual(state);
         ensureRoutePanel(state);
+        ensureRouteStartButton(state);
+        updateRouteBuilderUi(state);
         updateRouteModeVisual(state);
-        setRouteInfo(state, 'Выберите 2 точки на карте');
         await renderAddressSearchMarker(state, searchText, city);
       }
 

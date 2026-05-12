@@ -8,8 +8,8 @@
 configurations.all {
     resolutionStrategy.dependencySubstitution {
         substitute(module("com.yandex.android:maps.mobile"))
-            .using(module("com.yandex.maps:maps.mobile:4.33.1-beta-lite-flutter"))
-            .because("yandex_maps_mapkit_lite requires Flutter-specific native symbols")
+            .using(module("com.yandex.maps:maps.mobile:4.33.1-beta-full-flutter"))
+            .because("yandex_maps_mapkit (full) requires Flutter-specific native symbols")
     }
 }
 

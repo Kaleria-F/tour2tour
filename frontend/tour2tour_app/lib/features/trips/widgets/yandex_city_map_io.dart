@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
@@ -6,9 +6,10 @@ import 'dart:ui';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:yandex_maps_mapkit_lite/mapkit.dart' as ymk;
-import 'package:yandex_maps_mapkit_lite/mapkit_factory.dart' as ymk_factory;
-import 'package:yandex_maps_mapkit_lite/yandex_map.dart';
+import 'package:yandex_maps_mapkit/mapkit.dart' as ymk;
+import 'package:yandex_maps_mapkit/mapkit_factory.dart' as ymk_factory;
+import 'package:yandex_maps_mapkit/search.dart' as ymk_search;
+import 'package:yandex_maps_mapkit/yandex_map.dart';
 
 import '../../../config.dart';
 import '../../../core/mapkit/mapkit_initializer.dart';
@@ -40,8 +41,9 @@ class YandexCityMap extends StatefulWidget {
 }
 
 class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserver {
-  static const _geocoderApiKey = 'acf6e354-8f9c-4163-9d37-54bf33ee956b';
   static const _fallbackCenter = ymk.Point(latitude: 55.755814, longitude: 37.617635);
+  static const double _stageCircleSize = 30.0;
+  static const double _stageNumberSize = 12.0;
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -52,6 +54,9 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
 
   ymk.MapWindow? _mapWindow;
   ymk.Map? _map;
+  ymk_search.SearchManager? _searchManager;
+  ymk_search.SearchSession? _activeSearchSession;
+  ymk_search.SearchSessionSearchListener? _activeSearchListener;
 
   final Map<String, ymk.Point> _geocodeCache = <String, ymk.Point>{};
   int _renderRev = 0;
@@ -64,6 +69,7 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
   _SearchMarkerRef? _searchMarker;
   ymk.PolylineMapObject? _routeLine;
 
+  bool _routeBuilderActive = false;
   _RouteMode _routeMode = _RouteMode.drivingCar;
   String _routeInfo = 'Выберите 2 точки на карте';
   String? _lastSearchAddress;
@@ -139,6 +145,8 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
     if (!_isMobileTarget || !isMapkitReady) return;
     try {
       ymk_factory.mapkit.onStart();
+      _searchManager ??= ymk_search.SearchFactory.instance
+          .createSearchManager(ymk_search.SearchManagerType.Online);
     } catch (_) {}
   }
 
@@ -235,12 +243,19 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
             Positioned(
               left: 10,
               bottom: 34,
-              child: _buildRoutePanel(),
+              child: _routeBuilderActive
+                  ? _buildRoutePanel()
+                  : _buildRouteStartButton(),
             ),
             Positioned(
               right: 10,
               bottom: 34,
               child: _buildAddButton(),
+            ),
+            Positioned(
+              right: 10,
+              top: 12,
+              child: _buildZoomControls(),
             ),
             AnimatedPositioned(
               duration: const Duration(milliseconds: 180),
@@ -282,7 +297,8 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
         children: [
           Row(
             mainAxisSize: MainAxisSize.min,
-            children: _RouteMode.values.map((mode) {
+            children: [
+              ..._RouteMode.values.map((mode) {
               final selected = _routeMode == mode;
               return Padding(
                 padding: const EdgeInsets.only(right: 6),
@@ -308,12 +324,79 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
                 ),
               );
             }).toList(),
+              InkWell(
+                onTap: _closeRouteBuilder,
+                borderRadius: BorderRadius.circular(999),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    color: Colors.white70,
+                    size: 18,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           Text(_routeInfo, style: textStyle),
         ],
       ),
     );
+  }
+
+  Widget _buildRouteStartButton() {
+    return SizedBox(
+      height: 40,
+      child: ElevatedButton(
+        onPressed: _openRouteBuilder,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xEE131829),
+          foregroundColor: const Color(0xFFD7E37A),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+            side: BorderSide(color: Colors.white.withOpacity(0.24)),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+        ),
+        child: const Text(
+          'Построить маршрут',
+          style: TextStyle(
+            fontFamily: 'Geologica',
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openRouteBuilder() {
+    _removeRouteLine();
+    _selectedStageMarkerIndexes.clear();
+    _applyStageSelectionStyles();
+    setState(() {
+      _selectedStageInfo = null;
+      _routeBuilderActive = true;
+      _routeInfo = 'Выберите 2 точки на карте';
+    });
+  }
+
+  void _closeRouteBuilder() {
+    _removeRouteLine();
+    _selectedStageMarkerIndexes.clear();
+    _applyStageSelectionStyles();
+    setState(() {
+      _routeBuilderActive = false;
+      _routeInfo = 'Выберите 2 точки на карте';
+    });
   }
 
   Widget _buildAddButton() {
@@ -349,6 +432,66 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
     );
   }
 
+  Widget _buildZoomControls() {
+    Widget zoomBtn({
+      required IconData icon,
+      required VoidCallback onPressed,
+    }) {
+      return SizedBox(
+        width: 40,
+        height: 40,
+        child: ElevatedButton(
+          onPressed: onPressed,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xEE131829),
+            foregroundColor: const Color(0xFFD7E37A),
+            elevation: 0,
+            padding: EdgeInsets.zero,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.white.withOpacity(0.24)),
+            ),
+          ),
+          child: Icon(icon, size: 20),
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        zoomBtn(
+          icon: Icons.add_rounded,
+          onPressed: () => _zoomBy(1),
+        ),
+        const SizedBox(height: 8),
+        zoomBtn(
+          icon: Icons.remove_rounded,
+          onPressed: () => _zoomBy(-1),
+        ),
+      ],
+    );
+  }
+
+  void _zoomBy(int delta) {
+    final map = _map;
+    if (map == null) return;
+    final current = map.cameraPosition;
+    final nextZoom = (current.zoom + delta).clamp(2.0, 20.0);
+    map.move(
+      ymk.CameraPosition(
+        current.target,
+        zoom: nextZoom,
+        azimuth: current.azimuth,
+        tilt: current.tilt,
+      ),
+      animation: const ymk.Animation(
+        type: ymk.AnimationType.Smooth,
+        duration: 0.18,
+      ),
+    );
+  }
+
   Future<void> _rebuildMarkersAndSearch() async {
     final map = _map;
     if (map == null) return;
@@ -364,9 +507,20 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
         title: title.isEmpty ? address : title,
         address: address,
         order: (p['order'] ?? '').trim(),
+        stageType: (p['stage_type'] ?? '').trim(),
+        subtype: (p['subtype'] ?? '').trim(),
         time: (p['time'] ?? '').trim(),
+        startTime: (p['start_time'] ?? '').trim(),
+        endTime: (p['end_time'] ?? '').trim(),
         cost: (p['cost'] ?? '').trim(),
+        duration: (p['duration'] ?? '').trim(),
+        startLocation: (p['start_location'] ?? '').trim(),
+        endLocation: (p['end_location'] ?? '').trim(),
+        referenceNumber: (p['reference_number'] ?? '').trim(),
         notes: (p['notes'] ?? '').trim(),
+        websiteUrl: (p['website_url'] ?? '').trim(),
+        rating: (p['rating'] ?? '').trim(),
+        documentKey: (p['document_key'] ?? '').trim(),
       ));
     }
 
@@ -380,9 +534,20 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
           title: parsed[i].title,
           address: parsed[i].address,
           order: parsed[i].order.isEmpty ? '${resolved.length + 1}' : parsed[i].order,
+          stageType: parsed[i].stageType,
+          subtype: parsed[i].subtype,
           time: parsed[i].time,
+          startTime: parsed[i].startTime,
+          endTime: parsed[i].endTime,
           cost: parsed[i].cost,
+          duration: parsed[i].duration,
+          startLocation: parsed[i].startLocation,
+          endLocation: parsed[i].endLocation,
+          referenceNumber: parsed[i].referenceNumber,
           notes: parsed[i].notes,
+          websiteUrl: parsed[i].websiteUrl,
+          rating: parsed[i].rating,
+          documentKey: parsed[i].documentKey,
           point: coords,
         ),
       );
@@ -405,18 +570,54 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
     focus ??= _averagePoint(resolved.map((e) => e.point).toList()) ?? _fallbackCenter;
 
     for (var i = 0; i < resolved.length; i++) {
-      final place = map.mapObjects.addPlacemarkWithPoint(resolved[i].point);
-      place.setTextWithStyle(
+      // Draw stage marker as a dedicated circle + centered number to match web UI.
+      final circle = map.mapObjects.addPlacemarkWithPoint(resolved[i].point);
+      circle.setIconStyle(
+        const ymk.IconStyle(
+          scale: 1.0,
+          zIndex: 10,
+        ),
+      );
+      circle.setTextWithStyle(
         const ymk.TextStyle(
-          size: 13,
-          color: Color(0xFF111827),
-          outlineColor: Color(0xFFFFFFFF),
-          outlineWidth: 2,
+          size: _stageCircleSize,
+          color: Color(0xFF8FB2F8),
+          outlineColor: Color(0xFF162C4A),
+          outlineWidth: 3.0,
+          placement: ymk.TextStylePlacement.Center,
+        ),
+        text: '\u25CF',
+      );
+
+      final number = map.mapObjects.addPlacemarkWithPoint(resolved[i].point);
+      number.setIconStyle(
+        const ymk.IconStyle(
+          scale: 1.0,
+          zIndex: 11,
+        ),
+      );
+      number.setTextWithStyle(
+        const ymk.TextStyle(
+          size: _stageNumberSize,
+          color: Color(0xFF0A0A0A),
+          outlineColor: Color(0xFFF4F8FF),
+          outlineWidth: 1.4,
           placement: ymk.TextStylePlacement.Center,
         ),
         text: resolved[i].order,
       );
+      try {
+        number.text.text = resolved[i].order;
+      } catch (_) {}
       final listener = _StageTapListener(onTap: () async {
+        if (!_routeBuilderActive) {
+          if (mounted) {
+            setState(() {
+              _selectedStageInfo = resolved[i];
+            });
+          }
+          return;
+        }
         final existing = _selectedStageMarkerIndexes.indexOf(i);
         if (existing >= 0) {
           _selectedStageMarkerIndexes.removeAt(existing);
@@ -426,16 +627,20 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
           }
           _selectedStageMarkerIndexes.add(i);
         }
+        _applyStageSelectionStyles();
         await _buildRouteIfReady();
       });
-      place.addTapListener(listener);
+      circle.addTapListener(listener);
+      number.addTapListener(listener);
       _stageMarkers.add(_StageMarkerRef(
-        placemark: place,
+        placemark: circle,
+        numberPlacemark: number,
         listener: listener,
         point: resolved[i].point,
         stage: resolved[i],
       ));
     }
+    _applyStageSelectionStyles();
 
     map.move(
       ymk.CameraPosition(
@@ -486,15 +691,21 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
     }
 
     final marker = map.mapObjects.addPlacemarkWithPoint(point);
+    marker.setIconStyle(
+      const ymk.IconStyle(
+        scale: 1.0,
+        zIndex: 20,
+      ),
+    );
     marker.setTextWithStyle(
       const ymk.TextStyle(
-        size: 16,
-        color: Color(0xFF63BE56),
-        outlineColor: Color(0xFF173117),
-        outlineWidth: 2,
+        size: 38,
+        color: Color(0xFF71D96A),
+        outlineColor: Color(0xFF1F4F1E),
+        outlineWidth: 2.6,
         placement: ymk.TextStylePlacement.Center,
       ),
-      text: '●',
+      text: '\u25CF',
     );
     _searchMarker = _SearchMarkerRef(placemark: marker, point: point);
     _lastSearchAddress = clean;
@@ -507,13 +718,16 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
   }
 
   Future<void> _buildRouteIfReady() async {
+    if (!_routeBuilderActive) return;
     final map = _map;
     if (map == null) return;
     _removeRouteLine();
     if (_selectedStageMarkerIndexes.length != 2) {
+      _applyStageSelectionStyles();
       if (mounted) setState(() => _routeInfo = 'Выберите 2 точки на карте');
       return;
     }
+    _applyStageSelectionStyles();
 
     final first = _stageMarkers[_selectedStageMarkerIndexes[0]].point;
     final second = _stageMarkers[_selectedStageMarkerIndexes[1]].point;
@@ -580,33 +794,85 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
     if (normalized.isEmpty) return null;
     final cached = _geocodeCache[normalized];
     if (cached != null) return cached;
+
+    final manager = _searchManager;
+    if (manager == null) return null;
+    final completer = Completer<ymk.Point?>();
+    _activeSearchListener = ymk_search.SearchSessionSearchListener(
+      onSearchResponse: (response) {
+        if (completer.isCompleted) return;
+        ymk.Point? resolved;
+        for (final child in response.collection.children) {
+          final geo = child.asGeoObject();
+          if (geo == null) continue;
+          for (final g in geo.geometry) {
+            final p = g.asPoint();
+            if (p != null) {
+              resolved = ymk.Point(latitude: p.latitude, longitude: p.longitude);
+              break;
+            }
+            final b = g.asBoundingBox();
+            if (b != null) {
+              resolved = ymk.Point(
+                latitude: (b.southWest.latitude + b.northEast.latitude) / 2.0,
+                longitude: (b.southWest.longitude + b.northEast.longitude) / 2.0,
+              );
+              break;
+            }
+          }
+          if (resolved != null) break;
+          final bb = geo.boundingBox;
+          if (bb != null) {
+            resolved = ymk.Point(
+              latitude: (bb.southWest.latitude + bb.northEast.latitude) / 2.0,
+              longitude: (bb.southWest.longitude + bb.northEast.longitude) / 2.0,
+            );
+            break;
+          }
+        }
+        completer.complete(resolved);
+      },
+      onSearchError: (_) {
+        if (!completer.isCompleted) completer.complete(null);
+      },
+    );
+
+    final centerLat = widget.cityCenterLat ?? _fallbackCenter.latitude;
+    final centerLon = widget.cityCenterLon ?? _fallbackCenter.longitude;
+    const latSpan = 0.8;
+    const lonSpan = 1.2;
+    final window = ymk.BoundingBox(
+      ymk.Point(
+        latitude: (centerLat - latSpan).clamp(-90.0, 90.0),
+        longitude: (centerLon - lonSpan).clamp(-180.0, 180.0),
+      ),
+      ymk.Point(
+        latitude: (centerLat + latSpan).clamp(-90.0, 90.0),
+        longitude: (centerLon + lonSpan).clamp(-180.0, 180.0),
+      ),
+    );
+
     try {
-      final resp = await _dio.get(
-        'https://geocode-maps.yandex.ru/v1/',
-        queryParameters: <String, dynamic>{
-          'apikey': _geocoderApiKey,
-          'format': 'json',
-          'results': 1,
-          'lang': 'ru_RU',
-          'geocode': query,
-        },
+      _activeSearchSession?.cancel();
+      _activeSearchSession = manager.submit(
+        ymk.Geometry.fromBoundingBox(window),
+        ymk_search.SearchOptions(
+          searchTypes: ymk_search.SearchType.Geo | ymk_search.SearchType.Biz,
+          geometry: true,
+        ),
+        _activeSearchListener!,
+        text: query,
       );
-      final data = resp.data;
-      final member = data is Map
-          ? (((data['response'] as Map?)?['GeoObjectCollection'] as Map?)?['featureMember'] as List?)
-          : null;
-      if (member == null || member.isEmpty) return null;
-      final pos = (((member.first as Map?)?['GeoObject'] as Map?)?['Point'] as Map?)?['pos'];
-      final raw = '$pos'.trim();
-      final parts = raw.split(' ');
-      if (parts.length != 2) return null;
-      final lon = double.tryParse(parts[0]);
-      final lat = double.tryParse(parts[1]);
-      if (lon == null || lat == null) return null;
-      final point = ymk.Point(latitude: lat, longitude: lon);
-      _geocodeCache[normalized] = point;
+      final point = await completer.future.timeout(
+        const Duration(seconds: 7),
+        onTimeout: () => null,
+      );
+      if (point != null) {
+        _geocodeCache[normalized] = point;
+      }
       return point;
     } catch (_) {
+      if (!completer.isCompleted) completer.complete(null);
       return null;
     }
   }
@@ -635,6 +901,14 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
       try {
         marker.placemark.removeTapListener(marker.listener);
       } catch (_) {}
+      try {
+        marker.numberPlacemark?.removeTapListener(marker.listener);
+      } catch (_) {}
+      try {
+        if (marker.numberPlacemark != null) {
+          _map?.mapObjects.remove(marker.numberPlacemark!);
+        }
+      } catch (_) {}
     }
     _stageMarkers.clear();
     _selectedStageMarkerIndexes.clear();
@@ -644,12 +918,9 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
   }
 
   void _handleMapLongTap(ymk.Point point) {
-    if (_stageMarkers.isEmpty) return;
-    final nearest = _findNearestStage(point);
-    if (nearest == null) return;
-    setState(() {
-      _selectedStageInfo = nearest;
-    });
+    // Details are opened by short tap on a stage marker.
+    // Keep long tap as a no-op to avoid conflicts with route selection mode.
+    return;
   }
 
   _ResolvedStagePoint? _findNearestStage(ymk.Point tapPoint) {
@@ -667,8 +938,47 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
         best = marker.stage;
       }
     }
-    if (bestDistanceM > 150) return null;
+    if (bestDistanceM > 220) return null;
     return best;
+  }
+
+  void _applyStageSelectionStyles() {
+    if (_stageMarkers.isEmpty) return;
+    for (var i = 0; i < _stageMarkers.length; i++) {
+      final selected = _selectedStageMarkerIndexes.contains(i);
+      final circle = _stageMarkers[i].placemark;
+      final number = _stageMarkers[i].numberPlacemark;
+      try {
+        circle.setTextWithStyle(
+          ymk.TextStyle(
+            size: _stageCircleSize,
+            color: const Color(0xFF8FB2F8),
+            outlineColor:
+                selected ? const Color(0xFFFFFFFF) : const Color(0xFF162C4A),
+            outlineWidth: selected ? 4.0 : 3.0,
+            placement: ymk.TextStylePlacement.Center,
+          ),
+          text: '\u25CF',
+        );
+      } catch (_) {}
+      if (number != null) {
+        try {
+          number.setTextWithStyle(
+            const ymk.TextStyle(
+              size: _stageNumberSize,
+              color: Color(0xFF0A0A0A),
+              outlineColor: Color(0xFFF4F8FF),
+              outlineWidth: 1.4,
+              placement: ymk.TextStylePlacement.Center,
+            ),
+            text: _stageMarkers[i].stage.order,
+          );
+          try {
+            number.text.text = _stageMarkers[i].stage.order;
+          } catch (_) {}
+        } catch (_) {}
+      }
+    }
   }
 
   double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
@@ -687,9 +997,27 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
   Widget _buildStageInfoCard(_ResolvedStagePoint stage) {
     final lines = <String>[];
     if (stage.time.isNotEmpty) lines.add('Время: ${stage.time}');
+    if (stage.duration.isNotEmpty) lines.add('Длительность: ${stage.duration}');
     if (stage.cost.isNotEmpty) lines.add('Стоимость: ${stage.cost}');
-    if (stage.address.isNotEmpty) lines.add('Адрес: ${stage.address}');
+    final cityNorm = (widget.city ?? '').trim().toLowerCase();
+    String displayAddress = stage.address.trim();
+    if (displayAddress.isEmpty) {
+      displayAddress = stage.endLocation.trim().isNotEmpty
+          ? stage.endLocation.trim()
+          : stage.startLocation.trim();
+    } else if (cityNorm.isNotEmpty && displayAddress.toLowerCase() == cityNorm) {
+      displayAddress = stage.endLocation.trim().isNotEmpty
+          ? stage.endLocation.trim()
+          : (stage.startLocation.trim().isNotEmpty ? stage.startLocation.trim() : displayAddress);
+    }
+    if (displayAddress.isNotEmpty) lines.add('Адрес: $displayAddress');
+    if (stage.startLocation.isNotEmpty) lines.add('Откуда: ${stage.startLocation}');
+    if (stage.endLocation.isNotEmpty) lines.add('Куда: ${stage.endLocation}');
+    if (stage.referenceNumber.isNotEmpty) lines.add('Номер/референс: ${stage.referenceNumber}');
     if (stage.notes.isNotEmpty) lines.add('Комментарий: ${stage.notes}');
+    if (stage.websiteUrl.isNotEmpty) lines.add('Сайт: ${stage.websiteUrl}');
+    if (stage.rating.isNotEmpty) lines.add('Рейтинг: ${stage.rating}');
+    if (stage.documentKey.isNotEmpty) lines.add('Документ: прикреплен');
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
@@ -806,16 +1134,38 @@ class _StagePoint {
   final String title;
   final String address;
   final String order;
+  final String stageType;
+  final String subtype;
   final String time;
+  final String startTime;
+  final String endTime;
   final String cost;
+  final String duration;
+  final String startLocation;
+  final String endLocation;
+  final String referenceNumber;
   final String notes;
+  final String websiteUrl;
+  final String rating;
+  final String documentKey;
   _StagePoint({
     required this.title,
     required this.address,
     required this.order,
+    required this.stageType,
+    required this.subtype,
     required this.time,
+    required this.startTime,
+    required this.endTime,
     required this.cost,
+    required this.duration,
+    required this.startLocation,
+    required this.endLocation,
+    required this.referenceNumber,
     required this.notes,
+    required this.websiteUrl,
+    required this.rating,
+    required this.documentKey,
   });
 }
 
@@ -823,28 +1173,52 @@ class _ResolvedStagePoint {
   final String title;
   final String address;
   final String order;
+  final String stageType;
+  final String subtype;
   final String time;
+  final String startTime;
+  final String endTime;
   final String cost;
+  final String duration;
+  final String startLocation;
+  final String endLocation;
+  final String referenceNumber;
   final String notes;
+  final String websiteUrl;
+  final String rating;
+  final String documentKey;
   final ymk.Point point;
   _ResolvedStagePoint({
     required this.title,
     required this.address,
     required this.order,
+    required this.stageType,
+    required this.subtype,
     required this.time,
+    required this.startTime,
+    required this.endTime,
     required this.cost,
+    required this.duration,
+    required this.startLocation,
+    required this.endLocation,
+    required this.referenceNumber,
     required this.notes,
+    required this.websiteUrl,
+    required this.rating,
+    required this.documentKey,
     required this.point,
   });
 }
 
 class _StageMarkerRef {
   final ymk.PlacemarkMapObject placemark;
+  final ymk.PlacemarkMapObject? numberPlacemark;
   final _StageTapListener listener;
   final ymk.Point point;
   final _ResolvedStagePoint stage;
   _StageMarkerRef({
     required this.placemark,
+    this.numberPlacemark,
     required this.listener,
     required this.point,
     required this.stage,
@@ -882,3 +1256,6 @@ enum _RouteMode {
   final IconData icon;
   const _RouteMode(this.apiMode, this.icon);
 }
+
+
+
