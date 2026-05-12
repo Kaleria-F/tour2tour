@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import shutil
 import subprocess
@@ -36,6 +37,7 @@ from app.schemas.stage import (
 from app.schemas.trip import TripCreate, TripOut, TripUpdate
 
 router = APIRouter(prefix="/trips", tags=["trips"])
+logger = logging.getLogger(__name__)
 
 STAGE_SUBTYPES: dict[str, set[str]] = {
     "transport": {
@@ -522,8 +524,10 @@ def _speechkit_transcribe(audio_bytes: bytes, *, audio_format: str) -> str:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
+        logger.error("SpeechKit request failed [%s]: %s", exc.code, detail)
         raise HTTPException(status_code=502, detail=f"SpeechKit request failed: {detail}") from exc
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        logger.exception("SpeechKit request failed")
         raise HTTPException(status_code=502, detail="SpeechKit request failed") from exc
 
     result = str(payload.get("result") or "").strip()
@@ -607,6 +611,11 @@ def _transcode_audio_to_lpcm(*, content: bytes, source_extension: str) -> bytes:
             check=False,
         )
         if process.returncode != 0:
+            logger.error(
+                "ffmpeg audio transcode failed [code=%s]: %s",
+                process.returncode,
+                (process.stderr or process.stdout).strip(),
+            )
             raise HTTPException(
                 status_code=400,
                 detail="Unsupported audio format for speech recognition",
