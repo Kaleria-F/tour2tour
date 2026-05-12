@@ -1,5 +1,8 @@
 import json
 import re
+import shutil
+import subprocess
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -544,11 +547,81 @@ def _extract_audio_from_upload(file: UploadFile, content: bytes) -> tuple[bytes,
                 return wav_file.readframes(wav_file.getnframes()), "lpcm"
         except wave.Error as exc:
             raise HTTPException(status_code=400, detail="Invalid WAV file") from exc
-    if filename.endswith(".ogg") or "ogg" in content_type or "opus" in content_type:
-        return content, "oggopus"
-    if filename.endswith(".webm") or "webm" in content_type:
-        return content, "webmopus"
+    if (
+        filename.endswith(".ogg")
+        or filename.endswith(".webm")
+        or filename.endswith(".mp3")
+        or "ogg" in content_type
+        or "opus" in content_type
+        or "webm" in content_type
+        or "mpeg" in content_type
+        or "mp3" in content_type
+    ):
+        return _transcode_audio_to_lpcm(
+            content=content,
+            source_extension=_guess_audio_extension(filename, content_type),
+        ), "lpcm"
     return content, "lpcm"
+
+
+def _guess_audio_extension(filename: str, content_type: str) -> str:
+    if filename.endswith(".ogg") or "ogg" in content_type or "opus" in content_type:
+        return ".ogg"
+    if filename.endswith(".webm") or "webm" in content_type:
+        return ".webm"
+    if filename.endswith(".mp3") or "mpeg" in content_type or "mp3" in content_type:
+        return ".mp3"
+    return ".bin"
+
+
+def _transcode_audio_to_lpcm(*, content: bytes, source_extension: str) -> bytes:
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        raise HTTPException(
+            status_code=503,
+            detail="Audio transcoding is not available on the server",
+        )
+
+    with tempfile.TemporaryDirectory(prefix="stage-audio-") as tmp_dir:
+        source_path = f"{tmp_dir}/input{source_extension}"
+        output_path = f"{tmp_dir}/output.wav"
+        with open(source_path, "wb") as source_file:
+            source_file.write(content)
+
+        process = subprocess.run(
+            [
+                ffmpeg_path,
+                "-y",
+                "-i",
+                source_path,
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-f",
+                "wav",
+                output_path,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if process.returncode != 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported audio format for speech recognition",
+            )
+        try:
+            with wave.open(output_path, "rb") as wav_file:
+                if wav_file.getnchannels() != 1:
+                    raise HTTPException(status_code=400, detail="Only mono audio is supported")
+                if wav_file.getsampwidth() != 2:
+                    raise HTTPException(status_code=400, detail="Only 16-bit PCM audio is supported")
+                if wav_file.getframerate() != 16000:
+                    raise HTTPException(status_code=400, detail="Use 16 kHz audio recording")
+                return wav_file.readframes(wav_file.getnframes())
+        except wave.Error as exc:
+            raise HTTPException(status_code=400, detail="Invalid transcoded WAV file") from exc
 
 
 def _generate_stage_assistant_draft(
