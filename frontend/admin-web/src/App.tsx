@@ -51,7 +51,6 @@ type PlaceFormState = {
   source: string;
   price_level: string;
   description: string;
-  rating: string;
   tags: Record<string, number>;
 };
 
@@ -168,7 +167,6 @@ const EMPTY_FORM: PlaceFormState = {
   source: 'manual',
   price_level: '',
   description: '',
-  rating: '',
   tags: {},
 };
 
@@ -223,7 +221,7 @@ function getTagColor(key: string, catalog: AdminTagCatalogItem[]) {
 
 function isPlaceFieldMissing(
   place: AdminPlace,
-  field: 'name' | 'city' | 'address' | 'category' | 'source' | 'price_level' | 'rating' | 'image_url',
+  field: 'name' | 'city' | 'address' | 'category' | 'source' | 'price_level' | 'image_url',
 ) {
   const value = place[field];
   return value == null || String(value).trim() === '';
@@ -285,7 +283,6 @@ export function App() {
       source: placeEditor.source ?? 'manual',
       price_level: placeEditor.price_level ?? '',
       description: placeEditor.description ?? '',
-      rating: placeEditor.rating != null ? String(placeEditor.rating) : '',
       tags: placeEditor.tags ?? {},
     });
   }, [placeEditor]);
@@ -338,19 +335,18 @@ export function App() {
     const timer = window.setTimeout(() => {
       void listPlaces(token, { limit: 8, offset: 0, q: query })
         .then((payload) =>
-          setStoryPlaceResults(
-            payload.items.map((place) => ({
-              id: place.id,
-              name: place.name,
-              city: place.city,
+              setStoryPlaceResults(
+                payload.items.map((place) => ({
+                  id: place.id,
+                  name: place.name,
+                  city: place.city,
               image_url: place.image_url,
-              address: place.address,
-              category: place.category,
-              subcategory: place.subcategory,
-              rating: place.rating,
-              description: place.description,
-            })),
-          ),
+                  address: place.address,
+                  category: place.category,
+                  subcategory: place.subcategory,
+                  description: place.description,
+                })),
+              ),
         )
         .catch(() => setStoryPlaceResults([]));
     }, 180);
@@ -523,7 +519,6 @@ export function App() {
         subcategory: placeForm.subcategory,
         description: placeForm.description.trim(),
         price_level: placeForm.price_level || null,
-        rating: placeForm.rating ? Number(placeForm.rating) : null,
         tags: normalizeTags(placeForm.tags),
       };
 
@@ -890,7 +885,6 @@ export function App() {
                           <th>Категория</th>
                           <th>Источник</th>
                           <th>Цена</th>
-                          <th>Рейтинг</th>
                           <th>Фото</th>
                           <th>Теги</th>
                           <th></th>
@@ -927,7 +921,6 @@ export function App() {
                               {formatSource(place.source)}
                             </td>
                             <td className={!place.price_level ? 'missing-cell' : ''}>{formatPrice(place.price_level)}</td>
-                            <td className={place.rating == null ? 'missing-cell' : ''}>{place.rating ?? '-'}</td>
                             <td className={isPlaceFieldMissing(place, 'image_url') ? 'missing-cell' : ''}>
                               {place.image_url ? (
                                 <img className="place-thumb" src={place.image_url} alt={place.name} />
@@ -1355,14 +1348,6 @@ export function App() {
                       <div className="field-group">
                         <label>Загрузить фото</label>
                         <input name="image_file" type="file" accept="image/*" />
-                      </div>
-                      <div className="field-group">
-                        <label>Рейтинг</label>
-                        <input
-                          value={placeForm.rating}
-                          onChange={(event) => setPlaceForm((current) => ({ ...current, rating: event.target.value }))}
-                          placeholder="От 0 до 5"
-                        />
                       </div>
                       <div className="field-group">
                         <label>Уровень цены</label>

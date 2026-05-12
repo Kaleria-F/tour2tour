@@ -1457,11 +1457,11 @@ class _StageFormPageState extends State<StageFormPage> {
                               ),
                             )
                           : (kIsWeb
-                              ? Listener(
+                              ? GestureDetector(
                                   key: const ValueKey('assistant-mic'),
-                                  onPointerDown: (_) => _startVoiceRecording(),
-                                  onPointerUp: (_) => _stopVoiceRecordingIfNeeded(),
-                                  onPointerCancel: (_) => _stopVoiceRecordingIfNeeded(),
+                                  onTap: _recordingVoice
+                                      ? _stopVoiceRecordingIfNeeded
+                                      : _startVoiceRecording,
                                   child: AnimatedScale(
                                     duration: const Duration(milliseconds: 120),
                                     scale: _recordingVoice ? 1.12 : 1,

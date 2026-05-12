@@ -280,14 +280,14 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
                     icon: Icons.sell_outlined,
                     title: 'Что я получу?',
                     body:
-                        'Цифровую подписку Тур2Тур Pro для travel-сервиса. Подписка открывает быстрый ввод этапов маршрута голосом и текстом, а также автоматическое заполнение полей этапа.',
+                        'Цифровую подписку Тур2Тур Pro сроком на 1 месяц. Подписка открывает быстрый ввод этапов маршрута голосом и текстом, а также автоматическое заполнение полей этапа.',
                   ),
                   const SizedBox(height: 10),
                   const _ExpandableInfoCard(
                     icon: Icons.download_done_rounded,
                     title: 'Как получить услугу после оплаты?',
                     body:
-                        'После успешной оплаты доступ к Тур2Тур Pro активируется в аккаунте пользователя. Услуга предоставляется в цифровом виде внутри приложения и веб-версии без доставки физического товара.',
+                        'После успешной оплаты доступ к Тур2Тур Pro на 1 месяц активируется в аккаунте пользователя. Услуга предоставляется в цифровом виде внутри приложения и веб-версии без доставки физического товара.',
                   ),
                   const SizedBox(height: 10),
                   _OfferInfoCard(
@@ -372,6 +372,16 @@ class _PriceCard extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Подписка на 1 месяц',
+                  style: TextStyle(
+                    fontFamily: 'Geologica',
+                    color: Colors.white60,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w300,
+                  ),
                 ),
               ],
             ),

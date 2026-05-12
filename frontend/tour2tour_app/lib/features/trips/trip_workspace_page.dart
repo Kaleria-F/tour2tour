@@ -726,15 +726,20 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     final text = await showDialog<String>(
       context: context,
       barrierDismissible: true,
-      builder: (_) => const _RouteAssistantTextDialog(),
+      builder: (_) => _RouteAssistantTextDialog(
+        onStartVoice: _startRouteAssistantRecording,
+        onStopVoice: () => _stopRouteAssistantRecordingIfNeeded(
+          processTranscript: false,
+        ),
+      ),
     );
     if (text == null || text.trim().isEmpty) return;
     await _processAssistantSourceText(text);
   }
 
-  Future<void> _startRouteAssistantRecording() async {
+  Future<bool> _startRouteAssistantRecording() async {
     if (_routeAssistantRecording || _routeAssistantProcessing || widget.tripId == null) {
-      return;
+      return false;
     }
     try {
       if (kIsWeb) {
@@ -743,7 +748,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           _showRouteAssistantSnackBar(
             'Разрешите доступ к микрофону в браузере для голосового ввода.',
           );
-          return;
+          return false;
         }
       }
       final hasPermission = await _routeAssistantRecorder.hasPermission();
@@ -751,7 +756,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         _showRouteAssistantSnackBar(
           'Разрешите доступ к микрофону в браузере для голосового ввода.',
         );
-        return;
+        return false;
       }
       _routeAssistantTimer?.cancel();
       _routeAssistantStreamSub?.cancel();
@@ -778,7 +783,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           _routeAssistantAudioBytes.addAll(chunk);
         });
       }
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _routeAssistantRecording = true;
         _routeAssistantSecondsLeft = 30;
@@ -797,30 +802,19 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           _routeAssistantSecondsLeft -= 1;
         });
       });
+      return true;
     } catch (_) {
       _showRouteAssistantSnackBar('Не удалось начать запись');
+      return false;
     }
   }
 
   void _handleRouteAssistantWebPointerDown() {
-    if (_routeAssistantProcessing) return;
     _routeAssistantPointerDown = true;
-    _routeAssistantHoldTimer?.cancel();
-    _routeAssistantHoldTimer = Timer(const Duration(milliseconds: 180), () {
-      if (_routeAssistantPointerDown && !_routeAssistantRecording) {
-        _startRouteAssistantRecording();
-      }
-    });
   }
 
   Future<void> _handleRouteAssistantWebPointerUp() async {
-    _routeAssistantHoldTimer?.cancel();
-    final wasRecording = _routeAssistantRecording;
     _routeAssistantPointerDown = false;
-    if (wasRecording) {
-      await _stopRouteAssistantRecordingIfNeeded();
-      return;
-    }
     if (!_routeAssistantProcessing) {
       await _openRouteAssistantTextEntry();
     }
@@ -828,15 +822,13 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
   Future<void> _handleRouteAssistantWebPointerCancel() async {
     _routeAssistantHoldTimer?.cancel();
-    final wasRecording = _routeAssistantRecording;
     _routeAssistantPointerDown = false;
-    if (wasRecording) {
-      await _stopRouteAssistantRecordingIfNeeded();
-    }
   }
 
-  Future<void> _stopRouteAssistantRecordingIfNeeded() async {
-    if (!_routeAssistantRecording) return;
+  Future<String?> _stopRouteAssistantRecordingIfNeeded({
+    bool processTranscript = true,
+  }) async {
+    if (!_routeAssistantRecording) return null;
     _routeAssistantTimer?.cancel();
     _routeAssistantTimer = null;
     setState(() {
@@ -881,20 +873,25 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         filename: filename,
         mimeType: mimeType,
       );
-      if (!mounted) return;
+      if (!mounted) return null;
       if (transcript == null || transcript.trim().isEmpty) {
         _showRouteAssistantSnackBar('Не удалось распознать голосовое');
-        return;
+        return null;
       }
-      await _processAssistantSourceText(transcript);
+      final normalizedTranscript = transcript.trim();
+      if (processTranscript) {
+        await _processAssistantSourceText(normalizedTranscript);
+      }
+      return normalizedTranscript;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return null;
       _showRouteAssistantSnackBar(
         _friendlyAssistantErrorMessage(
           error,
           fallback: 'Не удалось распознать голосовое',
         ),
       );
+      return null;
     } finally {
       _routeAssistantAudioBytes.clear();
       if (mounted) {
@@ -6471,7 +6468,13 @@ class _NightPainter extends CustomPainter {
 }
 
 class _RouteAssistantTextDialog extends StatefulWidget {
-  const _RouteAssistantTextDialog();
+  const _RouteAssistantTextDialog({
+    required this.onStartVoice,
+    required this.onStopVoice,
+  });
+
+  final Future<bool> Function() onStartVoice;
+  final Future<String?> Function() onStopVoice;
 
   @override
   State<_RouteAssistantTextDialog> createState() => _RouteAssistantTextDialogState();
@@ -6479,6 +6482,34 @@ class _RouteAssistantTextDialog extends StatefulWidget {
 
 class _RouteAssistantTextDialogState extends State<_RouteAssistantTextDialog> {
   final TextEditingController _controller = TextEditingController();
+  bool _recording = false;
+  bool _processingVoice = false;
+
+  Future<void> _toggleVoice() async {
+    if (_processingVoice) return;
+    if (!_recording) {
+      final started = await widget.onStartVoice();
+      if (!mounted) return null;
+      if (started) {
+        setState(() => _recording = true);
+      }
+      return;
+    }
+
+    setState(() => _processingVoice = true);
+    final transcript = await widget.onStopVoice();
+    if (!mounted) return;
+    if (transcript != null && transcript.trim().isNotEmpty) {
+      _controller.text = transcript.trim();
+      _controller.selection = TextSelection.collapsed(
+        offset: _controller.text.length,
+      );
+    }
+    setState(() {
+      _recording = false;
+      _processingVoice = false;
+    });
+  }
 
   @override
   void dispose() {
@@ -6537,47 +6568,106 @@ class _RouteAssistantTextDialogState extends State<_RouteAssistantTextDialog> {
                 ],
               ),
               const SizedBox(height: 10),
-              TextField(
-                controller: _controller,
-                autofocus: true,
-                minLines: 4,
-                maxLines: 6,
-                style: const TextStyle(
-                  fontFamily: 'Geologica',
-                  color: Colors.white,
-                  fontWeight: FontWeight.w300,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'Например: в 19:00 хочу поужинать в White Rabbit, потрачу около 2500 руб, важно место с красивым видом',
-                  hintStyle: TextStyle(
-                    fontFamily: 'Geologica',
-                    color: Colors.white.withOpacity(0.45),
-                    fontWeight: FontWeight.w300,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      autofocus: true,
+                      minLines: 4,
+                      maxLines: 6,
+                      style: const TextStyle(
+                        fontFamily: 'Geologica',
+                        color: Colors.white,
+                        fontWeight: FontWeight.w300,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Например: в 19:00 хочу поужинать в White Rabbit, потрачу около 2500 руб, важно место с красивым видом',
+                        hintStyle: TextStyle(
+                          fontFamily: 'Geologica',
+                          color: Colors.white.withOpacity(0.45),
+                          fontWeight: FontWeight.w300,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white.withOpacity(0.06),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.all(16),
+                      ),
+                    ),
                   ),
-                  filled: true,
-                  fillColor: Colors.white.withOpacity(0.06),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.all(16),
-                ),
+                ],
               ),
               const SizedBox(height: 14),
               Row(
                 children: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text(
-                      'Отмена',
-                      style: TextStyle(
-                        fontFamily: 'Geologica',
-                        color: Colors.white70,
-                        fontWeight: FontWeight.w300,
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: _toggleVoice,
+                    child: AnimatedScale(
+                      duration: const Duration(milliseconds: 120),
+                      scale: _recording ? 1.12 : 1,
+                      child: SizedBox(
+                        width: 46,
+                        height: 46,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            SizedBox(
+                              width: 46,
+                              height: 46,
+                              child: CircularProgressIndicator(
+                                value: _recording ? null : 0,
+                                strokeWidth: 3,
+                                backgroundColor: Colors.white.withOpacity(0.12),
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Color(0xFFB6A1FF),
+                                ),
+                              ),
+                            ),
+                            Container(
+                              width: 38,
+                              height: 38,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFB6A1FF),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFB6A1FF).withOpacity(0.30),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ],
+                              ),
+                              child: Center(
+                                child: _processingVoice
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : Icon(
+                                        _recording
+                                            ? Icons.graphic_eq_rounded
+                                            : Icons.mic_rounded,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 10),
                   ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
                     style: ElevatedButton.styleFrom(

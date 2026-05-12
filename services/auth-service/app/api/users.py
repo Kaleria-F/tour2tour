@@ -193,12 +193,24 @@ def _build_code_email(code: str) -> tuple[str, str]:
     return text, html
 
 
-def _send_email_safely(to_email: str, subject: str, body: str, html_body: str | None = None) -> None:
+def _send_email_or_fail(
+    to_email: str,
+    subject: str,
+    body: str,
+    html_body: str | None = None,
+) -> None:
     try:
         send_email(to_email=to_email, subject=subject, body=body, html_body=html_body)
         logger.info("Email sent to %s", to_email)
+    except RuntimeError as exc:
+        logger.exception("Email delivery is not configured for %s", to_email)
+        raise HTTPException(status_code=503, detail=str(exc))
     except Exception:
         logger.exception("Failed to send email to %s", to_email)
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось отправить письмо с кодом подтверждения.",
+        )
 
 
 @router.patch("/me", response_model=UserMeOut)
@@ -261,7 +273,7 @@ def request_email_change(
     key = _email_change_key(me.id, new_email)
     _state_write_or_503(key, {"code": code, "new_email": new_email}, ttl_seconds=EMAIL_CHANGE_CODE_TTL)
     text_body, html_body = _build_code_email(code)
-    _send_email_safely(
+    _send_email_or_fail(
         to_email=new_email,
         subject="Tour2Tour: код подтверждения новой почты",
         body=text_body,
