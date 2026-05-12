@@ -8,7 +8,7 @@ import 'features/auth/auth_repo.dart';
 import 'features/auth/login_page.dart';
 import 'features/auth/register_page.dart';
 import 'features/auth/security_setup_page.dart';
-import 'features/auth/totp_verify_page.dart';
+import 'features/auth/totp_verify_view.dart';
 import 'features/auth/change_password_page.dart';
 import 'features/auth/recovery_page.dart';
 
@@ -17,6 +17,7 @@ import 'features/preferences/preferences_page.dart';
 import 'features/recommendations/recommendations_repo.dart';
 import 'features/interactions/interactions_repo.dart';
 import 'features/payments/payments_repo.dart';
+import 'features/payments/payment_return_page.dart';
 
 import 'features/documents/documents_repo.dart';
 import 'features/favorites/favorites_page.dart';
@@ -61,6 +62,10 @@ GoRouter buildRouter() {
       GoRoute(
         path: '/register',
         builder: (_, __) => RegisterPage(auth: auth),
+      ),
+      GoRoute(
+        path: '/payment-return',
+        builder: (_, __) => const PaymentReturnPage(),
       ),
       GoRoute(
         path: '/security-setup',

@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../shared/travel_app_shell.dart';
@@ -21,19 +22,35 @@ class PremiumPage extends StatefulWidget {
   State<PremiumPage> createState() => _PremiumPageState();
 }
 
-class _PremiumPageState extends State<PremiumPage> {
+class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
   static const _accentColor = Color(0xFFB6A1FF);
   static const _surfaceColor = Color(0xFF1D1D1D);
   static const _premiumOwnerName = 'Фролова Валерия Андреевна';
+  static const _pendingPaymentStorageKey = 'pending_premium_payment_id';
 
   UserMe? _me;
   bool _loading = true;
   bool _openingCheckout = false;
+  bool _checkingPendingPayment = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPendingPayment();
+    }
   }
 
   Future<void> _load() async {
@@ -46,6 +63,63 @@ class _PremiumPageState extends State<PremiumPage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+    await _checkPendingPayment();
+  }
+
+  Future<void> _storePendingPaymentId(String paymentId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_pendingPaymentStorageKey, paymentId);
+  }
+
+  Future<void> _clearPendingPaymentId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_pendingPaymentStorageKey);
+  }
+
+  Future<String?> _readPendingPaymentId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_pendingPaymentStorageKey);
+  }
+
+  Future<void> _checkPendingPayment() async {
+    if (_checkingPendingPayment) return;
+    final paymentId = await _readPendingPaymentId();
+    if (paymentId == null || paymentId.trim().isEmpty) return;
+
+    _checkingPendingPayment = true;
+    try {
+      final status = await widget.paymentsRepo.getPaymentStatus(paymentId);
+      if (!mounted) return;
+      if (status.isPremiumActivated) {
+        await _clearPendingPaymentId();
+        final me = await widget.profileRepo.getMe();
+        if (!mounted) return;
+        setState(() => _me = me);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Подписка Pro активирована'),
+          ),
+        );
+        return;
+      }
+      if (status.status == 'canceled') {
+        await _clearPendingPaymentId();
+      }
+    } on DioException {
+      // Retry on next open/resume.
+    } finally {
+      _checkingPendingPayment = false;
+    }
+  }
+  String _paymentReturnUrl() {
+    final origin = Uri.base.origin.trim();
+    if (origin.isNotEmpty &&
+        (origin.startsWith('https://') ||
+            origin.startsWith('http://localhost') ||
+            origin.startsWith('http://127.0.0.1'))) {
+      return '$origin/payment-return';
+    }
+    return 'https://24tour2tour.ru/payment-return';
   }
 
   Future<void> _openCheckout() async {
@@ -54,8 +128,10 @@ class _PremiumPageState extends State<PremiumPage> {
     setState(() => _openingCheckout = true);
     try {
       final session = await widget.paymentsRepo.createProCheckout(
+        returnUrl: _paymentReturnUrl(),
         source: 'premium_page',
       );
+      await _storePendingPaymentId(session.paymentId);
       final uri = Uri.tryParse(session.confirmationUrl);
       if (uri == null) {
         throw Exception('Invalid checkout url');
@@ -675,4 +751,10 @@ class _OfferInfoCard extends StatelessWidget {
     );
   }
 }
+
+
+
+
+
+
 
