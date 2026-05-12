@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:dio/dio.dart';
@@ -21,6 +21,10 @@ import 'widgets/yandex_city_map.dart';
 import 'stage_form_page.dart';
 import 'trip_recommendations_tab.dart';
 import 'trips_repo.dart';
+
+part 'trip_workspace_route_section.dart';
+part 'trip_workspace_budget_section.dart';
+part 'trip_workspace_documents_section.dart';
 
 class TripWorkspacePage extends StatefulWidget {
   final String tripTitle;
@@ -244,18 +248,18 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         if (!mounted) return;
         if (updated == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ РїРµСЂРµРЅРµСЃС‚Рё РїСѓС‚РµС€РµСЃС‚РІРёРµ РІ Р°СЂС…РёРІ')),
+            const SnackBar(content: Text('Не удалось перенести путешествие в архив')),
           );
           return;
         }
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('РџСѓС‚РµС€РµСЃС‚РІРёРµ РїРµСЂРµРЅРµСЃРµРЅРѕ РІ Р°СЂС…РёРІ')),
+          const SnackBar(content: Text('Путешествие перенесено в архив')),
         );
         context.go('/profile');
       } catch (_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ РїРµСЂРµРЅРµСЃС‚Рё РїСѓС‚РµС€РµСЃС‚РІРёРµ РІ Р°СЂС…РёРІ')),
+          const SnackBar(content: Text('Не удалось перенести путешествие в архив')),
         );
       }
       return;
@@ -266,23 +270,23 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         builder: (_) => AlertDialog(
           backgroundColor: const Color(0xFF1E1F24),
           title: const Text(
-            'РЈРґР°Р»РёС‚СЊ РїСѓС‚РµС€РµСЃС‚РІРёРµ?',
+            'Удалить путешествие?',
             style: TextStyle(color: Colors.white),
           ),
           content: const Text(
-            'РџСѓС‚РµС€РµСЃС‚РІРёРµ Рё СЃРІСЏР·Р°РЅРЅС‹Рµ СЃ РЅРёРј СЌС‚Р°РїС‹/СЂР°СЃС…РѕРґС‹ Р±СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹ Р±РµР· РІРѕР·РјРѕР¶РЅРѕСЃС‚Рё РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.',
+            'Путешествие и связанные с ним этапы/расходы будут удалены без возможности восстановления.',
             style: TextStyle(color: Colors.white70, height: 1.35),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
               style: TextButton.styleFrom(foregroundColor: Colors.white70),
-              child: const Text('РћС‚РјРµРЅР°'),
+              child: const Text('Отмена'),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
               style: TextButton.styleFrom(foregroundColor: const Color(0xFFD7E37A)),
-              child: const Text('РЈРґР°Р»РёС‚СЊ'),
+              child: const Text('Удалить'),
             ),
           ],
         ),
@@ -292,13 +296,13 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         await widget.tripsRepo.deleteTrip(widget.tripId!);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('РџСѓС‚РµС€РµСЃС‚РІРёРµ СѓРґР°Р»РµРЅРѕ')),
+          const SnackBar(content: Text('Путешествие удалено')),
         );
         context.go('/profile');
       } catch (_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РїСѓС‚РµС€РµСЃС‚РІРёРµ')),
+          const SnackBar(content: Text('Не удалось удалить путешествие')),
         );
       }
       return;
@@ -336,7 +340,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'РџРѕРґС‚РІРµСЂРґРёС‚Рµ РёР·РјРµРЅРµРЅРёРµ',
+                    'Подтвердите изменение',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -345,7 +349,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'РќРѕРІС‹Р№ РІС‹Р±СЂР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ РјРµРЅСЊС€Рµ РїСЂРµРґС‹РґСѓС‰РµРіРѕ. Р•СЃР»Рё РїСЂРѕРґРѕР»Р¶РёС‚СЊ, РїРѕСЃР»РµРґРЅРёРµ РґРЅРё, РЅРµ РІС…РѕРґСЏС‰РёРµ РІ РЅРѕРІС‹Р№ РїРµСЂРёРѕРґ, Р±СѓРґСѓС‚ СѓРґР°Р»РµРЅС‹ РІРјРµСЃС‚Рµ СЃ РјР°СЂС€СЂСѓС‚Р°РјРё Рё РґР°РЅРЅС‹РјРё СЌС‚РёС… РґРЅРµР№.',
+                    'Новый выбранный период меньше предыдущего. Если продолжить, последние дни, не входящие в новый период, будут удалены вместе с маршрутами и данными этих дней.',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 15,
@@ -361,7 +365,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         style: TextButton.styleFrom(
                           foregroundColor: const Color(0xFFB16E4B),
                         ),
-                        child: const Text('РћС‚РјРµРЅР°'),
+                        child: const Text('Отмена'),
                       ),
                       const SizedBox(width: 8),
                       TextButton(
@@ -369,7 +373,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                         style: TextButton.styleFrom(
                           foregroundColor: const Color(0xFFB16E4B),
                         ),
-                        child: const Text('РћРљ'),
+                        child: const Text('ОК'),
                       ),
                     ],
                   ),
@@ -422,12 +426,12 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       await _loadExpenses();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('РџР°СЂР°РјРµС‚СЂС‹ РјР°СЂС€СЂСѓС‚Р° РѕР±РЅРѕРІР»РµРЅС‹')),
+        const SnackBar(content: Text('Параметры маршрута обновлены')),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РїР°СЂР°РјРµС‚СЂС‹ РјР°СЂС€СЂСѓС‚Р°')),
+        const SnackBar(content: Text('Не удалось обновить параметры маршрута')),
       );
     }
   }
@@ -1991,6 +1995,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           stagePoints: stagePoints,
           startDate: _tripStartDate,
           endDate: _tripEndDate,
+          tripsRepo: widget.tripsRepo,
         ),
       ),
     );
@@ -2181,964 +2186,6 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     );
   }
 
-  Widget _buildRouteCard(ColorScheme cs) {
-    final ordered = [..._stages]..sort((a, b) => a.position.compareTo(b.position));
-    final selectedDay = _ensureSelectedRouteDay(_selectedRouteDay, stages: ordered);
-    final visibleStages = _filterStagesByDay(
-      ordered,
-      selectedDay,
-      _tripDays(stages: ordered),
-    );
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _openRouteMap(),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _accent,
-                    side: BorderSide(color: _accent.withOpacity(0.44)),
-                    backgroundColor: const Color(0xFF222715),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  icon: const Icon(Icons.map_outlined, size: 16),
-                  label: const Text(
-                    'Маршрут на карте',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _addingStage ? null : _openAddStageDialog,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD7E37A),
-                    foregroundColor: const Color(0xFF161616),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  icon: _addingStage
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.add_road_rounded, size: 16),
-                  label: const Text(
-                    'Этап',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              _buildRouteAssistantButton(),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Expanded(child: _buildRouteTimelineSection(stages: visibleStages)),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _openStageDetails(TripStage stage) async {
-    final typeLabel = _stageTypeLabels[stage.stageType] ?? stage.stageType;
-    final subtypeLabel = _prettySubtype(stage.subtype);
-    final timeRange = _formatTimeRange(stage.startTime, stage.endTime);
-    setState(() {
-      _selectedStageId = stage.id;
-    });
-    final action = await Navigator.of(context).push<_StageDetailsAction>(
-      MaterialPageRoute(
-        builder: (_) => _StageDetailsPage(
-          stage: stage,
-          typeLabel: typeLabel,
-          subtypeLabel: subtypeLabel,
-          timeRange: timeRange,
-          onOpenDocument: (stage.documentKey ?? '').isEmpty
-              ? null
-              : () => _openDocumentByKey(stage.documentKey!, stage.title),
-        ),
-      ),
-    );
-    if (!mounted || action == null) return;
-    if (action == _StageDetailsAction.edit) {
-      await _openEditStageDialog(stage);
-      return;
-    }
-    if (action == _StageDetailsAction.copy) {
-      await _copyStage(stage);
-      return;
-    }
-    if (action == _StageDetailsAction.delete) {
-      await _deleteStage(stage);
-    }
-  }
-
-  Widget _buildRouteAssistantButton() {
-    final progress = ((30 - _routeAssistantSecondsLeft) / 30).clamp(0.0, 1.0);
-    final button = AnimatedScale(
-      duration: const Duration(milliseconds: 120),
-      scale: _routeAssistantRecording ? 1.08 : 1,
-      child: SizedBox(
-        width: 48,
-        height: 48,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            SizedBox(
-              width: 48,
-              height: 48,
-              child: CircularProgressIndicator(
-                value: _routeAssistantRecording ? progress : 0,
-                strokeWidth: 3,
-                backgroundColor: Colors.white.withOpacity(0.12),
-                valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFB6A1FF)),
-              ),
-            ),
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: const Color(0xFFB6A1FF),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFB6A1FF).withOpacity(0.28),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  const Icon(
-                    Icons.auto_awesome_rounded,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                  if (_routeAssistantRecording)
-                    Positioned(
-                      bottom: 3,
-                      child: Text(
-                        '$_routeAssistantSecondsLeft',
-                        style: const TextStyle(
-                          fontFamily: 'Geologica',
-                          color: Colors.white,
-                          fontSize: 8,
-                          fontWeight: FontWeight.w300,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (kIsWeb) {
-      return Listener(
-        onPointerDown: (_) => _handleRouteAssistantWebPointerDown(),
-        onPointerUp: (_) => _handleRouteAssistantWebPointerUp(),
-        onPointerCancel: (_) => _handleRouteAssistantWebPointerCancel(),
-        child: button,
-      );
-    }
-
-    return GestureDetector(
-      onTap: _routeAssistantRecording || _routeAssistantProcessing
-          ? null
-          : _openRouteAssistantTextEntry,
-      onLongPressStart: (_) => _startRouteAssistantRecording(),
-      onLongPressEnd: (_) => _stopRouteAssistantRecordingIfNeeded(),
-      onLongPressCancel: _stopRouteAssistantRecordingIfNeeded,
-      child: button,
-    );
-  }
-
-  Widget _buildRouteTimelineSection({required List<TripStage> stages}) {
-    if (_stagesLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (stages.isEmpty) {
-      return Center(
-        child: Text(
-          'На выбранный день нет этапов',
-          style: TextStyle(color: Colors.white.withOpacity(0.85)),
-        ),
-      );
-    }
-
-    final timed = <_TimelineStageItem>[];
-    final withoutTime = <TripStage>[];
-    for (final stage in stages) {
-      final item = _toTimelineStage(stage);
-      if (item == null) {
-        withoutTime.add(stage);
-      } else {
-        timed.add(item);
-      }
-    }
-
-    return Column(
-      children: [
-        if (withoutTime.isNotEmpty) ...[
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Без времени',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.75),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: withoutTime.map((stage) {
-              return InkWell(
-                borderRadius: BorderRadius.circular(10),
-                onTap: () => _openStageDetails(stage),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white.withOpacity(0.15)),
-                  ),
-                  child: Text(
-                    stage.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 10),
-        ],
-        Expanded(
-          child: timed.isEmpty
-              ? Center(
-                  child: Text(
-                    'Добавьте время этапам, чтобы они появились на шкале',
-                    style: TextStyle(color: Colors.white.withOpacity(0.82)),
-                    textAlign: TextAlign.center,
-                  ),
-                )
-              : _RouteTimeline(
-                  items: timed,
-                  onTapStage: (stage) => _openStageDetails(stage),
-                  onDragStageEnd: (stage, startMin, endMin) =>
-                      _applyStageTimesFromDrag(
-                    stage,
-                    startMin: startMin,
-                    endMin: endMin,
-                  ),
-                ),
-        ),
-      ],
-    );
-  }
-
-  _TimelineStageItem? _toTimelineStage(TripStage stage) {
-    final start = stage.startTime;
-    final end = stage.endTime;
-    if (start == null && end == null) return null;
-
-    int minutesOfDay(DateTime date) => date.hour * 60 + date.minute;
-    var startMin = start != null ? minutesOfDay(start) : minutesOfDay(end!) - 60;
-    var endMin = end != null ? minutesOfDay(end) : startMin + 60;
-    if (endMin <= startMin) {
-      endMin = startMin + 45;
-    }
-
-    startMin = startMin.clamp(0, 23 * 60 + 59);
-    endMin = endMin.clamp(startMin + 15, 24 * 60);
-    final visual = _stageVisual(stage.stageType);
-    return _TimelineStageItem(
-      stage: stage,
-      startMin: startMin,
-      endMin: endMin,
-      color: visual.iconColor,
-    );
-  }
-
-  List<DateTime> _tripDays({required List<TripStage> stages}) {
-    DateTime toDay(DateTime date) => DateTime(date.year, date.month, date.day);
-    if (_tripPlannedDays != null && _tripPlannedDays! > 0) {
-      final anchor = _tripStartDate != null
-          ? toDay(_tripStartDate!)
-          : DateTime.now();
-      return List<DateTime>.generate(
-        _tripPlannedDays!,
-        (index) => anchor.add(Duration(days: index)),
-      );
-    }
-    if (_tripStartDate != null && _tripEndDate != null) {
-      final start = toDay(_tripStartDate!);
-      final end = toDay(_tripEndDate!);
-      if (!end.isBefore(start)) {
-        final days = <DateTime>[];
-        var cursor = start;
-        while (!cursor.isAfter(end)) {
-          days.add(cursor);
-          cursor = cursor.add(const Duration(days: 1));
-        }
-        return days;
-      }
-    }
-    final values = stages
-        .map((stage) => stage.startTime ?? stage.endTime)
-        .whereType<DateTime>()
-        .map(toDay)
-        .toSet()
-        .toList()
-      ..sort((a, b) => a.compareTo(b));
-    if (values.isNotEmpty) return values;
-    final now = DateTime.now();
-    return [DateTime(now.year, now.month, now.day)];
-  }
-
-  DateTime _ensureSelectedRouteDay(
-    DateTime? selected, {
-    required List<TripStage> stages,
-  }) {
-    final days = _tripDays(stages: stages);
-    if (days.isEmpty) {
-      final now = DateTime.now();
-      return DateTime(now.year, now.month, now.day);
-    }
-    if (selected == null) return days.first;
-    final normalized = DateTime(selected.year, selected.month, selected.day);
-    return days.firstWhere((day) => day == normalized, orElse: () => days.first);
-  }
-
-  List<TripStage> _filterStagesByDay(
-    List<TripStage> stages,
-    DateTime selectedDay,
-    List<DateTime> tripDays,
-  ) {
-    DateTime toDay(DateTime date) => DateTime(date.year, date.month, date.day);
-    final firstDay = tripDays.isNotEmpty ? tripDays.first : selectedDay;
-    return stages.where((stage) {
-      final candidate = stage.startTime ?? stage.endTime;
-      if (candidate == null) {
-        return selectedDay == firstDay;
-      }
-      return toDay(candidate) == selectedDay;
-    }).toList();
-  }
-
-  List<TripStage> _visibleStagesForSelectedDay() {
-    final ordered = [..._stages]..sort((a, b) => a.position.compareTo(b.position));
-    final days = _tripDays(stages: ordered);
-    final selectedDay = _ensureSelectedRouteDay(_selectedRouteDay, stages: ordered);
-    return _filterStagesByDay(ordered, selectedDay, days);
-  }
-  Widget _buildBudgetCard(ColorScheme cs) {
-    if (_showBudgetAnalytics) {
-      return _buildBudgetAnalyticsCard(cs);
-    }
-
-    final total = _expenses.fold<double>(0, (sum, e) => sum + e.amountRub);
-
-    final visible = _expenses
-        .where((e) => _categoryFilter == 'all' || e.category == _categoryFilter)
-        .toList();
-
-    if (_sortMode == 'asc') {
-      visible.sort((a, b) => a.amountRub.compareTo(b.amountRub));
-    } else if (_sortMode == 'desc') {
-      visible.sort((a, b) => b.amountRub.compareTo(a.amountRub));
-    } else {
-      visible.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Общие расходы: ${total.toStringAsFixed(2)} руб.',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontFamily: 'Geologica',
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: 'Диаграмма расходов',
-                onPressed: () {
-                  setState(() {
-                    _showBudgetAnalytics = true;
-                  });
-                },
-                icon: const Icon(
-                  Icons.pie_chart_outline_rounded,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              PopupMenuButton<String>(
-                tooltip: 'Сортировка',
-                color: _popupBg,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  side: const BorderSide(color: _popupBorder),
-                ),
-                onSelected: (value) {
-                  setState(() {
-                    _sortMode = value;
-                  });
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: 'none',
-                    child: Text(
-                      'Без сортировки',
-                      style: TextStyle(
-                        color: _popupText,
-                        fontFamily: 'Geologica',
-                      ),
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'asc',
-                    child: Text(
-                      'По возрастанию',
-                      style: TextStyle(
-                        color: _popupText,
-                        fontFamily: 'Geologica',
-                      ),
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'desc',
-                    child: Text(
-                      'По убыванию',
-                      style: TextStyle(
-                        color: _popupText,
-                        fontFamily: 'Geologica',
-                      ),
-                    ),
-                  ),
-                ],
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white.withOpacity(0.2)),
-                  ),
-                  child: Icon(
-                    Icons.sort_rounded,
-                    size: 18,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  height: 34,
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: _popupFieldBg,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: _popupBorder),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _categoryFilter,
-                      dropdownColor: _popupBg,
-                      iconEnabledColor: _popupAccent,
-                      style: const TextStyle(
-                        color: _popupText,
-                        fontFamily: 'Geologica',
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      isExpanded: true,
-                      isDense: true,
-                      items: [
-                        const DropdownMenuItem<String>(
-                          value: 'all',
-                          child: Text(
-                            'Все категории',
-                            style: TextStyle(
-                              color: _popupText,
-                              fontFamily: 'Geologica',
-                            ),
-                          ),
-                        ),
-                        ..._categories.entries.map(
-                          (e) => DropdownMenuItem(
-                            value: e.key,
-                            child: Text(
-                              e.value,
-                              style: const TextStyle(
-                                color: _popupText,
-                                fontFamily: 'Geologica',
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setState(() {
-                          _categoryFilter = value;
-                        });
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: ElevatedButton.icon(
-              onPressed: _addingExpense ? null : _openAddExpenseDialog,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD7E37A),
-                foregroundColor: const Color(0xFF161616),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-              icon: _addingExpense
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.add),
-              label: const Text('Добавить расходы'),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: _budgetLoading
-                ? const Center(child: CircularProgressIndicator())
-                : visible.isEmpty
-                ? Center(
-                    child: Text(
-                      'Пока нет расходов',
-                      style: TextStyle(color: Colors.white.withOpacity(0.85)),
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: visible.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (_, i) {
-                      final expense = visible[i];
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: Colors.white.withOpacity(0.1),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    expense.description,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    _categories[expense.category] ??
-                                        expense.category,
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.75),
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '${expense.amountRub.toStringAsFixed(2)} руб.',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'Редактировать',
-                              onPressed: () => _openEditExpenseDialog(expense),
-                              icon: const Icon(
-                                Icons.edit_outlined,
-                                color: Colors.white,
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'Удалить',
-                              onPressed: () => _deleteExpense(expense),
-                              icon: const Icon(
-                                Icons.delete_outline_rounded,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBudgetAnalyticsCard(ColorScheme cs) {
-    final totalsByCategory = <String, double>{};
-    for (final expense in _expenses) {
-      totalsByCategory[expense.category] =
-          (totalsByCategory[expense.category] ?? 0) + expense.amountRub;
-    }
-
-    final items = totalsByCategory.entries
-        .where((e) => e.value > 0)
-        .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    final total = items.fold<double>(0, (sum, e) => sum + e.value);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              TextButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _showBudgetAnalytics = false;
-                  });
-                },
-                icon: const Icon(Icons.arrow_back_rounded),
-                label: const Text('Назад к расходам'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Center(
-            child: _ExpensePieChart(
-              values: {
-                for (final item in items) item.key: item.value,
-              },
-              colors: _categoryColors,
-              total: total,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: items.isEmpty
-                ? Center(
-                    child: Text(
-                      'Пока нет данных для диаграммы',
-                      style: TextStyle(color: Colors.white.withOpacity(0.85)),
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (_, i) {
-                      final item = items[i];
-                      final categoryKey = item.key;
-                      final categoryLabel = _categories[categoryKey] ?? categoryKey;
-                      final color = _categoryColors[categoryKey] ?? _categoryColors['other']!;
-
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.06),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white.withOpacity(0.1)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: color,
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                categoryLabel,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            Text(
-                              '${item.value.toStringAsFixed(2)} руб.',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDocumentsCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: double.infinity,
-            height: 44,
-            child: ElevatedButton.icon(
-              onPressed: _uploadingDocument ? null : _pickAndUploadDocument,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFD7E37A),
-                foregroundColor: const Color(0xFF161616),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-              icon: _uploadingDocument
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.upload_file_rounded),
-              label: const Text('Загрузить документ'),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: _documentsLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _documents.isEmpty
-                ? Center(
-                    child: Text(
-                      'Пока нет документов',
-                      style: TextStyle(color: Colors.white.withOpacity(0.85)),
-                    ),
-                  )
-                : ListView.separated(
-                    itemCount: _documents.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (_, i) {
-                      final doc = _documents[i];
-                      return Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: () => _openDocumentPreview(doc),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.06),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.1),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        doc.fileName,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        _fmtBytes(doc.sizeBytes),
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.75),
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                IconButton(
-                                  tooltip: 'Удалить',
-                                  onPressed: () => _deleteDocument(doc),
-                                  icon: const Icon(
-                                    Icons.delete_outline_rounded,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _fmtDate(DateTime value) {
-    final m = value.month.toString().padLeft(2, '0');
-    final d = value.day.toString().padLeft(2, '0');
-    return '$d.$m.${value.year}';
-  }
-
-  String _fmtBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-  }
-
-  String? _resolveContentType(String fileName) {
-    final lower = fileName.toLowerCase();
-    if (lower.endsWith('.pdf')) return 'application/pdf';
-    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-    if (lower.endsWith('.png')) return 'image/png';
-    return null;
-  }
-
-  String? _resolvePreviewType(String fileName) {
-    final lower = fileName.toLowerCase();
-    if (lower.endsWith('.pdf')) return 'pdf';
-    if (lower.endsWith('.jpg') ||
-        lower.endsWith('.jpeg') ||
-        lower.endsWith('.png'))
-      return 'image';
-    return null;
-  }
-
-  String _buildTargetFileName({
-    required String customTitle,
-    required String originalFileName,
-  }) {
-    final clean = customTitle.trim();
-    final ext = _fileExtension(originalFileName);
-    if (ext.isEmpty) return clean;
-
-    if (clean.toLowerCase().endsWith(ext.toLowerCase())) {
-      return clean;
-    }
-    return '$clean$ext';
-  }
-
-  String _fileNameWithoutExtension(String fileName) {
-    final idx = fileName.lastIndexOf('.');
-    if (idx <= 0) return fileName;
-    return fileName.substring(0, idx);
-  }
-
-  String _fileExtension(String fileName) {
-    final idx = fileName.lastIndexOf('.');
-    if (idx <= 0 || idx == fileName.length - 1) return '';
-    return fileName.substring(idx);
-  }
 }
 
 class _DocumentPreviewDialog extends StatelessWidget {
@@ -3649,7 +2696,7 @@ class _StageTypePickerPage extends StatelessWidget {
                           const SizedBox(width: 10),
                           const Expanded(
                             child: Text(
-                              'Р’С‹Р±РµСЂРёС‚Рµ С‚РёРї СЌС‚Р°РїР°',
+                              'Выберите тип этапа',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -3743,7 +2790,7 @@ class _StageFormPage extends StatefulWidget {
     this.routeDay,
     this.onUploadDocument,
     this.initial,
-    this.submitLabel = 'Р”РѕР±Р°РІРёС‚СЊ',
+    this.submitLabel = 'Добавить',
   });
 
   @override
@@ -3753,44 +2800,44 @@ class _StageFormPage extends StatefulWidget {
 class _StageFormPageState extends State<_StageFormPage> {
   static final RegExp _moneyInputPattern = RegExp(r'^\d*([.,]\d{0,2})?$');
   static const Map<String, String> _subtypeLabels = <String, String>{
-    'road': 'Р”РѕСЂРѕРіР°',
-    'airplane': 'РЎР°РјРѕР»РµС‚',
-    'train': 'РџРѕРµР·Рґ',
-    'car': 'РђРІС‚РѕРјРѕР±РёР»СЊ',
-    'bus': 'РђРІС‚РѕР±СѓСЃ',
-    'public_transport': 'РћР±С‰РµСЃС‚РІРµРЅРЅС‹Р№ С‚СЂР°РЅСЃРїРѕСЂС‚',
-    'walk': 'РџРµС€РєРѕРј',
-    'taxi': 'РўР°РєСЃРё',
-    'bicycle': 'Р’РµР»РѕСЃРёРїРµРґ',
-    'attraction': 'Р”РѕСЃС‚РѕРїСЂРёРјРµС‡Р°С‚РµР»СЊРЅРѕСЃС‚СЊ',
-    'excursion': 'Р­РєСЃРєСѓСЂСЃРёСЏ',
-    'museum': 'РњСѓР·РµР№',
-    'park': 'РџР°СЂРє',
-    'event': 'РњРµСЂРѕРїСЂРёСЏС‚РёРµ',
-    'nature': 'РџСЂРёСЂРѕРґРЅС‹Р№ РѕР±СЉРµРєС‚',
-    'hotel': 'РћС‚РµР»СЊ',
-    'hostel': 'РҐРѕСЃС‚РµР»',
-    'apartment': 'РђРїР°СЂС‚Р°РјРµРЅС‚С‹',
-    'overnight': 'РќРѕС‡РµРІРєР°',
-    'rest': 'РЎРѕРЅ / РѕС‚РґС‹С…',
-    'restaurant': 'Р РµСЃС‚РѕСЂР°РЅ',
-    'cafe': 'РљР°С„Рµ',
-    'fastfood': 'Р¤Р°СЃС‚С„СѓРґ',
-    'breakfast': 'Р—Р°РІС‚СЂР°Рє',
-    'lunch': 'РћР±РµРґ',
-    'dinner': 'РЈР¶РёРЅ',
-    'to_go': 'Р’Р·СЏС‚СЊ СЃ СЃРѕР±РѕР№',
-    'mall': 'РўРѕСЂРіРѕРІС‹Р№ С†РµРЅС‚СЂ',
-    'market': 'Р С‹РЅРѕРє',
-    'souvenirs': 'РЎСѓРІРµРЅРёСЂС‹',
-    'shopping': 'РџРѕРєСѓРїРєРё',
-    'sport': 'РЎРїРѕСЂС‚',
-    'entertainment': 'Р Р°Р·РІР»РµС‡РµРЅРёСЏ',
-    'beach': 'РџР»СЏР¶',
-    'tickets': 'Р‘РёР»РµС‚С‹',
-    'visa': 'Р’РёР·Р°',
-    'insurance': 'РЎС‚СЂР°С…РѕРІРєР°',
-    'booking': 'Р‘СЂРѕРЅСЊ',
+    'road': 'Дорога',
+    'airplane': 'Самолет',
+    'train': 'Поезд',
+    'car': 'Автомобиль',
+    'bus': 'Автобус',
+    'public_transport': 'Общественный транспорт',
+    'walk': 'Пешком',
+    'taxi': 'Такси',
+    'bicycle': 'Велосипед',
+    'attraction': 'Достопримечательность',
+    'excursion': 'Экскурсия',
+    'museum': 'Музей',
+    'park': 'Парк',
+    'event': 'Мероприятие',
+    'nature': 'Природный объект',
+    'hotel': 'Отель',
+    'hostel': 'Хостел',
+    'apartment': 'Апартаменты',
+    'overnight': 'Ночевка',
+    'rest': 'Сон / отдых',
+    'restaurant': 'Ресторан',
+    'cafe': 'Кафе',
+    'fastfood': 'Фастфуд',
+    'breakfast': 'Завтрак',
+    'lunch': 'Обед',
+    'dinner': 'Ужин',
+    'to_go': 'Взять с собой',
+    'mall': 'Торговый центр',
+    'market': 'Рынок',
+    'souvenirs': 'Сувениры',
+    'shopping': 'Покупки',
+    'sport': 'Спорт',
+    'entertainment': 'Развлечения',
+    'beach': 'Пляж',
+    'tickets': 'Билеты',
+    'visa': 'Виза',
+    'insurance': 'Страховка',
+    'booking': 'Бронь',
   };
 
   final _formKey = GlobalKey<FormState>();
@@ -3899,17 +2946,17 @@ class _StageFormPageState extends State<_StageFormPage> {
       return '';
     }
     if (_stageType == 'transport' && _subtype == 'road') {
-      return 'Р”РѕСЂРѕРіР°';
+      return 'Дорога';
     }
     return _prettySubtype(_subtype);
   }
 
   String _startTimeLabel() {
-    return _stageType == 'transport' ? 'Р’СЂРµРјСЏ РѕС‚РїСЂР°РІР»РµРЅРёСЏ' : 'Р’СЂРµРјСЏ РЅР°С‡Р°Р»Р°';
+    return _stageType == 'transport' ? 'Время отправления' : 'Время начала';
   }
 
   String _endTimeLabel() {
-    return _stageType == 'transport' ? 'Р’СЂРµРјСЏ РїСЂРёР±С‹С‚РёСЏ' : 'Р’СЂРµРјСЏ РѕРєРѕРЅС‡Р°РЅРёСЏ';
+    return _stageType == 'transport' ? 'Время прибытия' : 'Время окончания';
   }
 
   DateTime _defaultCalendarDateTime() {
@@ -3958,9 +3005,9 @@ class _StageFormPageState extends State<_StageFormPage> {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: current?.hour ?? 12, minute: current?.minute ?? 0),
-      helpText: 'Р’С‹Р±РµСЂРёС‚Рµ РІСЂРµРјСЏ',
-      cancelText: 'РћС‚РјРµРЅР°',
-      confirmText: 'РћРљ',
+      helpText: 'Выберите время',
+      cancelText: 'Отмена',
+      confirmText: 'ОК',
       builder: (context, child) {
         return MediaQuery(
           data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
@@ -4108,7 +3155,7 @@ class _StageFormPageState extends State<_StageFormPage> {
       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w400),
       decoration: InputDecoration(
         labelText: label,
-        hintText: 'Р’С‹Р±СЂР°С‚СЊ',
+        hintText: 'Выбрать',
         suffixIcon: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -4133,7 +3180,7 @@ class _StageFormPageState extends State<_StageFormPage> {
       validator: (value) {
         final raw = (value ?? '').trim();
         if (raw.isEmpty) return null;
-        if (_parseTime(raw, null) == null) return 'Р¤РѕСЂРјР°С‚ РІСЂРµРјРµРЅРё: HH:MM';
+        if (_parseTime(raw, null) == null) return 'Формат времени: HH:MM';
         return null;
       },
     );
@@ -4144,7 +3191,7 @@ class _StageFormPageState extends State<_StageFormPage> {
     final cs = Theme.of(context).colorScheme;
     final stageTypeItems = Map<String, String>.from(widget.stageTypeLabels);
     if (!stageTypeItems.containsKey(_stageType)) {
-      stageTypeItems[_stageType] = _stageType == 'document' ? 'Р”РѕРєСѓРјРµРЅС‚' : _stageType;
+      stageTypeItems[_stageType] = _stageType == 'document' ? 'Документ' : _stageType;
     }
     final subtypes = widget.stageSubtypes[_stageType] ?? const <String>[];
     final isTransport = _stageType == 'transport';
@@ -4178,9 +3225,9 @@ class _StageFormPageState extends State<_StageFormPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              widget.submitLabel == 'РЎРѕС…СЂР°РЅРёС‚СЊ'
-                                  ? 'Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ СЌС‚Р°РїР°'
-                                  : 'РќРѕРІС‹Р№ СЌС‚Р°Рї',
+                              widget.submitLabel == 'Сохранить'
+                                  ? 'Редактирование этапа'
+                                  : 'Новый этап',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w400,
@@ -4218,7 +3265,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                             child: ListView(
                               padding: const EdgeInsets.only(bottom: 8),
                               children: [
-                                _bubble('Р‘С‹СЃС‚СЂРѕРµ СЃРѕР·РґР°РЅРёРµ', [
+                                _bubble('Быстрое создание', [
                                   Wrap(
                                     spacing: 8,
                                     runSpacing: 8,
@@ -4265,7 +3312,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                     }).toList(),
                                   ),
                                 ], cs.primary),
-                                _bubble('РћСЃРЅРѕРІРЅРѕРµ', [
+                                _bubble('Основное', [
                                   TextFormField(
                                     controller: _titleCtrl,
                                     onChanged: (value) {
@@ -4277,9 +3324,9 @@ class _StageFormPageState extends State<_StageFormPage> {
                                       color: Colors.white,
                                       fontWeight: FontWeight.w600,
                                     ),
-                                    decoration: const InputDecoration(labelText: 'РќР°Р·РІР°РЅРёРµ'),
+                                    decoration: const InputDecoration(labelText: 'Название'),
                                     validator: (v) =>
-                                        (v ?? '').trim().isEmpty ? 'Р’РІРµРґРёС‚Рµ РЅР°Р·РІР°РЅРёРµ' : null,
+                                        (v ?? '').trim().isEmpty ? 'Введите название' : null,
                                   ),
                                   const SizedBox(height: 8),
                                   if (isTransport) ...[
@@ -4289,7 +3336,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         color: Colors.white,
                                         fontWeight: FontWeight.w600,
                                       ),
-                                      decoration: const InputDecoration(labelText: 'РћС‚РєСѓРґР°'),
+                                      decoration: const InputDecoration(labelText: 'Откуда'),
                                     ),
                                     const SizedBox(height: 8),
                                     TextFormField(
@@ -4298,7 +3345,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         color: Colors.white,
                                         fontWeight: FontWeight.w600,
                                       ),
-                                      decoration: const InputDecoration(labelText: 'РљСѓРґР°'),
+                                      decoration: const InputDecoration(labelText: 'Куда'),
                                     ),
                                   ] else ...[
                                     TextFormField(
@@ -4309,10 +3356,10 @@ class _StageFormPageState extends State<_StageFormPage> {
                                       ),
                                       decoration: InputDecoration(
                                         labelText: isStay
-                                            ? 'РђРґСЂРµСЃ РїСЂРѕР¶РёРІР°РЅРёСЏ'
+                                            ? 'Адрес проживания'
                                             : isFood
-                                                ? 'РњРµСЃС‚Рѕ / Р°РґСЂРµСЃ'
-                                                : 'РђРґСЂРµСЃ / РјРµСЃС‚Рѕ',
+                                                ? 'Место / адрес'
+                                                : 'Адрес / место',
                                       ),
                                     ),
                                   ],
@@ -4321,11 +3368,11 @@ class _StageFormPageState extends State<_StageFormPage> {
                                     segments: const [
                                       ButtonSegment<String>(
                                         value: 'duration',
-                                        label: Text('РџСЂРѕРґРѕР»Р¶РёС‚РµР»СЊРЅРѕСЃС‚СЊ'),
+                                        label: Text('Продолжительность'),
                                       ),
                                       ButtonSegment<String>(
                                         value: 'range',
-                                        label: Text('РџСЂРѕРјРµР¶СѓС‚РѕРє'),
+                                        label: Text('Промежуток'),
                                       ),
                                     ],
                                     selected: {_transportTimeMode},
@@ -4376,7 +3423,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         fontWeight: FontWeight.w600,
                                       ),
                                       decoration: const InputDecoration(
-                                        labelText: 'РџСЂРѕРґРѕР»Р¶РёС‚РµР»СЊРЅРѕСЃС‚СЊ, РјРёРЅ',
+                                        labelText: 'Продолжительность, мин',
                                       ),
                                       keyboardType: TextInputType.number,
                                     ),
@@ -4401,7 +3448,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   ],
                                 ], Colors.cyan),
                                 const SizedBox(height: 2),
-                                _bubble('Р”РµС‚Р°Р»Рё', [
+                                _bubble('Детали', [
                                     if (subtypes.isNotEmpty) ...[
                                       DropdownButtonFormField<String>(
                                         value: (_subtype.isNotEmpty && subtypes.contains(_subtype))
@@ -4413,7 +3460,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         ),
                                         dropdownColor: const Color(0xFF2B2B2B),
                                         iconEnabledColor: Colors.white70,
-                                        decoration: const InputDecoration(labelText: 'РџРѕРґС‚РёРї'),
+                                        decoration: const InputDecoration(labelText: 'Подтип'),
                                         items: subtypes
                                             .map(
                                               (e) => DropdownMenuItem(
@@ -4465,7 +3512,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                           fontWeight: FontWeight.w600,
                                         ),
                                         decoration: InputDecoration(
-                                          labelText: isFood ? 'РЎРєРѕР»СЊРєРѕ РїРѕС‚СЂР°С‡Сѓ, СЂСѓР±' : 'РЎС‚РѕРёРјРѕСЃС‚СЊ, СЂСѓР±',
+                                          labelText: isFood ? 'Сколько потрачу, руб' : 'Стоимость, руб',
                                         ),
                                         keyboardType:
                                             const TextInputType.numberWithOptions(decimal: true),
@@ -4502,8 +3549,8 @@ class _StageFormPageState extends State<_StageFormPage> {
                                               : const Icon(Icons.upload_file_rounded),
                                           label: Text(
                                             _docCtrl.text.trim().isEmpty
-                                                ? 'Р—Р°РіСЂСѓР·РёС‚СЊ РґРѕРєСѓРјРµРЅС‚'
-                                                : 'Р”РѕРєСѓРјРµРЅС‚ Р·Р°РіСЂСѓР¶РµРЅ',
+                                                ? 'Загрузить документ'
+                                                : 'Документ загружен',
                                           ),
                                         ),
                                       ),
@@ -4515,7 +3562,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                         color: Colors.white,
                                         fontWeight: FontWeight.w600,
                                       ),
-                                      decoration: const InputDecoration(labelText: 'РљРѕРјРјРµРЅС‚Р°СЂРёР№'),
+                                      decoration: const InputDecoration(labelText: 'Комментарий'),
                                       maxLines: 3,
                                     ),
                                 ], Colors.greenAccent),
@@ -4642,7 +3689,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              widget.submitLabel == 'Р”РѕР±Р°РІРёС‚СЊ' ? 'РќРѕРІС‹Р№ СЌС‚Р°Рї' : 'Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ СЌС‚Р°РїР°',
+                              widget.submitLabel == 'Добавить' ? 'Новый этап' : 'Редактирование этапа',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
@@ -4680,13 +3727,13 @@ class _StageFormPageState extends State<_StageFormPage> {
                             child: ListView(
                             padding: const EdgeInsets.only(bottom: 8),
                             children: [
-                              _bubble('РўРёРї СЌС‚Р°РїР°', [
+                              _bubble('Тип этапа', [
                                 DropdownButtonFormField<String>(
                                   value: _stageType,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                   dropdownColor: const Color(0xFF2B2B2B),
                                   iconEnabledColor: Colors.white70,
-                                  decoration: const InputDecoration(labelText: 'РўРёРї'),
+                                  decoration: const InputDecoration(labelText: 'Тип'),
                                   items: stageTypeItems.entries
                                       .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
                                       .toList(),
@@ -4704,7 +3751,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                   dropdownColor: const Color(0xFF2B2B2B),
                                   iconEnabledColor: Colors.white70,
-                                  decoration: const InputDecoration(labelText: 'РџРѕРґС‚РёРї'),
+                                  decoration: const InputDecoration(labelText: 'Подтип'),
                                   items: subtypes
                                       .map(
                                         (e) => DropdownMenuItem(
@@ -4744,47 +3791,47 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   },
                                 ),
                               ], cs.primary),
-                              _bubble('РћСЃРЅРѕРІРЅРѕРµ', [
+                              _bubble('Основное', [
                                 TextFormField(
                                   controller: _titleCtrl,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                  decoration: const InputDecoration(labelText: 'РќР°Р·РІР°РЅРёРµ'),
-                                  validator: (v) => (v ?? '').trim().isEmpty ? 'Р’РІРµРґРёС‚Рµ РЅР°Р·РІР°РЅРёРµ' : null,
+                                  decoration: const InputDecoration(labelText: 'Название'),
+                                  validator: (v) => (v ?? '').trim().isEmpty ? 'Введите название' : null,
                                 ),
                                 const SizedBox(height: 8),
                                 TextFormField(
                                   controller: _addressCtrl,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                  decoration: const InputDecoration(labelText: 'РђРґСЂРµСЃ / РјРµСЃС‚Рѕ'),
+                                  decoration: const InputDecoration(labelText: 'Адрес / место'),
                                 ),
                               ], Colors.cyan),
-                              _bubble('Р›РѕРіРёСЃС‚РёРєР° Рё РІСЂРµРјСЏ', [
+                              _bubble('Логистика и время', [
                                 if (isTransport) ...[
                                   TextFormField(
                                     controller: _startLocationCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: const InputDecoration(labelText: 'РћС‚РєСѓРґР°'),
+                                    decoration: const InputDecoration(labelText: 'Откуда'),
                                   ),
                                   const SizedBox(height: 8),
                                   TextFormField(
                                     controller: _endLocationCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: const InputDecoration(labelText: 'РљСѓРґР°'),
+                                    decoration: const InputDecoration(labelText: 'Куда'),
                                   ),
                                   const SizedBox(height: 8),
                                 ],
                                 Row(children: [
-                                  Expanded(child: _timeField(isTransport ? 'Р’СЂРµРјСЏ РѕС‚РїСЂР°РІР»РµРЅРёСЏ' : 'Р’СЂРµРјСЏ РЅР°С‡Р°Р»Р°', _startTimeCtrl)),
+                                  Expanded(child: _timeField(isTransport ? 'Время отправления' : 'Время начала', _startTimeCtrl)),
                                   const SizedBox(width: 8),
-                                  Expanded(child: _timeField(isTransport ? 'Р’СЂРµРјСЏ РїСЂРёР±С‹С‚РёСЏ' : 'Р’СЂРµРјСЏ РѕРєРѕРЅС‡Р°РЅРёСЏ', _endTimeCtrl)),
+                                  Expanded(child: _timeField(isTransport ? 'Время прибытия' : 'Время окончания', _endTimeCtrl)),
                                 ]),
                               ], Colors.amber),
-                              _bubble('Р¤РёРЅР°РЅСЃС‹ Рё РґРµС‚Р°Р»Рё', [
+                              _bubble('Финансы и детали', [
                                 if (!isDocument) ...[
                                   TextFormField(
                                     controller: _costCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: InputDecoration(labelText: isFood ? 'РЎРєРѕР»СЊРєРѕ РїРѕС‚СЂР°С‡Сѓ, СЂСѓР±' : 'РЎС‚РѕРёРјРѕСЃС‚СЊ, СЂСѓР±'),
+                                    decoration: InputDecoration(labelText: isFood ? 'Сколько потрачу, руб' : 'Стоимость, руб'),
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     inputFormatters: [
                                       FilteringTextInputFormatter.allow(_moneyInputPattern),
@@ -4793,12 +3840,12 @@ class _StageFormPageState extends State<_StageFormPage> {
                                   const SizedBox(height: 8),
                                 ],
                               ], Colors.greenAccent),
-                              _bubble('Р¤Р°Р№Р»С‹ Рё Р·Р°РјРµС‚РєРё', [
+                              _bubble('Файлы и заметки', [
                                 if (isTransport || isStay) ...[
                                   TextFormField(
                                     controller: _docCtrl,
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                    decoration: const InputDecoration(labelText: 'РљР»СЋС‡ РґРѕРєСѓРјРµРЅС‚Р°'),
+                                    decoration: const InputDecoration(labelText: 'Ключ документа'),
                                   ),
                                   const SizedBox(height: 8),
                                 ],
@@ -4826,8 +3873,8 @@ class _StageFormPageState extends State<_StageFormPage> {
                                           : const Icon(Icons.upload_file_rounded),
                                       label: Text(
                                         _docCtrl.text.trim().isEmpty
-                                            ? 'Р—Р°РіСЂСѓР·РёС‚СЊ РґРѕРєСѓРјРµРЅС‚'
-                                            : 'Р”РѕРєСѓРјРµРЅС‚ Р·Р°РіСЂСѓР¶РµРЅ',
+                                            ? 'Загрузить документ'
+                                            : 'Документ загружен',
                                       ),
                                     ),
                                   ),
@@ -4836,7 +3883,7 @@ class _StageFormPageState extends State<_StageFormPage> {
                                 TextFormField(
                                   controller: _notesCtrl,
                                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-                                  decoration: const InputDecoration(labelText: 'РљРѕРјРјРµРЅС‚Р°СЂРёР№'),
+                                  decoration: const InputDecoration(labelText: 'Комментарий'),
                                   maxLines: 3,
                                 ),
                               ], Colors.pinkAccent),
@@ -5765,7 +4812,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ РјР°СЂС€СЂСѓС‚',
+                'Редактировать маршрут',
                 textAlign: TextAlign.left,
                 style: TextStyle(
                   color: Colors.white,
@@ -5779,7 +4826,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                 textAlign: TextAlign.left,
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
-                  labelText: 'РќР°Р·РІР°РЅРёРµ',
+                  labelText: 'Название',
                   alignLabelWithHint: true,
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
@@ -5791,7 +4838,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Р“РѕСЂРѕРґ: ${widget.city}',
+                'Город: ${widget.city}',
                 textAlign: TextAlign.left,
                 style: TextStyle(color: Colors.white.withOpacity(0.75)),
               ),
@@ -5802,12 +4849,12 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                 alignment: WrapAlignment.start,
                 children: [
                   _SettingsChip(
-                    label: 'РўРѕС‡РЅС‹Рµ РґР°С‚С‹',
+                    label: 'Точные даты',
                     selected: !_usePlannedDays,
                     onTap: () => setState(() => _usePlannedDays = false),
                   ),
                   _SettingsChip(
-                    label: 'РљРѕР»РёС‡РµСЃС‚РІРѕ РґРЅРµР№',
+                    label: 'Количество дней',
                     selected: _usePlannedDays,
                     onTap: () => setState(() => _usePlannedDays = true),
                   ),
@@ -5824,7 +4871,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                   textAlign: TextAlign.left,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    labelText: 'РљРѕР»РёС‡РµСЃС‚РІРѕ РґРЅРµР№',
+                    labelText: 'Количество дней',
                     alignLabelWithHint: true,
                     isDense: true,
                     contentPadding: EdgeInsets.zero,
@@ -5853,7 +4900,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                 ),
               const SizedBox(height: 16),
               Text(
-                'РћС„РѕСЂРјР»РµРЅРёРµ РєР°СЂС‚РѕС‡РєРё',
+                'Оформление карточки',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.88),
                   fontSize: 14,
@@ -5966,7 +5013,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                             side: const BorderSide(color: Color(0xFF3A4751)),
                           ),
                           title: const Text(
-                            'РђСЂС…РёРІРёСЂРѕРІР°С‚СЊ РїСѓС‚РµС€РµСЃС‚РІРёРµ?',
+                            'Архивировать путешествие?',
                             style: TextStyle(
                               color: Color(0xFFF2F4F8),
                               fontFamily: 'Geologica',
@@ -5974,7 +5021,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                             ),
                           ),
                           content: const Text(
-                            'РџСѓС‚РµС€РµСЃС‚РІРёРµ РёСЃС‡РµР·РЅРµС‚ СЃ РіР»Р°РІРЅРѕР№ СЃС‚СЂР°РЅРёС†С‹ Рё РѕСЃС‚Р°РЅРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РІ СЃРїРёСЃРєРµ РїРѕРµР·РґРѕРє РїСЂРѕС„РёР»СЏ.',
+                            'Путешествие исчезнет с главной страницы и останется только в списке поездок профиля.',
                             style: TextStyle(
                               color: Color(0xFFB7BDC8),
                               fontFamily: 'Geologica',
@@ -5984,7 +5031,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                             TextButton(
                               onPressed: () => Navigator.of(ctx).pop(false),
                               child: const Text(
-                                'РћС‚РјРµРЅР°',
+                                'Отмена',
                                 style: TextStyle(
                                   color: Color(0xFFB7BDC8),
                                   fontFamily: 'Geologica',
@@ -6003,7 +5050,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                                 elevation: 0,
                               ),
                               child: const Text(
-                                'РђСЂС…РёРІРёСЂРѕРІР°С‚СЊ',
+                                'Архивировать',
                                 style: TextStyle(
                                   fontFamily: 'Geologica',
                                   fontWeight: FontWeight.w700,
@@ -6040,7 +5087,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                       ),
                     ),
                     icon: const Icon(Icons.archive_outlined, size: 16),
-                    label: const Text('РђСЂС…РёРІРёСЂРѕРІР°С‚СЊ'),
+                    label: const Text('Архивировать'),
                   ),
                   OutlinedButton.icon(
                     onPressed: () {
@@ -6066,7 +5113,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                       ),
                     ),
                     icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                    label: const Text('РЈРґР°Р»РёС‚СЊ'),
+                    label: const Text('Удалить'),
                   ),
                 ],
               ),
@@ -6077,7 +5124,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     style: TextButton.styleFrom(foregroundColor: Colors.white70),
-                    child: const Text('РћС‚РјРµРЅР°'),
+                    child: const Text('Отмена'),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
@@ -6090,7 +5137,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                       ),
                       elevation: 0,
                     ),
-                    child: const Text('РЎРѕС…СЂР°РЅРёС‚СЊ'),
+                    child: const Text('Сохранить'),
                   ),
                 ],
               ),
@@ -6200,8 +5247,8 @@ class _TripCardPreviewArt extends StatelessWidget {
               top: 6,
               child: Text(
                 background == 'brand_text'
-                    ? 'РўСѓСЂ2РўСѓСЂ'
-                    : (titleText.trim().isEmpty ? 'Р“РѕСЂРѕРґ' : titleText.trim()),
+                    ? 'Тур2Тур'
+                    : (titleText.trim().isEmpty ? 'Город' : titleText.trim()),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -6383,6 +5430,7 @@ class _TripRouteMapPage extends StatefulWidget {
   final List<Map<String, String>> stagePoints;
   final DateTime? startDate;
   final DateTime? endDate;
+  final TripsRepo tripsRepo;
 
   const _TripRouteMapPage({
     required this.tripTitle,
@@ -6390,6 +5438,7 @@ class _TripRouteMapPage extends StatefulWidget {
     required this.stagePoints,
     this.startDate,
     this.endDate,
+    required this.tripsRepo,
   });
 
   @override
@@ -6414,7 +5463,11 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
   List<_MapSuggestItem> _suggestions = const [];
   String _lastSuggestQuery = '';
   String? _tripBoundsBbox;
+  double? _tripCenterLat;
+  double? _tripCenterLon;
   String? _selectedSuggestionTitle;
+  double? _searchPointLat;
+  double? _searchPointLon;
 
   @override
   void initState() {
@@ -6519,10 +5572,31 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
           title = _normalizeSuggestText(title);
           subtitle = _normalizeSuggestText(subtitle);
           if (title.isEmpty && subtitle.isEmpty) continue;
+          double? centerLat;
+          double? centerLon;
+          final centerRaw = map['center'];
+          if (centerRaw is List && centerRaw.length >= 2) {
+            centerLon = (centerRaw[0] as num?)?.toDouble();
+            centerLat = (centerRaw[1] as num?)?.toDouble();
+          } else if (centerRaw is Map) {
+            centerLon = (centerRaw['lon'] as num?)?.toDouble() ??
+                double.tryParse('${centerRaw['lon'] ?? ''}');
+            centerLat = (centerRaw['lat'] as num?)?.toDouble() ??
+                double.tryParse('${centerRaw['lat'] ?? ''}');
+          } else {
+            final posRaw = '${map['pos'] ?? ''}'.trim();
+            final parts = posRaw.split(' ');
+            if (parts.length == 2) {
+              centerLon = double.tryParse(parts[0]);
+              centerLat = double.tryParse(parts[1]);
+            }
+          }
           parsed.add(
             _MapSuggestItem(
               title: title.isEmpty ? subtitle : title,
               subtitle: subtitle,
+              centerLat: centerLat,
+              centerLon: centerLon,
             ),
           );
           if (parsed.length >= 5) break;
@@ -6546,6 +5620,8 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
   void _onSuggestionTap(_MapSuggestItem item) {
     final query = item.addressQuery;
     _selectedSuggestionTitle = item.title.trim();
+    _searchPointLat = item.centerLat;
+    _searchPointLon = item.centerLon;
     _suggestDebounce?.cancel();
     _searchCtrl.text = query;
     _searchCtrl.selection = TextSelection.collapsed(offset: _searchCtrl.text.length);
@@ -6625,39 +5701,80 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
   Future<void> _resolveTripBounds() async {
     final city = widget.destinationCity.trim();
     if (city.isEmpty) return;
-    try {
-      final response = await _suggestDio.get(
-        'https://geocode-maps.yandex.ru/v1/',
-        queryParameters: <String, dynamic>{
-          'apikey': _yandexGeocoderApiKey,
-          'geocode': city,
-          'format': 'json',
-          'results': 1,
-          'lang': 'ru_RU',
-        },
-      );
-      final data = response.data;
-      if (data is! Map<String, dynamic>) return;
-      final members = (((data['response'] as Map?)?['GeoObjectCollection'] as Map?)
-              ?['featureMember'])
-          as List?;
-      if (members == null || members.isEmpty) return;
-      final geoObject = ((members.first as Map?)?['GeoObject']) as Map?;
-      final envelope = (((geoObject?['boundedBy'] as Map?)?['Envelope']) as Map?);
-      final lowerCorner = _normalizeSuggestText('${envelope?['lowerCorner'] ?? ''}');
-      final upperCorner = _normalizeSuggestText('${envelope?['upperCorner'] ?? ''}');
-      if (lowerCorner.isEmpty || upperCorner.isEmpty) return;
+    final core = city.split(',').first.trim();
+    final candidates = <String>[
+      city,
+      if (core.isNotEmpty) core,
+      '$city, Россия',
+      if (core.isNotEmpty) '$core, Россия',
+    ];
+    for (final candidate in candidates) {
+      try {
+        final response = await _suggestDio.get(
+          'https://geocode-maps.yandex.ru/v1/',
+          queryParameters: <String, dynamic>{
+            'apikey': _yandexGeocoderApiKey,
+            'geocode': candidate,
+            'format': 'json',
+            'results': 1,
+            'lang': 'ru_RU',
+          },
+        );
+        final data = response.data;
+        if (data is! Map<String, dynamic>) continue;
+        final members = (((data['response'] as Map?)?['GeoObjectCollection'] as Map?)
+                ?['featureMember'])
+            as List?;
+        if (members == null || members.isEmpty) continue;
+        final geoObject = ((members.first as Map?)?['GeoObject']) as Map?;
+        final envelope = (((geoObject?['boundedBy'] as Map?)?['Envelope']) as Map?);
+        final lowerCorner = _normalizeSuggestText('${envelope?['lowerCorner'] ?? ''}');
+        final upperCorner = _normalizeSuggestText('${envelope?['upperCorner'] ?? ''}');
+        if (lowerCorner.isEmpty || upperCorner.isEmpty) continue;
 
-      final lower = lowerCorner.split(' ');
-      final upper = upperCorner.split(' ');
-      if (lower.length != 2 || upper.length != 2) return;
-      final bbox = '${lower[0]},${lower[1]}~${upper[0]},${upper[1]}';
+        final lower = lowerCorner.split(' ');
+        final upper = upperCorner.split(' ');
+        if (lower.length != 2 || upper.length != 2) continue;
+        final bbox = '${lower[0]},${lower[1]}~${upper[0]},${upper[1]}';
+        if (!mounted) return;
+        setState(() {
+          _tripBoundsBbox = bbox;
+          final lon = double.tryParse(lower[0]);
+          final lat = double.tryParse(lower[1]);
+          final lon2 = double.tryParse(upper[0]);
+          final lat2 = double.tryParse(upper[1]);
+          if (lon != null && lon2 != null && lat != null && lat2 != null) {
+            _tripCenterLon = (lon + lon2) / 2.0;
+            _tripCenterLat = (lat + lat2) / 2.0;
+          }
+        });
+        return;
+      } catch (_) {
+        // try next candidate
+      }
+    }
+
+    try {
+      final fromPlaces = await widget.tripsRepo.suggestCities(city, limit: 1);
+      if (fromPlaces.isEmpty) return;
+      final lat = fromPlaces.first.latitude;
+      final lon = fromPlaces.first.longitude;
+      if (lat == null || lon == null) return;
+      // Practical bounds for city-scoped suggest fallback.
+      const lonSpan = 1.2;
+      const latSpan = 0.8;
+      final minLon = (lon - lonSpan).clamp(-180.0, 180.0);
+      final maxLon = (lon + lonSpan).clamp(-180.0, 180.0);
+      final minLat = (lat - latSpan).clamp(-90.0, 90.0);
+      final maxLat = (lat + latSpan).clamp(-90.0, 90.0);
       if (!mounted) return;
       setState(() {
-        _tripBoundsBbox = bbox;
+        _tripCenterLat = lat;
+        _tripCenterLon = lon;
+        _tripBoundsBbox = '$minLon,$minLat~$maxLon,$maxLat';
       });
     } catch (_) {
-      // Fallback: no geo-bound filter for suggest.
+      // no-op, keep unbounded fallback
     }
   }
 
@@ -6665,12 +5782,14 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
     final value = _searchCtrl.text.trim();
     if (value.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Р’РІРµРґРёС‚Рµ Р°РґСЂРµСЃ РґР»СЏ РїРѕРёСЃРєР°')),
+        const SnackBar(content: Text('Введите адрес для поиска')),
       );
       return;
     }
     setState(() {
       _selectedSuggestionTitle = null;
+      _searchPointLat = null;
+      _searchPointLon = null;
       _showSuggestions = false;
       _suggestions = const [];
       _mapQuery = '';
@@ -6728,7 +5847,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                           ),
                         ),
                         icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                        label: const Text('Рљ СЌС‚Р°РїР°Рј'),
+                        label: const Text('К этапам'),
                       ),
                       const SizedBox(height: 10),
                       Text(
@@ -6770,7 +5889,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                                 onSubmitted: (_) => _submitSearch(),
                                 decoration: InputDecoration(
                                   isDense: true,
-                                  hintText: 'Р’РІРµРґРёС‚Рµ Р°РґСЂРµСЃ',
+                                  hintText: 'Введите адрес',
                                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
                                   border: InputBorder.none,
                                 ),
@@ -6778,7 +5897,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                             ),
                             TextButton(
                               onPressed: _submitSearch,
-                              child: const Text('РќР°Р№С‚Рё'),
+                              child: const Text('Найти'),
                             ),
                           ],
                         ),
@@ -6807,7 +5926,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                                       ),
                                       SizedBox(width: 10),
                                       Text(
-                                        'РС‰РµРј РїРѕРґСЃРєР°Р·РєРё...',
+                                        'Ищем подсказки...',
                                         style: TextStyle(color: Colors.white70, fontSize: 13),
                                       ),
                                     ],
@@ -6879,7 +5998,11 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                           borderRadius: BorderRadius.circular(16),
                           child: YandexCityMap(
                             city: widget.destinationCity,
+                            cityCenterLat: _tripCenterLat,
+                            cityCenterLon: _tripCenterLon,
                             searchQuery: _mapQuery,
+                            searchPointLat: _searchPointLat,
+                            searchPointLon: _searchPointLon,
                             onAddRouteFromSearch: (address) {
                               Navigator.of(context).pop(
                                 _MapAddStagePayload(
@@ -6908,10 +6031,14 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
 class _MapSuggestItem {
   final String title;
   final String subtitle;
+  final double? centerLat;
+  final double? centerLon;
 
   const _MapSuggestItem({
     required this.title,
     required this.subtitle,
+    this.centerLat,
+    this.centerLon,
   });
 
   String get searchText {
@@ -6925,9 +6052,9 @@ class _MapSuggestItem {
   String get addressQuery {
     final s = subtitle.trim();
     if (s.isNotEmpty) {
-      if (s.contains('В·')) {
+      if (s.contains('·')) {
         final parts = s
-            .split('В·')
+            .split('·')
             .map((e) => e.trim())
             .where((e) => e.isNotEmpty)
             .toList();

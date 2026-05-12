@@ -15,14 +15,22 @@ import '../../../core/mapkit/mapkit_initializer.dart';
 
 class YandexCityMap extends StatefulWidget {
   final String? city;
+  final double? cityCenterLat;
+  final double? cityCenterLon;
   final String? searchQuery;
+  final double? searchPointLat;
+  final double? searchPointLon;
   final ValueChanged<String>? onAddRouteFromSearch;
   final List<Map<String, String>> stagePoints;
 
   const YandexCityMap({
     super.key,
     required this.city,
+    this.cityCenterLat,
+    this.cityCenterLon,
     this.searchQuery,
+    this.searchPointLat,
+    this.searchPointLon,
     this.onAddRouteFromSearch,
     this.stagePoints = const [],
   });
@@ -91,14 +99,29 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
     final newCity = (widget.city ?? '').trim();
     final oldQuery = (oldWidget.searchQuery ?? '').trim();
     final newQuery = (widget.searchQuery ?? '').trim();
+    final oldSearchLat = oldWidget.searchPointLat;
+    final newSearchLat = widget.searchPointLat;
+    final oldSearchLon = oldWidget.searchPointLon;
+    final newSearchLon = widget.searchPointLon;
     final oldPoints = jsonEncode(oldWidget.stagePoints);
     final newPoints = jsonEncode(widget.stagePoints);
+    final oldCenterLat = oldWidget.cityCenterLat;
+    final newCenterLat = widget.cityCenterLat;
+    final oldCenterLon = oldWidget.cityCenterLon;
+    final newCenterLon = widget.cityCenterLon;
 
-    if (oldCity != newCity || oldPoints != newPoints) {
+    if (oldCity != newCity ||
+        oldPoints != newPoints ||
+        oldCenterLat != newCenterLat ||
+        oldCenterLon != newCenterLon) {
       _rebuildMarkersAndSearch();
       return;
     }
     if (oldQuery != newQuery) {
+      _applySearchMarker(newQuery);
+      return;
+    }
+    if (oldSearchLat != newSearchLat || oldSearchLon != newSearchLon) {
       _applySearchMarker(newQuery);
     }
   }
@@ -129,6 +152,24 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
   bool get _isMobileTarget =>
       defaultTargetPlatform == TargetPlatform.android ||
       defaultTargetPlatform == TargetPlatform.iOS;
+
+  List<String> _cityQueryCandidates(String rawCity) {
+    final city = rawCity.trim();
+    if (city.isEmpty) return const <String>[];
+    final core = city.split(',').first.trim();
+    final out = <String>[];
+    void add(String value) {
+      final v = value.trim();
+      if (v.isEmpty) return;
+      if (!out.any((e) => e.toLowerCase() == v.toLowerCase())) out.add(v);
+    }
+
+    add(city);
+    add(core);
+    add('$city, Россия');
+    add('$core, Россия');
+    return out;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -349,9 +390,17 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
 
     final cityQuery = (widget.city ?? '').trim();
     ymk.Point? focus;
-    if (cityQuery.isNotEmpty) {
-      focus = await _geocode(cityQuery);
-      if (!mounted || revision != _renderRev) return;
+    final centerLat = widget.cityCenterLat;
+    final centerLon = widget.cityCenterLon;
+    if (centerLat != null && centerLon != null) {
+      focus = ymk.Point(latitude: centerLat, longitude: centerLon);
+    }
+    if (focus == null && cityQuery.isNotEmpty) {
+      for (final candidate in _cityQueryCandidates(cityQuery)) {
+        focus = await _geocode(candidate);
+        if (!mounted || revision != _renderRev) return;
+        if (focus != null) break;
+      }
     }
     focus ??= _averagePoint(resolved.map((e) => e.point).toList()) ?? _fallbackCenter;
 
@@ -415,11 +464,20 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
       return;
     }
     final city = (widget.city ?? '').trim();
-    final fullQuery =
-        city.isNotEmpty && !clean.toLowerCase().contains(city.toLowerCase())
-            ? '$clean, $city'
-            : clean;
-    final point = await _geocode(fullQuery);
+    final cityCore = city.split(',').first.trim();
+    final lowerClean = clean.toLowerCase();
+    final hasCityInQuery = city.isNotEmpty &&
+        (lowerClean.contains(city.toLowerCase()) ||
+            (cityCore.isNotEmpty && lowerClean.contains(cityCore.toLowerCase())));
+    final fullQuery = !hasCityInQuery && cityCore.isNotEmpty ? '$clean, $cityCore' : clean;
+    ymk.Point? point;
+    final bySuggestLat = widget.searchPointLat;
+    final bySuggestLon = widget.searchPointLon;
+    if (bySuggestLat != null && bySuggestLon != null) {
+      point = ymk.Point(latitude: bySuggestLat, longitude: bySuggestLon);
+    } else {
+      point = await _geocode(fullQuery);
+    }
     if (!mounted || _map == null) return;
     if (point == null) {
       _lastSearchAddress = null;
@@ -439,7 +497,7 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
       text: '●',
     );
     _searchMarker = _SearchMarkerRef(placemark: marker, point: point);
-    _lastSearchAddress = fullQuery;
+    _lastSearchAddress = clean;
 
     map.move(
       ymk.CameraPosition(point, zoom: 15, azimuth: 0, tilt: 0),

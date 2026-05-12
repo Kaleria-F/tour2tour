@@ -35,7 +35,7 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
   Future<void> _submit() async {
     final value = _code.text.trim();
     if (value.length != 6) {
-      showAuthError(context, 'Р’РІРµРґРёС‚Рµ С€РµСЃС‚РёР·РЅР°С‡РЅС‹Р№ РєРѕРґ РёР· Authenticator.');
+      showAuthError(context, 'Введите шестизначный код из Authenticator.');
       return;
     }
     setState(() => _loading = true);
@@ -66,16 +66,16 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
           children: [
             const AuthBrandMark(
               title: 'Typ2Typ',
-              subtitle: 'Р—Р°С‰РёС‰РµРЅРЅС‹Р№ РІС…РѕРґ РІ Р°РєРєР°СѓРЅС‚',
+              subtitle: 'Защищенный вход в аккаунт',
             ),
             const SizedBox(height: 22),
             AuthHeadline(
-              title: 'РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РІС…РѕРґР°',
+              title: 'Подтверждение входа',
               fontSize: 34,
               fontWeight: FontWeight.w300,
-              description: 'Р’РІРµРґРёС‚Рµ 6-Р·РЅР°С‡РЅС‹Р№ РєРѕРґ РёР· РїСЂРёР»РѕР¶РµРЅРёСЏ-Р°СѓС‚РµРЅС‚РёС„РёРєР°С‚РѕСЂР°, С‡С‚РѕР±С‹ Р·Р°РІРµСЂС€РёС‚СЊ РІС…РѕРґ.',
+              description: 'Введите 6-значный код из приложения-аутентификатора, чтобы завершить вход.',
               trailing: AuthPillButton(
-                label: 'РќР°Р·Р°Рґ',
+                label: 'Назад',
                 icon: Icons.close_rounded,
                 minimumSize: const Size(96, 38),
                 fontSize: 12,
@@ -85,13 +85,13 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
             ),
             const SizedBox(height: 18),
             AuthSectionChip(
-              label: widget.factors.isEmpty ? 'TOTP' : widget.factors.join(' В· ').toUpperCase(),
+              label: widget.factors.isEmpty ? 'TOTP' : widget.factors.join(' · ').toUpperCase(),
               icon: Icons.verified_user_rounded,
             ),
             const SizedBox(height: 16),
             AuthTextField(
               controller: _code,
-              hintText: 'РєРѕРґ РёР· Authenticator',
+              hintText: 'код из Authenticator',
               icon: Icons.shield_outlined,
               keyboardType: TextInputType.number,
               inputFormatters: [
@@ -102,13 +102,13 @@ class _TotpVerifyPageState extends State<TotpVerifyPage> {
             ),
             const SizedBox(height: 14),
             const AuthHelperText(
-              text: 'РљРѕРґ РѕР±РЅРѕРІР»СЏРµС‚СЃСЏ РєР°Р¶РґС‹Рµ 30 СЃРµРєСѓРЅРґ. Р•СЃР»Рё РєРѕРґ РЅРµ РїРѕРґС…РѕРґРёС‚, РґРѕР¶РґРёС‚РµСЃСЊ РЅРѕРІРѕРіРѕ Р·РЅР°С‡РµРЅРёСЏ РІ РїСЂРёР»РѕР¶РµРЅРёРё.',
+              text: 'Код обновляется каждые 30 секунд. Если код не подходит, дождитесь нового значения в приложении.',
             ),
             const SizedBox(height: 18),
             Align(
               alignment: Alignment.centerRight,
               child: AuthOrganicButton(
-                label: 'РџРѕРґС‚РІРµСЂРґРёС‚СЊ',
+                label: 'Подтвердить',
                 width: 190,
                 loading: _loading,
                 onTap: _loading ? null : _submit,

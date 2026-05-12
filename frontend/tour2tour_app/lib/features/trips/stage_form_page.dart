@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
@@ -535,8 +535,8 @@ class _StageFormPageState extends State<StageFormPage> {
   String _addressFromSubtitle(String subtitle) {
     final clean = _normalizeSuggestText(subtitle);
     final withCity = _ensureAddressHasTripCity(clean);
-    if (clean.contains('В·')) {
-      final parts = clean.split('В·').map((e) => _normalizeSuggestText(e)).toList();
+    if (clean.contains('·')) {
+      final parts = clean.split('·').map((e) => _normalizeSuggestText(e)).toList();
       if (parts.isNotEmpty) {
         final tail = parts.last;
         if (tail.isNotEmpty) return _ensureAddressHasTripCity(tail);
@@ -586,37 +586,68 @@ class _StageFormPageState extends State<StageFormPage> {
   Future<void> _resolveOrgSuggestBounds() async {
     final city = (widget.destinationCity ?? '').trim();
     if (city.isEmpty) return;
+    final base = city.split(',').first.trim();
+    final candidates = <String>[
+      city,
+      if (base.isNotEmpty) base,
+      '$city, Россия',
+      if (base.isNotEmpty) '$base, Россия',
+    ];
+    for (final candidate in candidates) {
+      try {
+        final response = await _orgSuggestDio.get(
+          'https://geocode-maps.yandex.ru/v1/',
+          queryParameters: <String, dynamic>{
+            'apikey': _yandexGeocoderApiKey,
+            'geocode': candidate,
+            'format': 'json',
+            'results': 1,
+            'lang': 'ru_RU',
+          },
+        );
+        final data = response.data;
+        if (data is! Map<String, dynamic>) continue;
+        final members = (((data['response'] as Map?)?['GeoObjectCollection'] as Map?)
+                ?['featureMember'])
+            as List?;
+        if (members == null || members.isEmpty) continue;
+        final geoObject = ((members.first as Map?)?['GeoObject']) as Map?;
+        final envelope = (((geoObject?['boundedBy'] as Map?)?['Envelope']) as Map?);
+        final lowerCorner = _normalizeSuggestText('${envelope?['lowerCorner'] ?? ''}');
+        final upperCorner = _normalizeSuggestText('${envelope?['upperCorner'] ?? ''}');
+        if (lowerCorner.isEmpty || upperCorner.isEmpty) continue;
+        final lower = lowerCorner.split(' ');
+        final upper = upperCorner.split(' ');
+        if (lower.length != 2 || upper.length != 2) continue;
+        if (!mounted) return;
+        setState(() {
+          _orgSuggestBbox = '${lower[0]},${lower[1]}~${upper[0]},${upper[1]}';
+        });
+        return;
+      } catch (_) {
+        // try next candidate
+      }
+    }
+
     try {
-      final response = await _orgSuggestDio.get(
-        'https://geocode-maps.yandex.ru/v1/',
-        queryParameters: <String, dynamic>{
-          'apikey': _yandexGeocoderApiKey,
-          'geocode': city,
-          'format': 'json',
-          'results': 1,
-          'lang': 'ru_RU',
-        },
-      );
-      final data = response.data;
-      if (data is! Map<String, dynamic>) return;
-      final members = (((data['response'] as Map?)?['GeoObjectCollection'] as Map?)
-              ?['featureMember'])
-          as List?;
-      if (members == null || members.isEmpty) return;
-      final geoObject = ((members.first as Map?)?['GeoObject']) as Map?;
-      final envelope = (((geoObject?['boundedBy'] as Map?)?['Envelope']) as Map?);
-      final lowerCorner = _normalizeSuggestText('${envelope?['lowerCorner'] ?? ''}');
-      final upperCorner = _normalizeSuggestText('${envelope?['upperCorner'] ?? ''}');
-      if (lowerCorner.isEmpty || upperCorner.isEmpty) return;
-      final lower = lowerCorner.split(' ');
-      final upper = upperCorner.split(' ');
-      if (lower.length != 2 || upper.length != 2) return;
+      final fromPlaces = await widget.tripsRepo.suggestCities(city, limit: 1);
+      if (fromPlaces.isEmpty) return;
+      final lat = fromPlaces.first.latitude;
+      final lon = fromPlaces.first.longitude;
+      if (lat == null || lon == null) return;
+
+      const lonSpan = 1.2;
+      const latSpan = 0.8;
+      final minLon = (lon - lonSpan).clamp(-180.0, 180.0);
+      final maxLon = (lon + lonSpan).clamp(-180.0, 180.0);
+      final minLat = (lat - latSpan).clamp(-90.0, 90.0);
+      final maxLat = (lat + latSpan).clamp(-90.0, 90.0);
       if (!mounted) return;
       setState(() {
-        _orgSuggestBbox = '${lower[0]},${lower[1]}~${upper[0]},${upper[1]}';
+        _orgSuggestBbox = '$minLon,$minLat~$maxLon,$maxLat';
       });
     } catch (_) {
-      // Fallback: suggest without area bounds.
+      // no-op: keep unbounded suggest when location lookup is unavailable
     }
   }
   String _formatTimeOnly(DateTime? date) {
