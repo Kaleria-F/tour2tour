@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -138,7 +139,8 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
       }
       final opened = await launchUrl(
         uri,
-        mode: LaunchMode.externalApplication,
+        mode: kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
+        webOnlyWindowName: kIsWeb ? '_self' : null,
       );
       if (!opened && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
