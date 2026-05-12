@@ -102,6 +102,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   List<StageSuggestion> _stageSuggestions = const [];
   final Set<String> _hiddenSuggestionKeys = <String>{};
   final AudioRecorder _routeAssistantRecorder = AudioRecorder();
+  final BrowserAudioRecorder _routeAssistantBrowserRecorder = BrowserAudioRecorder();
   StreamSubscription<Uint8List>? _routeAssistantStreamSub;
   final List<int> _routeAssistantAudioBytes = <int>[];
   Timer? _routeAssistantTimer;
@@ -203,6 +204,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     _routeAssistantHoldTimer?.cancel();
     _routeAssistantTimer?.cancel();
     _routeAssistantStreamSub?.cancel();
+    unawaited(_routeAssistantBrowserRecorder.cancel());
     _routeAssistantRecorder.dispose();
     super.dispose();
   }
@@ -743,34 +745,34 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     }
     try {
       if (kIsWeb) {
-        final granted = await requestBrowserMicrophoneAccess();
+        if (!_routeAssistantBrowserRecorder.isSupported) {
+          _showRouteAssistantSnackBar(
+            'Голосовой ввод в этом браузере не поддерживается. Попробуйте Chrome или Edge.',
+          );
+          return false;
+        }
+        final granted = await _routeAssistantBrowserRecorder.requestAccess();
         if (!granted) {
           _showRouteAssistantSnackBar(
             'Разрешите доступ к микрофону в браузере для голосового ввода.',
           );
           return false;
         }
-      }
-      final hasPermission = await _routeAssistantRecorder.hasPermission();
-      if (!hasPermission) {
-        _showRouteAssistantSnackBar(
-          'Разрешите доступ к микрофону в браузере для голосового ввода.',
-        );
-        return false;
+      } else {
+        final hasPermission = await _routeAssistantRecorder.hasPermission();
+        if (!hasPermission) {
+          _showRouteAssistantSnackBar(
+            'Разрешите доступ к микрофону в браузере для голосового ввода.',
+          );
+          return false;
+        }
       }
       _routeAssistantTimer?.cancel();
       _routeAssistantStreamSub?.cancel();
       _routeAssistantAudioBytes.clear();
 
       if (kIsWeb) {
-        await _routeAssistantRecorder.start(
-          const RecordConfig(
-            encoder: AudioEncoder.wav,
-            sampleRate: 16000,
-            numChannels: 1,
-          ),
-          path: 'route_assistant_recording.wav',
-        );
+        await _routeAssistantBrowserRecorder.start();
       } else {
         final stream = await _routeAssistantRecorder.startStream(
           const RecordConfig(
@@ -842,21 +844,13 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       String filename;
       String mimeType;
       if (kIsWeb) {
-        final path = await _routeAssistantRecorder.stop();
-        if (path == null || path.isEmpty) {
+        final bytes = await _routeAssistantBrowserRecorder.stop();
+        if (bytes.isEmpty) {
           throw Exception('empty audio');
         }
-        final response = await Dio().get<List<int>>(
-          path,
-          options: Options(responseType: ResponseType.bytes),
-        );
-        final bytes = response.data;
-        if (bytes == null || bytes.isEmpty) {
-          throw Exception('empty audio');
-        }
-        audioBytes = Uint8List.fromList(bytes);
-        filename = 'stage-voice.wav';
-        mimeType = 'audio/wav';
+        audioBytes = bytes;
+        mimeType = _routeAssistantBrowserRecorder.mimeType ?? 'audio/webm';
+        filename = mimeType.contains('ogg') ? 'stage-voice.ogg' : 'stage-voice.webm';
       } else {
         await _routeAssistantRecorder.stop();
         await _routeAssistantStreamSub?.cancel();
@@ -875,7 +869,9 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       );
       if (!mounted) return null;
       if (transcript == null || transcript.trim().isEmpty) {
-        _showRouteAssistantSnackBar('Не удалось распознать голосовое');
+        _showRouteAssistantSnackBar(
+          'Не удалось распознать голосовое',
+        );
         return null;
       }
       final normalizedTranscript = transcript.trim();

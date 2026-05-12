@@ -494,17 +494,17 @@ def _normalize_detected_stage_type(*, raw_stage_type, source_text: str) -> str:
     return "place"
 
 
-def _speechkit_transcribe_lpcm(audio_bytes: bytes) -> str:
+def _speechkit_transcribe(audio_bytes: bytes, *, audio_format: str) -> str:
     api_key, _ = _require_yandex_credentials()
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="Audio payload is empty")
     if len(audio_bytes) > 1_000_000:
         raise HTTPException(status_code=400, detail="Audio payload is too large")
 
-    endpoint = (
-        "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize"
-        "?lang=ru-RU&topic=general&format=lpcm&sampleRateHertz=16000"
-    )
+    query = f"?lang=ru-RU&topic=general&format={audio_format}"
+    if audio_format == "lpcm":
+        query += "&sampleRateHertz=16000"
+    endpoint = "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize" + query
     request = urllib.request.Request(
         endpoint,
         data=audio_bytes,
@@ -529,7 +529,7 @@ def _speechkit_transcribe_lpcm(audio_bytes: bytes) -> str:
     return result
 
 
-def _extract_pcm_from_upload(file: UploadFile, content: bytes) -> bytes:
+def _extract_audio_from_upload(file: UploadFile, content: bytes) -> tuple[bytes, str]:
     filename = (file.filename or "").lower()
     content_type = (file.content_type or "").lower()
     if filename.endswith(".wav") or "wav" in content_type:
@@ -541,10 +541,14 @@ def _extract_pcm_from_upload(file: UploadFile, content: bytes) -> bytes:
                     raise HTTPException(status_code=400, detail="Only 16-bit PCM audio is supported")
                 if wav_file.getframerate() != 16000:
                     raise HTTPException(status_code=400, detail="Use 16 kHz audio recording")
-                return wav_file.readframes(wav_file.getnframes())
+                return wav_file.readframes(wav_file.getnframes()), "lpcm"
         except wave.Error as exc:
             raise HTTPException(status_code=400, detail="Invalid WAV file") from exc
-    return content
+    if filename.endswith(".ogg") or "ogg" in content_type or "opus" in content_type:
+        return content, "oggopus"
+    if filename.endswith(".webm") or "webm" in content_type:
+        return content, "webmopus"
+    return content, "lpcm"
 
 
 def _generate_stage_assistant_draft(
@@ -739,8 +743,8 @@ async def transcribe_stage_audio(
 ):
     del user_id
     content = await audio.read()
-    pcm_bytes = _extract_pcm_from_upload(audio, content)
-    text = _speechkit_transcribe_lpcm(pcm_bytes)
+    audio_bytes, audio_format = _extract_audio_from_upload(audio, content)
+    text = _speechkit_transcribe(audio_bytes, audio_format=audio_format)
     return StageAssistantTranscriptionOut(text=text)
 
 

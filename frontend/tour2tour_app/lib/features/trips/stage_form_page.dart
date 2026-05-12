@@ -284,6 +284,7 @@ class _StageFormPageState extends State<StageFormPage> {
     ),
   );
   final AudioRecorder _audioRecorder = AudioRecorder();
+  final BrowserAudioRecorder _browserAudioRecorder = BrowserAudioRecorder();
   StreamSubscription<Uint8List>? _audioStreamSub;
   Timer? _recordTimer;
   final List<int> _recordedAudioBytes = <int>[];
@@ -360,6 +361,7 @@ class _StageFormPageState extends State<StageFormPage> {
     _titleFocusNode.removeListener(_onTitleFocusChanged);
     _recordTimer?.cancel();
     _audioStreamSub?.cancel();
+    unawaited(_browserAudioRecorder.cancel());
     _audioRecorder.dispose();
     _titleCtrl.dispose();
     _titleFocusNode.dispose();
@@ -1090,9 +1092,17 @@ class _StageFormPageState extends State<StageFormPage> {
       return;
     }
     if (_processingAssistant || _recordingVoice || _assistantHasText) return;
-    var hasPermission = await _audioRecorder.hasPermission();
-    if (kIsWeb && !hasPermission) {
-      hasPermission = await requestBrowserMicrophoneAccess();
+    var hasPermission = false;
+    if (kIsWeb) {
+      if (!_browserAudioRecorder.isSupported) {
+        _showAssistantSnackBar(
+          'Голосовой ввод в этом браузере не поддерживается. Попробуйте Chrome или Edge.',
+        );
+        return;
+      }
+      hasPermission = await _browserAudioRecorder.requestAccess();
+    } else {
+      hasPermission = await _audioRecorder.hasPermission();
     }
     if (!hasPermission) {
       if (!mounted) return;
@@ -1108,14 +1118,7 @@ class _StageFormPageState extends State<StageFormPage> {
     _recordedAudioUrl = null;
     try {
       if (kIsWeb) {
-        await _audioRecorder.start(
-          const RecordConfig(
-            encoder: AudioEncoder.wav,
-            sampleRate: 16000,
-            numChannels: 1,
-          ),
-          path: 'stage_assistant_recording.wav',
-        );
+        await _browserAudioRecorder.start();
       } else {
         final stream = await _audioRecorder.startStream(
           const RecordConfig(
@@ -1159,23 +1162,19 @@ class _StageFormPageState extends State<StageFormPage> {
   Future<void> _stopVoiceRecordingAndProcess() async {
     if (!_recordingVoice && _recordedAudioBytes.isEmpty) return;
     _recordTimer?.cancel();
-    final recordedPath = await _audioRecorder.stop();
-    await _audioStreamSub?.cancel();
-    _audioStreamSub = null;
-    if (kIsWeb && (recordedPath?.isNotEmpty ?? false)) {
-      _recordedAudioUrl = recordedPath;
-      try {
-        final res = await Dio().get<List<int>>(
-          recordedPath!,
-          options: Options(responseType: ResponseType.bytes),
-        );
-        final bytes = res.data;
-        if (bytes != null && bytes.isNotEmpty) {
-          _recordedAudioBytes
-            ..clear()
-            ..addAll(bytes);
-        }
-      } catch (_) {}
+    var filename = 'stage-voice.raw';
+    var mimeType = 'application/octet-stream';
+    if (kIsWeb) {
+      final bytes = await _browserAudioRecorder.stop();
+      _recordedAudioBytes
+        ..clear()
+        ..addAll(bytes);
+      mimeType = _browserAudioRecorder.mimeType ?? 'audio/webm';
+      filename = mimeType.contains('ogg') ? 'stage-voice.ogg' : 'stage-voice.webm';
+    } else {
+      await _audioRecorder.stop();
+      await _audioStreamSub?.cancel();
+      _audioStreamSub = null;
     }
     if (!mounted) return;
     setState(() {
@@ -1194,8 +1193,8 @@ class _StageFormPageState extends State<StageFormPage> {
     try {
       final transcript = await widget.tripsRepo.transcribeStageAudio(
         audioBytes: Uint8List.fromList(_recordedAudioBytes),
-        filename: kIsWeb ? 'stage-voice.wav' : 'stage-voice.raw',
-        mimeType: kIsWeb ? 'audio/wav' : 'application/octet-stream',
+        filename: filename,
+        mimeType: mimeType,
       );
       if (!mounted) return;
       if (transcript == null || transcript.trim().isEmpty) {
