@@ -65,22 +65,39 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-    await _checkPendingPayment();
+    try {
+      await _checkPendingPayment();
+    } catch (_) {
+      // Ignore storage/runtime issues in embedded webviews and protected browsers.
+    }
   }
 
   Future<void> _storePendingPaymentId(String paymentId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_pendingPaymentStorageKey, paymentId);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_pendingPaymentStorageKey, paymentId);
+    } catch (_) {
+      // Some protected browsers/webviews block local storage.
+    }
   }
 
   Future<void> _clearPendingPaymentId() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_pendingPaymentStorageKey);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_pendingPaymentStorageKey);
+    } catch (_) {
+      // Some protected browsers/webviews block local storage.
+    }
   }
 
   Future<String?> _readPendingPaymentId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_pendingPaymentStorageKey);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_pendingPaymentStorageKey);
+    } catch (_) {
+      // Some protected browsers/webviews block local storage.
+      return null;
+    }
   }
 
   Future<void> _checkPendingPayment() async {
