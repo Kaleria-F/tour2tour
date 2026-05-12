@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/checkout_redirect.dart';
 import '../shared/travel_app_shell.dart';
 import '../payments/payments_repo.dart';
 import 'profile_repo.dart';
@@ -137,11 +138,12 @@ class _PremiumPageState extends State<PremiumPage> with WidgetsBindingObserver {
       if (uri == null) {
         throw Exception('Invalid checkout url');
       }
-      final opened = await launchUrl(
-        uri,
-        mode: kIsWeb ? LaunchMode.platformDefault : LaunchMode.externalApplication,
-        webOnlyWindowName: kIsWeb ? '_self' : null,
-      );
+      final opened = kIsWeb
+          ? await openCheckoutRedirect(uri.toString())
+          : await launchUrl(
+              uri,
+              mode: LaunchMode.externalApplication,
+            );
       if (!opened && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
