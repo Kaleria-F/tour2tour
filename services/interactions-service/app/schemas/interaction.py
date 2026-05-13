@@ -60,6 +60,7 @@ class FavoritePlace(BaseModel):
     city: str
     address: str | None = None
     image_url: str | None = None
+    image_source: str | None = None
     category: str | None = None
     subcategory: str | None = None
     rating: float | None = None

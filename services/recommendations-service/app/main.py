@@ -89,6 +89,7 @@ class Place(BaseModel):
     name: str
     description: str | None = None
     image_url: str | None = None
+    image_source: str | None = None
     category: str
     subcategory: str | None = None
     lat: float | None = None
@@ -171,6 +172,7 @@ class RecommendationItem(BaseModel):
     title: str
     description: str
     image_url: str
+    image_source: str
     category: str
     subcategory: str
     city: str
@@ -554,6 +556,7 @@ def personalized_recommendations(payload: RecommendationsRequest):
                     title=place.name,
                     description=place.description or "",
                     image_url=place.image_url or "",
+                    image_source=place.image_source or "",
                     category=place.category,
                     subcategory=place.subcategory or "",
                     city=place.city,

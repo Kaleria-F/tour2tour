@@ -21,18 +21,33 @@ class _RegisterPageState extends State<RegisterPage> {
   final _phone = TextEditingController();
   final _password = TextEditingController();
   final _code = TextEditingController();
+  final _passwordFocus = FocusNode();
 
   bool _obscure = true;
   bool _loading = false;
   bool _codeSent = false;
 
   @override
+  void initState() {
+    super.initState();
+    _passwordFocus.addListener(_handlePasswordFocusChange);
+  }
+
+  @override
   void dispose() {
+    _passwordFocus.removeListener(_handlePasswordFocusChange);
+    _passwordFocus.dispose();
     _email.dispose();
     _phone.dispose();
     _password.dispose();
     _code.dispose();
     super.dispose();
+  }
+
+  void _handlePasswordFocusChange() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _requestCode() async {
@@ -170,6 +185,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 controller: _password,
                 hintText: 'пароль',
                 icon: Icons.lock_outline_rounded,
+                focusNode: _passwordFocus,
                 obscureText: _obscure,
                 autofillHints: const [AutofillHints.newPassword],
                 suffix: Transform.translate(
@@ -186,6 +202,27 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                 ),
               ),
+              if (_passwordFocus.hasFocus) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0x14D7E37A),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0x4DD7E37A)),
+                  ),
+                  child: Text(
+                    'Пароль должен содержать минимум 8 символов, заглавную и строчную латинскую букву, цифру и спецсимвол.',
+                    style: TextStyle(
+                      color: const Color(0xFFE8E6DD).withOpacity(0.72),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w300,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
             ],
             const SizedBox(height: 18),
             Align(

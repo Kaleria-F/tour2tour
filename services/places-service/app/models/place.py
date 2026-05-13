@@ -102,6 +102,7 @@ class PlaceStory(Base):
     title: Mapped[str] = mapped_column(String(140))
     cover_image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     image_url: Mapped[str] = mapped_column(String(512))
+    image_source: Mapped[str | None] = mapped_column(String(512), nullable=True)
     body_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     place_id: Mapped[str | None] = mapped_column(
         ForeignKey("places.id", ondelete="SET NULL"),

@@ -1839,12 +1839,35 @@ class _StageFormPageState extends State<StageFormPage> {
       },
     );
     if (picked == null) return;
-    controller.text =
+    final pickedText =
         '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+    if (identical(controller, _endTimeCtrl) && _isEndTimeBeforeStartText(pickedText)) {
+      _showTimeOrderError();
+      return;
+    }
+    controller.text = pickedText;
     setState(() {});
     if (nextController != null) {
       await _pickTime(nextController);
     }
+  }
+
+  bool _isEndTimeBeforeStartText(String endText) {
+    final startRaw = _startTimeCtrl.text.trim();
+    if (startRaw.isEmpty) return false;
+    final base = widget.routeDay ?? widget.initial?.startTime ?? _defaultCalendarDateTime();
+    final start = _parseTime(startRaw, base);
+    final end = _parseTime(endText.trim(), base);
+    if (start == null || end == null) return false;
+    return end.isBefore(start);
+  }
+
+  void _showTimeOrderError() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Время конца не может быть раньше времени начала'),
+      ),
+    );
   }
 
   void _applyQuickTime(
@@ -2687,6 +2710,12 @@ class _StageFormPageState extends State<StageFormPage> {
                                             resolvedEndTime != null) {
                                           resolvedStartTime =
                                               resolvedEndTime.subtract(const Duration(hours: 1));
+                                        }
+                                        if (resolvedStartTime != null &&
+                                            resolvedEndTime != null &&
+                                            resolvedEndTime.isBefore(resolvedStartTime)) {
+                                          _showTimeOrderError();
+                                          return;
                                         }
                                         resolvedDurationMinutes = null;
                                       }

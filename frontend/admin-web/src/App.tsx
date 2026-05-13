@@ -59,6 +59,7 @@ type StoryFormState = {
   title: string;
   cover_image_url: string;
   image_url: string;
+  image_source: string;
   body_text: string;
   place_id: string;
   story_position: 'start' | 'keep' | 'end';
@@ -176,6 +177,7 @@ const EMPTY_STORY_FORM: StoryFormState = {
   title: '',
   cover_image_url: '',
   image_url: '',
+  image_source: '',
   body_text: '',
   place_id: '',
   story_position: 'end',
@@ -299,6 +301,7 @@ export function App() {
       title: storyEditor.title ?? '',
       cover_image_url: storyEditor.cover_image_url ?? '',
       image_url: storyEditor.image_url ?? '',
+      image_source: storyEditor.image_source ?? '',
       body_text: storyEditor.body_text ?? '',
       place_id: storyEditor.place_id ?? '',
       story_position: 'keep',
@@ -591,6 +594,7 @@ export function App() {
         title: storyForm.title.trim(),
         cover_image_url: coverImageUrl || null,
         image_url: imageUrl,
+        image_source: storyForm.image_source.trim() || null,
         body_text: storyForm.body_text.trim() || null,
         place_id: storyForm.place_id || null,
         sort_order: resolvedSortOrder,
@@ -1204,10 +1208,6 @@ export function App() {
                         />
                       </div>
                       <div className="field-group">
-                        <label>Загрузить картинку истории</label>
-                        <input name="story_image_file" type="file" accept="image/*" />
-                      </div>
-                      <div className="field-group">
                         <label>Картинка кружка</label>
                         <input
                           value={storyForm.cover_image_url}
@@ -1216,8 +1216,12 @@ export function App() {
                         />
                       </div>
                       <div className="field-group">
-                        <label>Загрузить картинку кружка</label>
-                        <input name="story_cover_file" type="file" accept="image/*" />
+                        <label>Источник картинки</label>
+                        <input
+                          value={storyForm.image_source}
+                          onChange={(event) => setStoryForm((current) => ({ ...current, image_source: event.target.value }))}
+                          placeholder="Например: ссылка на источник, автор или площадка"
+                        />
                       </div>
                       <div className="field-group">
                         <label>Порядок</label>

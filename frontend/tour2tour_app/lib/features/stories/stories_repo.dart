@@ -47,6 +47,7 @@ class StoryItem {
   final String title;
   final String imageUrl;
   final String? coverImageUrl;
+  final String? imageSource;
   final String? bodyText;
   final String? placeId;
   final int sortOrder;
@@ -58,6 +59,7 @@ class StoryItem {
     required this.title,
     required this.imageUrl,
     required this.coverImageUrl,
+    required this.imageSource,
     required this.bodyText,
     required this.placeId,
     required this.sortOrder,
@@ -73,6 +75,7 @@ class StoryItem {
       title: (json['title'] ?? '').toString(),
       imageUrl: (json['image_url'] ?? '').toString(),
       coverImageUrl: json['cover_image_url']?.toString(),
+      imageSource: json['image_source']?.toString(),
       bodyText: json['body_text']?.toString(),
       placeId: json['place_id']?.toString(),
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,

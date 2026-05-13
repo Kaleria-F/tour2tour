@@ -6,6 +6,7 @@ class RecommendationItem {
   final String title;
   final String description;
   final String imageUrl;
+  final String imageSource;
   final String category;
   final String subcategory;
   final String city;
@@ -25,6 +26,7 @@ class RecommendationItem {
     required this.title,
     required this.description,
     required this.imageUrl,
+    required this.imageSource,
     required this.category,
     required this.subcategory,
     required this.city,
@@ -48,6 +50,7 @@ class RecommendationItem {
       title: json['title']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
       imageUrl: json['image_url']?.toString() ?? '',
+      imageSource: json['image_source']?.toString() ?? '',
       category: json['category']?.toString() ?? '',
       subcategory: json['subcategory']?.toString() ?? '',
       city: json['city']?.toString() ?? '',
@@ -112,6 +115,7 @@ class RecommendationsRepo {
         title: 'Третьяковская галерея',
         description: 'Крупнейшая коллекция русского искусства в центре города.',
         imageUrl: '',
+        imageSource: '',
         category: 'place',
         subcategory: 'museum',
         city: resolvedCity,
@@ -131,6 +135,7 @@ class RecommendationsRepo {
         title: 'Парк Горького',
         description: 'Большой зеленый парк для прогулок, кофе и спокойного отдыха.',
         imageUrl: '',
+        imageSource: '',
         category: 'place',
         subcategory: 'park',
         city: resolvedCity,
@@ -150,6 +155,7 @@ class RecommendationsRepo {
         title: 'Патриаршие пруды',
         description: 'Атмосферный район для прогулки, ужина и вечерних фотографий.',
         imageUrl: '',
+        imageSource: '',
         category: 'place',
         subcategory: 'walk',
         city: resolvedCity,

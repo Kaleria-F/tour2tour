@@ -257,6 +257,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
         'city': item.city,
         'address': item.address,
         'image_url': item.imageUrl,
+        'image_source': item.imageSource,
         'category': item.category,
         'subcategory': item.subcategory,
         'rating': item.rating,
@@ -530,9 +531,12 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
   }
 
   Future<void> _openDetails(RecommendationItem item) async {
-    await _trackAction(item, 'opened',
-        weight: 2,
-        metadata: {'city': item.city, 'category': item.category});
+    await _trackAction(
+      item,
+      'opened',
+      weight: 2,
+      metadata: _metadata(item),
+    );
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
@@ -574,6 +578,14 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
                     color: Colors.white.withOpacity(0.84),
                     height: 1.45,
                   ),
+                ),
+              ],
+              if (item.imageSource.trim().isNotEmpty ||
+                  item.imageUrl.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _RecommendationImageSourceNote(
+                  source: item.imageSource,
+                  imageUrl: item.imageUrl,
                 ),
               ],
               const SizedBox(height: 12),
@@ -1045,6 +1057,49 @@ class _MetaChip extends StatelessWidget {
   }
 }
 
+class _RecommendationImageSourceNote extends StatelessWidget {
+  const _RecommendationImageSourceNote({
+    required this.source,
+    required this.imageUrl,
+  });
+
+  final String source;
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final sourceText = source.trim();
+    final linkText = imageUrl.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (sourceText.isNotEmpty)
+          Text(
+            'Источник картинки: $sourceText',
+            style: TextStyle(
+              fontFamily: 'Geologica',
+              color: Colors.white.withOpacity(0.48),
+              fontSize: 11,
+              height: 1.4,
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+        if (linkText.isNotEmpty)
+          Text(
+            linkText,
+            style: TextStyle(
+              fontFamily: 'Geologica',
+              color: Colors.white.withOpacity(0.38),
+              fontSize: 10.5,
+              height: 1.4,
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _ActionButton extends StatelessWidget {
   const _ActionButton({
     required this.icon,
@@ -1191,6 +1246,7 @@ class _EmptyState extends StatelessWidget {
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Icon(Icons.auto_awesome_rounded,
@@ -1198,6 +1254,7 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 12),
           const Text(
             '\u0421\u043a\u043e\u0440\u043e \u0437\u0434\u0435\u0441\u044c \u043f\u043e\u044f\u0432\u044f\u0442\u0441\u044f \u043d\u043e\u0432\u044b\u0435 \u043c\u0435\u0441\u0442\u0430',
+            textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,

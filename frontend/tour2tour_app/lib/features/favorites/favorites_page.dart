@@ -104,6 +104,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
         'city': item.city,
         'address': item.address,
         'image_url': item.imageUrl,
+        'image_source': item.imageSource,
         'category': item.category,
         'subcategory': item.subcategory,
         'rating': item.rating,
@@ -553,6 +554,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
                               ),
                             ),
                           ],
+                          if ((item.imageSource ?? '').trim().isNotEmpty ||
+                              (item.imageUrl ?? '').trim().isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            _RecommendationImageSourceNote(
+                              source: item.imageSource,
+                              imageUrl: item.imageUrl,
+                            ),
+                          ],
                           const SizedBox(height: 18),
                           Row(
                             children: [
@@ -638,6 +647,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
   }
 
   Widget _buildContent(bool hasCityFilter, List<FavoritePlace> filteredItems) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktopLike = screenWidth >= 1000;
+
     if (_loading) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFFD7E37A)),
@@ -674,6 +686,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
     }
 
     if (hasCityFilter) {
+      if (filteredItems.isEmpty) {
+        return _buildEmptyState();
+      }
       return GridView.builder(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
@@ -698,12 +713,16 @@ class _FavoritesPageState extends State<FavoritesPage> {
       );
     }
 
+    if (_groups.isEmpty) {
+      return _buildEmptyState();
+    }
+
     return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 18,
-        mainAxisSpacing: 22,
-        childAspectRatio: 1.04,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: isDesktopLike ? 4 : 2,
+        crossAxisSpacing: isDesktopLike ? 14 : 18,
+        mainAxisSpacing: isDesktopLike ? 16 : 22,
+        childAspectRatio: isDesktopLike ? 1.18 : 1.04,
       ),
       itemCount: _groups.length,
       itemBuilder: (context, index) {
@@ -713,6 +732,35 @@ class _FavoritesPageState extends State<FavoritesPage> {
           onTap: () => _openFolder(group),
         );
       },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: TravelCard(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.bookmark_border_rounded,
+              color: Color(0xFFD7E37A),
+              size: 34,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Здесь пока ничего нет.\nСохраните место из рекомендаций.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Geologica',
+                color: Colors.white.withOpacity(0.72),
+                fontSize: 13,
+                height: 1.4,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1208,6 +1256,49 @@ class _MetaChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RecommendationImageSourceNote extends StatelessWidget {
+  const _RecommendationImageSourceNote({
+    required this.source,
+    required this.imageUrl,
+  });
+
+  final String? source;
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final sourceText = (source ?? '').trim();
+    final linkText = (imageUrl ?? '').trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (sourceText.isNotEmpty)
+          Text(
+            'Источник картинки: $sourceText',
+            style: TextStyle(
+              fontFamily: 'Geologica',
+              color: Colors.white.withOpacity(0.48),
+              fontSize: 11,
+              height: 1.4,
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+        if (linkText.isNotEmpty)
+          Text(
+            linkText,
+            style: TextStyle(
+              fontFamily: 'Geologica',
+              color: Colors.white.withOpacity(0.38),
+              fontSize: 10.5,
+              height: 1.4,
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+      ],
     );
   }
 }

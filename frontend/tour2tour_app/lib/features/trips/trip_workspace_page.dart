@@ -2275,7 +2275,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                             tripsRepo: widget.tripsRepo,
                                             tripId: widget.tripId,
                                             city: widget.destinationCity,
-                                            titleOverride: 'Сохраненные места',
+                                            titleOverride: 'Избранные места',
                                             embedded: true,
                                             onBack: _closeTripFavoritesView,
                                             onTripStageAdded:

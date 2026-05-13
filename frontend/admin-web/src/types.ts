@@ -57,6 +57,7 @@ export type AdminStory = {
   title: string;
   cover_image_url?: string | null;
   image_url: string;
+  image_source?: string | null;
   body_text?: string | null;
   place_id?: string | null;
   sort_order: number;

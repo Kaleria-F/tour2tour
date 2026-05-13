@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/app_connectivity_coordinator.dart';
 import 'core/session_coordinator.dart';
 import 'core/token_storage.dart';
 import 'api/api_client.dart';
@@ -49,29 +51,46 @@ GoRouter buildRouter() {
   final stories = StoriesRepo(api);
   final trips = TripsRepo(api);
   final documents = DocumentsRepo(api);
+  final refreshSignals = Listenable.merge([
+    SessionCoordinator.instance,
+    AppConnectivityCoordinator.instance,
+  ]);
+  ValueKey<String> refreshKey(String routeName) => ValueKey(
+        '$routeName-${AppConnectivityCoordinator.instance.refreshVersion}',
+      );
 
   final router = GoRouter(
     initialLocation: '/login',
+    refreshListenable: refreshSignals,
+    redirect: (_, state) {
+      if (!SessionCoordinator.instance.webSessionExpired) {
+        return null;
+      }
+      if (state.uri.path == '/login') {
+        return null;
+      }
+      return '/login';
+    },
     routes: [
       GoRoute(
         path: '/login',
-        builder: (_, __) => LoginPage(auth: auth),
+        builder: (_, __) => LoginPage(key: refreshKey('login'), auth: auth),
       ),
       GoRoute(
         path: '/recovery',
-        builder: (_, __) => RecoveryPage(auth: auth),
+        builder: (_, __) => RecoveryPage(key: refreshKey('recovery'), auth: auth),
       ),
       GoRoute(
         path: '/register',
-        builder: (_, __) => RegisterPage(auth: auth),
+        builder: (_, __) => RegisterPage(key: refreshKey('register'), auth: auth),
       ),
       GoRoute(
         path: '/payment-return',
-        builder: (_, __) => const PaymentReturnPage(),
+        builder: (_, __) => PaymentReturnPage(key: refreshKey('payment-return')),
       ),
       GoRoute(
         path: '/security-setup',
-        builder: (_, __) => SecuritySetupPage(auth: auth),
+        builder: (_, __) => SecuritySetupPage(key: refreshKey('security-setup'), auth: auth),
       ),
       GoRoute(
         path: '/totp-verify',
@@ -80,6 +99,7 @@ GoRouter buildRouter() {
               ? state.extra as Map<String, dynamic>
               : <String, dynamic>{};
           return TotpVerifyPage(
+            key: refreshKey('totp-verify'),
             auth: auth,
             challengeId: (payload['challenge_id'] ?? '').toString(),
             factors: (payload['factors'] as List? ?? const [])
@@ -93,6 +113,7 @@ GoRouter buildRouter() {
         builder: (_, state) {
           final tripId = int.tryParse(state.uri.queryParameters['tripId'] ?? '');
           return PreferencesPage(
+            key: refreshKey('preferences'),
             repo: prefs,
             auth: auth,
             fromRecommendations:
@@ -104,6 +125,7 @@ GoRouter buildRouter() {
       GoRoute(
         path: '/profile',
         builder: (_, __) => ProfilePage(
+          key: refreshKey('profile'),
           repo: profile,
           tripsRepo: trips,
           documentsRepo: documents,
@@ -115,11 +137,17 @@ GoRouter buildRouter() {
       ),
       GoRoute(
         path: '/shared-documents',
-        builder: (_, __) => SharedDocumentsPage(documentsRepo: documents),
+        builder: (_, __) => SharedDocumentsPage(
+          key: refreshKey('shared-documents'),
+          documentsRepo: documents,
+        ),
       ),
       GoRoute(
         path: '/complete-profile',
-        builder: (_, __) => CompleteProfilePage(profileRepo: profile),
+        builder: (_, __) => CompleteProfilePage(
+          key: refreshKey('complete-profile'),
+          profileRepo: profile,
+        ),
       ),
       GoRoute(
         path: '/story-viewer',
@@ -143,6 +171,7 @@ GoRouter buildRouter() {
               : 0;
           if (story == null) {
             return StoryViewerPage(
+              key: refreshKey('story-viewer-fallback'),
               profileRepo: profile,
               interactionsRepo: interactions,
               storiesRepo: stories,
@@ -151,6 +180,7 @@ GoRouter buildRouter() {
                 title: 'История не найдена',
                 imageUrl: '',
                 coverImageUrl: null,
+                imageSource: null,
                 bodyText: 'Не удалось открыть историю. Вернитесь назад и попробуйте снова.',
                 placeId: null,
                 sortOrder: 0,
@@ -162,6 +192,7 @@ GoRouter buildRouter() {
             );
           }
           return StoryViewerPage(
+            key: refreshKey('story-viewer'),
             story: story,
             stories: storyItems,
             initialIndex: initialIndex,
@@ -174,6 +205,7 @@ GoRouter buildRouter() {
       GoRoute(
         path: '/account',
         builder: (_, __) => AccountPage(
+          key: refreshKey('account'),
           profileRepo: profile,
           tripsRepo: trips,
           documentsRepo: documents,
@@ -182,22 +214,30 @@ GoRouter buildRouter() {
       ),
       GoRoute(
         path: '/edit-account',
-        builder: (_, __) => EditAccountPage(profileRepo: profile),
+        builder: (_, __) => EditAccountPage(
+          key: refreshKey('edit-account'),
+          profileRepo: profile,
+        ),
       ),
       GoRoute(
         path: '/premium',
         builder: (_, __) => PremiumPage(
+          key: refreshKey('premium'),
           profileRepo: profile,
           paymentsRepo: payments,
         ),
       ),
       GoRoute(
         path: '/support',
-        builder: (_, __) => SupportPage(profileRepo: profile),
+        builder: (_, __) => SupportPage(
+          key: refreshKey('support'),
+          profileRepo: profile,
+        ),
       ),
       GoRoute(
         path: '/favorites',
         builder: (_, state) => FavoritesPage(
+          key: refreshKey('favorites'),
           interactionsRepo: interactions,
           profileRepo: profile,
           tripsRepo: trips,
@@ -210,6 +250,7 @@ GoRouter buildRouter() {
       GoRoute(
         path: '/trip-favorites',
         builder: (_, state) => FavoritesPage(
+          key: refreshKey('trip-favorites'),
           interactionsRepo: interactions,
           profileRepo: profile,
           tripsRepo: trips,
@@ -224,11 +265,17 @@ GoRouter buildRouter() {
       ),
       GoRoute(
         path: '/change-password',
-        builder: (_, __) => ChangePasswordPage(auth: auth),
+        builder: (_, __) => ChangePasswordPage(
+          key: refreshKey('change-password'),
+          auth: auth,
+        ),
       ),
       GoRoute(
         path: '/create-trip',
-        builder: (_, __) => CreateTripPage(tripsRepo: trips),
+        builder: (_, __) => CreateTripPage(
+          key: refreshKey('create-trip'),
+          tripsRepo: trips,
+        ),
       ),
       GoRoute(
         path: '/trip-workspace',
@@ -249,6 +296,7 @@ GoRouter buildRouter() {
           final cardIcon = payload['card_icon']?.toString();
           if (tripId == null) {
             return ProfilePage(
+              key: refreshKey('trip-workspace-fallback'),
               repo: profile,
               tripsRepo: trips,
               documentsRepo: documents,
@@ -259,6 +307,7 @@ GoRouter buildRouter() {
             );
           }
           return TripWorkspacePage(
+            key: refreshKey('trip-workspace'),
             tripTitle: title,
             tripId: tripId,
             destinationCity: destinationCity,
@@ -279,10 +328,6 @@ GoRouter buildRouter() {
       ),
     ],
   );
-
-  SessionCoordinator.instance.registerWebSessionExpiredHandler(() {
-    router.go('/login');
-  });
 
   return router;
 }

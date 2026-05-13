@@ -7,6 +7,7 @@ String recommendationTagLabel(String raw) {
     'shopping': 'Покупки',
     'activity': 'Активность',
     'attraction': 'Достопримечательность',
+    'landmark': 'Достопримечательность',
     'excursion': 'Экскурсия',
     'museum': 'Музей',
     'park': 'Парк',

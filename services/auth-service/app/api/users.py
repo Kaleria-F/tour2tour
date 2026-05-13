@@ -711,6 +711,24 @@ def _aggregate_all_profile_states(rows: list[UserPreference]) -> dict:
     )
 
 
+def _has_explicit_scope_rows(rows: list[UserPreference], trip_id: int | None) -> bool:
+    interest_key = INTEREST_KEY if trip_id is None else _trip_scoped_key(trip_id, INTEREST_KEY)
+    trip_format_key = TRIP_FORMAT_KEY if trip_id is None else _trip_scoped_key(trip_id, TRIP_FORMAT_KEY)
+    meta_key = SURVEY_PROFILE_META_KEY if trip_id is None else _trip_scoped_key(trip_id, SURVEY_PROFILE_META_KEY)
+    weight_prefix = (
+        INTEREST_WEIGHT_PREFIX
+        if trip_id is None
+        else _trip_scoped_key(trip_id, INTEREST_WEIGHT_PREFIX)
+    )
+
+    for row in rows:
+        if row.key in {interest_key, trip_format_key, meta_key}:
+            return True
+        if row.key.startswith(weight_prefix):
+            return True
+    return False
+
+
 @router.get("/me/survey-profile", response_model=SurveyProfileOut)
 def get_survey_profile(
     trip_id: int | None = Query(default=None, ge=1),
@@ -720,11 +738,12 @@ def get_survey_profile(
     rows = db.execute(
         select(UserPreference).where(UserPreference.user_id == me.id)
     ).scalars().all()
-    state = (
-        _extract_scoped_profile(rows, trip_id=trip_id)
-        if trip_id is not None
-        else _aggregate_all_profile_states(rows)
-    )
+    if trip_id is not None:
+        state = _extract_scoped_profile(rows, trip_id=trip_id)
+    elif _has_explicit_scope_rows(rows, trip_id=None):
+        state = _extract_scoped_profile(rows, trip_id=None)
+    else:
+        state = _aggregate_all_profile_states(rows)
     return _profile_out_from_state(state)
 
 

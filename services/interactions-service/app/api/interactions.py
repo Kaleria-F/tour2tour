@@ -187,6 +187,7 @@ def get_user_favorites(
                 city=city,
                 address=metadata.get("address"),
                 image_url=metadata.get("image_url"),
+                image_source=metadata.get("image_source"),
                 category=metadata.get("category"),
                 subcategory=metadata.get("subcategory"),
                 rating=float(metadata["rating"]) if metadata.get("rating") is not None else None,

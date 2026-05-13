@@ -102,7 +102,7 @@ print('OK: local test user is ready')
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$composeArgs = @("--env-file", ".env", "-f", "infra/docker-compose.yml")
+$composeArgs = @("--env-file", "infra/.env", "-f", "infra/docker-compose.yml")
 
 Write-Host "Stopping local stack..."
 docker compose @composeArgs down

@@ -355,12 +355,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
   void _schedulePremiumPopup() {
     _premiumPopupTimer?.cancel();
-    final blockForPremium =
-        _me?.isPremium == true && !Config.forcePremiumPopupForTesting;
+    final blockForPremium = _me?.isPremium == true;
     if (blockForPremium || _premiumPopupShownThisSession) return;
     _premiumPopupTimer = Timer(_premiumPopupDelay, () {
-      final stillBlockedForPremium =
-          _me?.isPremium == true && !Config.forcePremiumPopupForTesting;
+      final stillBlockedForPremium = _me?.isPremium == true;
       if (!mounted || stillBlockedForPremium || _premiumPopupShownThisSession) return;
       _premiumPopupShownThisSession = true;
       showDialog<void>(
@@ -591,6 +589,7 @@ class _ProfilePageState extends State<ProfilePage> {
         'city': item.city,
         'address': item.address,
         'image_url': item.imageUrl,
+        'image_source': item.imageSource,
         'category': item.category,
         'subcategory': item.subcategory,
         'rating': item.rating,
@@ -767,6 +766,14 @@ class _ProfilePageState extends State<ProfilePage> {
                     height: 1.45,
                     fontWeight: FontWeight.w300,
                   ),
+                ),
+              ],
+              if (item.imageSource.trim().isNotEmpty ||
+                  item.imageUrl.trim().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _RecommendationImageSourceNote(
+                  source: item.imageSource,
+                  imageUrl: item.imageUrl,
                 ),
               ],
             ],
@@ -1383,6 +1390,49 @@ class _MetaChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _RecommendationImageSourceNote extends StatelessWidget {
+  const _RecommendationImageSourceNote({
+    required this.source,
+    required this.imageUrl,
+  });
+
+  final String source;
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final sourceText = source.trim();
+    final linkText = imageUrl.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (sourceText.isNotEmpty)
+          Text(
+            'Источник картинки: $sourceText',
+            style: TextStyle(
+              fontFamily: 'Geologica',
+              color: Colors.white.withOpacity(0.48),
+              fontSize: 11,
+              height: 1.4,
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+        if (linkText.isNotEmpty)
+          Text(
+            linkText,
+            style: TextStyle(
+              fontFamily: 'Geologica',
+              color: Colors.white.withOpacity(0.38),
+              fontSize: 10.5,
+              height: 1.4,
+              fontWeight: FontWeight.w300,
+            ),
+          ),
+      ],
     );
   }
 }

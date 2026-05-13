@@ -466,6 +466,7 @@ class AuthTextField extends StatelessWidget {
     required this.controller,
     required this.hintText,
     required this.icon,
+    this.focusNode,
     this.keyboardType,
     this.obscureText = false,
     this.autofillHints,
@@ -479,6 +480,7 @@ class AuthTextField extends StatelessWidget {
   final TextEditingController controller;
   final String hintText;
   final IconData icon;
+  final FocusNode? focusNode;
   final TextInputType? keyboardType;
   final bool obscureText;
   final Iterable<String>? autofillHints;
@@ -495,12 +497,13 @@ class AuthTextField extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: controller,
-              enabled: enabled,
-              keyboardType: keyboardType,
-              obscureText: obscureText,
-              autofillHints: autofillHints,
+              child: TextField(
+                controller: controller,
+                focusNode: focusNode,
+                enabled: enabled,
+                keyboardType: keyboardType,
+                obscureText: obscureText,
+                autofillHints: autofillHints,
               inputFormatters: inputFormatters,
               onChanged: onChanged,
               maxLength: maxLength,

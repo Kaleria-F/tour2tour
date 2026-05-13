@@ -97,6 +97,7 @@ class PlaceStoryBase(BaseModel):
     title: str = Field(min_length=1, max_length=140)
     cover_image_url: str | None = None
     image_url: str | None = Field(default=None, min_length=1, max_length=512)
+    image_source: str | None = Field(default=None, max_length=512)
     body_text: str | None = None
     place_id: str | None = None
     sort_order: int = Field(default=0, ge=0, le=10000)
@@ -111,6 +112,7 @@ class PlaceStoryUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=140)
     cover_image_url: str | None = None
     image_url: str | None = Field(default=None, min_length=1, max_length=512)
+    image_source: str | None = Field(default=None, max_length=512)
     body_text: str | None = None
     place_id: str | None = None
     sort_order: int | None = Field(default=None, ge=0, le=10000)

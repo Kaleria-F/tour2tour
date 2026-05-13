@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../interactions/interactions_repo.dart';
 import '../profile/profile_repo.dart';
@@ -196,6 +197,14 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     } catch (_) {}
   }
 
+  Future<void> _openImageLink(String rawUrl) async {
+    final url = rawUrl.trim();
+    if (url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri);
+  }
+
   void _restartStoryTimer() {
     _progressController
       ..stop()
@@ -286,6 +295,8 @@ class _StoryViewerPageState extends State<StoryViewerPage>
     final place = story.place;
     final body = (story.bodyText ?? '').trim();
     final placeDescription = (place?.description ?? '').trim();
+    final imageSource = (story.imageSource ?? '').trim();
+    final imageUrl = story.imageUrl.trim();
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -539,6 +550,42 @@ class _StoryViewerPageState extends State<StoryViewerPage>
                                       fontSize: 14,
                                       height: 1.45,
                                     ),
+                                  ),
+                                ],
+                                if (imageSource.isNotEmpty || imageUrl.isNotEmpty) ...[
+                                  const SizedBox(height: 10),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (imageSource.isNotEmpty)
+                                        Text(
+                                          'Источник картинки: $imageSource',
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.42),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w300,
+                                            height: 1.35,
+                                          ),
+                                        ),
+                                      if (imageUrl.isNotEmpty) ...[
+                                        if (imageSource.isNotEmpty)
+                                          const SizedBox(height: 4),
+                                        GestureDetector(
+                                          onTap: () => _openImageLink(imageUrl),
+                                          child: Text(
+                                            imageUrl,
+                                            style: TextStyle(
+                                              color: Colors.white.withOpacity(0.42),
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w300,
+                                              height: 1.35,
+                                              decoration: TextDecoration.underline,
+                                              decorationColor: Colors.white.withOpacity(0.35),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ],
                                 const SizedBox(height: 18),

@@ -6,6 +6,7 @@ class FavoritePlace {
   final String city;
   final String? address;
   final String? imageUrl;
+  final String? imageSource;
   final String? category;
   final String? subcategory;
   final double? rating;
@@ -19,6 +20,7 @@ class FavoritePlace {
     required this.city,
     this.address,
     this.imageUrl,
+    this.imageSource,
     this.category,
     this.subcategory,
     this.rating,
@@ -34,6 +36,7 @@ class FavoritePlace {
       city: (json['city'] ?? '').toString(),
       address: json['address']?.toString(),
       imageUrl: json['image_url']?.toString(),
+      imageSource: json['image_source']?.toString(),
       category: json['category']?.toString(),
       subcategory: json['subcategory']?.toString(),
       rating: double.tryParse((json['rating'] ?? '').toString()),
