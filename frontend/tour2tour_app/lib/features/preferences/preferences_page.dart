@@ -222,6 +222,10 @@ class _PreferencesPageState extends State<PreferencesPage> {
   }
 
   void _finishSurveyFlow([bool updated = false]) {
+    if (widget.fromRecommendations) {
+      context.pop(updated);
+      return;
+    }
     if (context.canPop()) {
       context.pop(updated);
       return;

@@ -333,12 +333,12 @@ class _PriceCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
+                const Text(
                   'Стоимость Pro',
                   style: TextStyle(
                     fontFamily: 'Geologica',
@@ -348,7 +348,7 @@ class _PriceCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: 6),
-                Row(
+                const Row(
                   children: [
                     Text(
                       '399 ₽',
@@ -361,20 +361,37 @@ class _PriceCard extends StatelessWidget {
                         fontWeight: FontWeight.w300,
                       ),
                     ),
-                    SizedBox(width: 10),
-                    Text(
-                      '299 ₽',
-                      style: TextStyle(
-                        fontFamily: 'Geologica',
-                        color: Colors.white,
-                        fontSize: 34,
-                        fontWeight: FontWeight.w300,
-                      ),
+                    const SizedBox(width: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '299',
+                          style: TextStyle(
+                            fontFamily: 'Geologica',
+                            color: Colors.white,
+                            fontSize: 34,
+                            fontWeight: FontWeight.w300,
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.only(left: 2, top: 5),
+                          child: Text(
+                            '₽',
+                            style: TextStyle(
+                              fontFamily: 'Geologica',
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w300,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-                SizedBox(height: 4),
-                Text(
+                const SizedBox(height: 4),
+                const Text(
                   'Подписка на 1 месяц',
                   style: TextStyle(
                     fontFamily: 'Geologica',
@@ -387,7 +404,7 @@ class _PriceCard extends StatelessWidget {
             ),
           ),
           SizedBox(
-            height: 48,
+            height: 44,
             child: ElevatedButton(
               onPressed: isPremium || openingCheckout ? null : onCheckout,
               style: ElevatedButton.styleFrom(
@@ -396,7 +413,7 @@ class _PriceCard extends StatelessWidget {
                 disabledBackgroundColor: _accentColor.withOpacity(0.55),
                 disabledForegroundColor:
                     const Color(0xFF161616).withOpacity(0.85),
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -409,6 +426,7 @@ class _PriceCard extends StatelessWidget {
                         : 'Подключить',
                 style: const TextStyle(
                   fontFamily: 'Geologica',
+                  fontSize: 14,
                   fontWeight: FontWeight.w400,
                 ),
               ),
