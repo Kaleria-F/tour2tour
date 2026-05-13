@@ -15,6 +15,7 @@ class PlaceBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
     image_url: str | None = None
+    image_source: str | None = Field(default=None, max_length=512)
     country: str | None = None
     city: str = Field(min_length=1, max_length=128)
     address: str | None = None
@@ -47,6 +48,7 @@ class PlaceUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     image_url: str | None = None
+    image_source: str | None = None
     country: str | None = None
     city: str | None = None
     address: str | None = None

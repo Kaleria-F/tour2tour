@@ -20,6 +20,7 @@ export type AdminPlace = {
   name: string;
   description?: string | null;
   image_url?: string | null;
+  image_source?: string | null;
   country?: string | null;
   city: string;
   address?: string | null;

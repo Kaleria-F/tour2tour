@@ -46,6 +46,7 @@ type PlaceFormState = {
   city: string;
   address: string;
   image_url: string;
+  image_source: string;
   category: string;
   subcategory: string;
   source: string;
@@ -162,6 +163,7 @@ const EMPTY_FORM: PlaceFormState = {
   city: '',
   address: '',
   image_url: '',
+  image_source: '',
   category: 'place',
   subcategory: 'museum',
   source: 'manual',
@@ -278,6 +280,7 @@ export function App() {
       city: placeEditor.city ?? '',
       address: placeEditor.address ?? '',
       image_url: placeEditor.image_url ?? '',
+      image_source: placeEditor.image_source ?? '',
       category: placeEditor.category ?? 'place',
       subcategory: placeEditor.subcategory ?? 'museum',
       source: placeEditor.source ?? 'manual',
@@ -515,6 +518,7 @@ export function App() {
         city: placeForm.city.trim(),
         address: placeForm.address.trim(),
         image_url: imageUrl || null,
+        image_source: placeForm.image_source.trim() || null,
         category: placeForm.category,
         subcategory: placeForm.subcategory,
         description: placeForm.description.trim(),
@@ -886,6 +890,7 @@ export function App() {
                           <th>Источник</th>
                           <th>Цена</th>
                           <th>Фото</th>
+                          <th>Источник картинки</th>
                           <th>Теги</th>
                           <th></th>
                         </tr>
@@ -927,6 +932,9 @@ export function App() {
                               ) : (
                                 'Нет фото'
                               )}
+                            </td>
+                            <td className={!place.image_source?.trim() ? 'missing-cell' : ''}>
+                              {place.image_source?.trim() || 'Не указан'}
                             </td>
                             <td className={!Object.keys(place.tags || {}).length ? 'missing-cell' : ''}>
                               <div className="tag-cloud">
@@ -1343,6 +1351,14 @@ export function App() {
                           value={placeForm.image_url}
                           onChange={(event) => setPlaceForm((current) => ({ ...current, image_url: event.target.value }))}
                           placeholder="Ссылка на фото"
+                        />
+                      </div>
+                      <div className="field-group">
+                        <label>Источник картинки</label>
+                        <input
+                          value={placeForm.image_source}
+                          onChange={(event) => setPlaceForm((current) => ({ ...current, image_source: event.target.value }))}
+                          placeholder="Например: https://site.com / автор / Pinterest"
                         />
                       </div>
                       <div className="field-group">

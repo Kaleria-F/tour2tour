@@ -425,8 +425,8 @@ class _AccountPageState extends State<AccountPage> {
                           icon: const Icon(Icons.logout_rounded),
                           label: Text(_loggingOut ? 'Выходим...' : 'Выйти'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6A3F2E),
-                            foregroundColor: Colors.white,
+                            backgroundColor: const Color(0xFFD7E37A),
+                            foregroundColor: const Color(0xFF171717),
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
