@@ -8,6 +8,9 @@ class DocumentItemOut(BaseModel):
     file_name: str
     size_bytes: int
     last_modified: datetime | None = None
+    item_type: str = "file"
+    is_shared: bool = False
+    shared_count: int | None = None
 
 
 class UploadDirectResponse(BaseModel):
@@ -22,3 +25,8 @@ class DownloadUrlRequest(BaseModel):
 class DownloadUrlResponse(BaseModel):
     download_url: str
     expires_in: int
+
+
+class RenameDocumentRequest(BaseModel):
+    object_key: str = Field(..., min_length=1, max_length=500)
+    file_name: str = Field(..., min_length=1, max_length=255)

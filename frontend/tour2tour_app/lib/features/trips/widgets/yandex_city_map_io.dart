@@ -575,7 +575,7 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
       circle.setIconStyle(
         const ymk.IconStyle(
           scale: 1.0,
-          zIndex: 10,
+          zIndex: 20,
         ),
       );
       circle.setTextWithStyle(
@@ -593,15 +593,15 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
       number.setIconStyle(
         const ymk.IconStyle(
           scale: 1.0,
-          zIndex: 11,
+          zIndex: 40,
         ),
       );
       number.setTextWithStyle(
         const ymk.TextStyle(
-          size: _stageNumberSize,
-          color: Color(0xFF0A0A0A),
-          outlineColor: Color(0xFFF4F8FF),
-          outlineWidth: 1.4,
+          size: 13.0,
+          color: Color(0xFFFFFFFF),
+          outlineColor: Color(0xFF0A0A0A),
+          outlineWidth: 2.2,
           placement: ymk.TextStylePlacement.Center,
         ),
         text: resolved[i].order,
@@ -963,12 +963,18 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
       } catch (_) {}
       if (number != null) {
         try {
+          number.setIconStyle(
+            ymk.IconStyle(
+              scale: 1.0,
+              zIndex: selected ? 60 : 40,
+            ),
+          );
           number.setTextWithStyle(
             const ymk.TextStyle(
-              size: _stageNumberSize,
-              color: Color(0xFF0A0A0A),
-              outlineColor: Color(0xFFF4F8FF),
-              outlineWidth: 1.4,
+              size: 13.0,
+              color: Color(0xFFFFFFFF),
+              outlineColor: Color(0xFF0A0A0A),
+              outlineWidth: 2.2,
               placement: ymk.TextStylePlacement.Center,
             ),
             text: _stageMarkers[i].stage.order,

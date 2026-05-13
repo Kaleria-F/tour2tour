@@ -11,12 +11,14 @@ import '../recommendations/recommendations_repo.dart';
 import '../shared/travel_app_shell.dart';
 import '../stories/stories_repo.dart';
 import '../trips/trips_repo.dart';
+import '../documents/documents_repo.dart';
 import '../../config.dart';
 import 'profile_repo.dart';
 
 class ProfilePage extends StatefulWidget {
   final ProfileRepo repo;
   final TripsRepo tripsRepo;
+  final DocumentsRepo documentsRepo;
   final PreferencesRepo preferencesRepo;
   final RecommendationsRepo recommendationsRepo;
   final InteractionsRepo interactionsRepo;
@@ -26,6 +28,7 @@ class ProfilePage extends StatefulWidget {
     super.key,
     required this.repo,
     required this.tripsRepo,
+    required this.documentsRepo,
     required this.preferencesRepo,
     required this.recommendationsRepo,
     required this.interactionsRepo,
@@ -166,6 +169,188 @@ class _ProfilePageState extends State<ProfilePage> {
     await context.push('/preferences');
     if (!mounted) return;
     await _load();
+  }
+
+  Future<void> _openMyDocumentsDialog(List<TripSummary> trips) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: const Color(0xFF1D1D1D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withOpacity(0.12)),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 620),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Мои документы',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Geologica',
+                    fontSize: 20,
+                    fontWeight: FontWeight.w300,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: trips.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'Пока нет поездок',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: trips.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (_, i) {
+                            final trip = trips[i];
+                            return ListTile(
+                              tileColor: Colors.white.withOpacity(0.06),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              title: Text(
+                                trip.title,
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                trip.destinationCity ?? '',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                context.go('/trip-workspace', extra: {
+                                  'id': trip.id,
+                                  'title': trip.title,
+                                  'destination_city': trip.destinationCity,
+                                  'start_date': trip.startDate,
+                                  'end_date': trip.endDate,
+                                  'planned_days': trip.plannedDays,
+                                  'card_color': trip.cardColor,
+                                  'card_background': trip.cardBackground,
+                                  'card_icon': trip.cardIcon,
+                                });
+                              },
+                            );
+                          },
+                        ),
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Закрыть'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openSharedDocumentsDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: const Color(0xFF1D1D1D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withOpacity(0.12)),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 620),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Общие документы',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Geologica',
+                    fontSize: 20,
+                    fontWeight: FontWeight.w300,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: FutureBuilder<List<TripDocument>>(
+                    future: widget.documentsRepo.listSharedDocuments(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final docs = snapshot.data ?? const <TripDocument>[];
+                      if (docs.isEmpty) {
+                        return const Center(
+                          child: Text(
+                            'Пока нет общих документов',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        );
+                      }
+                      return ListView.separated(
+                        itemCount: docs.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, i) {
+                          final doc = docs[i];
+                          return ListTile(
+                            tileColor: Colors.white.withOpacity(0.06),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            leading: const Icon(
+                              Icons.description_outlined,
+                              color: Colors.white,
+                            ),
+                            title: Text(
+                              doc.fileName,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                            subtitle: Text(
+                              '${(doc.sizeBytes / 1024).toStringAsFixed(1)} KB',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Закрыть'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        context.push('/shared-documents');
+                      },
+                      child: const Text('Открыть раздел'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _schedulePremiumPopup() {
@@ -716,10 +901,10 @@ class _ProfilePageState extends State<ProfilePage> {
                       const SizedBox(height: 28),
                       _SectionHeader(
                         title: 'Идеи для вас',
-                          trailing: TextButton(
-                            style: TextButton.styleFrom(
-                              backgroundColor: const Color(0xFFD7E37A),
-                              foregroundColor: const Color(0xFF171717),
+                        trailing: TextButton(
+                          style: TextButton.styleFrom(
+                            backgroundColor: const Color(0xFFD7E37A),
+                            foregroundColor: const Color(0xFF171717),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 10,
@@ -730,12 +915,12 @@ class _ProfilePageState extends State<ProfilePage> {
                               fontWeight: FontWeight.w300,
                             ),
                             shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(999),
-                              ),
+                              borderRadius: BorderRadius.circular(999),
                             ),
-                            onPressed: _openGlobalSurvey,
-                            child: const Text('Настроить'),
                           ),
+                          onPressed: _openGlobalSurvey,
+                          child: const Text('Настроить'),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       SizedBox(

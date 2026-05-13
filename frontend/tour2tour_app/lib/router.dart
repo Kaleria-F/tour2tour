@@ -27,6 +27,7 @@ import 'features/profile/account_page.dart';
 import 'features/profile/complete_profile_page.dart';
 import 'features/profile/edit_account_page.dart';
 import 'features/profile/premium_page.dart';
+import 'features/profile/shared_documents_page.dart';
 import 'features/profile/support_page.dart';
 import 'features/shared/travel_app_shell.dart';
 import 'features/stories/stories_repo.dart';
@@ -105,11 +106,16 @@ GoRouter buildRouter() {
         builder: (_, __) => ProfilePage(
           repo: profile,
           tripsRepo: trips,
+          documentsRepo: documents,
           preferencesRepo: prefs,
           recommendationsRepo: recommendations,
           interactionsRepo: interactions,
           storiesRepo: stories,
         ),
+      ),
+      GoRoute(
+        path: '/shared-documents',
+        builder: (_, __) => SharedDocumentsPage(documentsRepo: documents),
       ),
       GoRoute(
         path: '/complete-profile',
@@ -170,6 +176,7 @@ GoRouter buildRouter() {
         builder: (_, __) => AccountPage(
           profileRepo: profile,
           tripsRepo: trips,
+          documentsRepo: documents,
           authRepo: auth,
         ),
       ),
@@ -244,6 +251,7 @@ GoRouter buildRouter() {
             return ProfilePage(
               repo: profile,
               tripsRepo: trips,
+              documentsRepo: documents,
               preferencesRepo: prefs,
               recommendationsRepo: recommendations,
               interactionsRepo: interactions,

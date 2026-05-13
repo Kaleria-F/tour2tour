@@ -13,7 +13,24 @@ extension _TripWorkspaceDocumentsSection on _TripWorkspacePageState {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
+          if (_showSharedDocumentsInTrip) ...[
+            Row(
+              children: [
+                IconButton(
+                  onPressed: _closeSharedDocumentsFolder,
+                  icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                ),
+                const SizedBox(width: 6),
+                const Text(
+                  'Общие документы',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (!_showSharedDocumentsInTrip)
+            SizedBox(
             width: double.infinity,
             height: 44,
             child: ElevatedButton.icon(
@@ -35,9 +52,11 @@ extension _TripWorkspaceDocumentsSection on _TripWorkspacePageState {
               label: const Text('Загрузить документ'),
             ),
           ),
-          const SizedBox(height: 12),
+          if (!_showSharedDocumentsInTrip) const SizedBox(height: 12),
           Expanded(
-            child: _documentsLoading
+            child: _showSharedDocumentsInTrip
+                ? _buildSharedDocumentsInsideTrip()
+                : _documentsLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _documents.isEmpty
                 ? Center(
@@ -51,11 +70,14 @@ extension _TripWorkspaceDocumentsSection on _TripWorkspacePageState {
                     separatorBuilder: (_, __) => const SizedBox(height: 8),
                     itemBuilder: (_, i) {
                       final doc = _documents[i];
+                      final isFolder = doc.itemType == 'folder';
                       return Material(
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(10),
-                          onTap: () => _openDocumentPreview(doc),
+                          onTap: isFolder
+                              ? _openSharedDocumentsFolder
+                              : () => _openDocumentPreview(doc),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 12,
@@ -70,6 +92,9 @@ extension _TripWorkspaceDocumentsSection on _TripWorkspacePageState {
                             ),
                             child: Row(
                               children: [
+                                if (isFolder)
+                                  const Icon(Icons.folder_shared_rounded, color: Colors.white),
+                                if (isFolder) const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
@@ -86,7 +111,9 @@ extension _TripWorkspaceDocumentsSection on _TripWorkspacePageState {
                                       ),
                                       const SizedBox(height: 3),
                                       Text(
-                                        _fmtBytes(doc.sizeBytes),
+                                        isFolder
+                                            ? 'Файлов: ${doc.sharedCount ?? 0}'
+                                            : _fmtBytes(doc.sizeBytes),
                                         style: TextStyle(
                                           color: Colors.white.withOpacity(0.75),
                                           fontSize: 12,
@@ -95,14 +122,21 @@ extension _TripWorkspaceDocumentsSection on _TripWorkspacePageState {
                                     ],
                                   ),
                                 ),
-                                IconButton(
-                                  tooltip: 'Удалить',
-                                  onPressed: () => _deleteDocument(doc),
-                                  icon: const Icon(
-                                    Icons.delete_outline_rounded,
-                                    color: Colors.white,
+                                if (!isFolder)
+                                  IconButton(
+                                    tooltip: 'Переименовать',
+                                    onPressed: () => _renameDocument(doc),
+                                    icon: const Icon(Icons.edit_rounded, color: Colors.white),
                                   ),
-                                ),
+                                if (!isFolder)
+                                  IconButton(
+                                    tooltip: 'Удалить',
+                                    onPressed: () => _deleteDocument(doc),
+                                    icon: const Icon(
+                                      Icons.delete_outline_rounded,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -113,6 +147,70 @@ extension _TripWorkspaceDocumentsSection on _TripWorkspacePageState {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSharedDocumentsInsideTrip() {
+    if (_sharedDocumentsLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_sharedDocuments.isEmpty) {
+      return Center(
+        child: Text(
+          'Папка пустая',
+          style: TextStyle(color: Colors.white.withOpacity(0.85)),
+        ),
+      );
+    }
+    return ListView.separated(
+      itemCount: _sharedDocuments.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (_, i) {
+        final doc = _sharedDocuments[i];
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => _openDocumentPreview(doc),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          doc.fileName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          _fmtBytes(doc.sizeBytes),
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.75),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

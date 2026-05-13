@@ -120,6 +120,9 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   List<TripDocument> _documents = const [];
   bool _documentsLoading = false;
   bool _uploadingDocument = false;
+  List<TripDocument> _sharedDocuments = const [];
+  bool _sharedDocumentsLoading = false;
+  bool _showSharedDocumentsInTrip = false;
 
   static const _sectionTitles = [
     'Рекомендации',
@@ -1654,6 +1657,43 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     await _pickAndUploadDocumentForStage(showSuccessSnackBar: true);
   }
 
+  Future<void> _loadSharedDocuments() async {
+    setState(() {
+      _sharedDocumentsLoading = true;
+    });
+    try {
+      final items = await widget.documentsRepo.listSharedDocuments();
+      if (!mounted) return;
+      setState(() {
+        _sharedDocuments = items;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось загрузить общие документы')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sharedDocumentsLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _openSharedDocumentsFolder() async {
+    setState(() {
+      _showSharedDocumentsInTrip = true;
+    });
+    await _loadSharedDocuments();
+  }
+
+  void _closeSharedDocumentsFolder() {
+    setState(() {
+      _showSharedDocumentsInTrip = false;
+    });
+  }
+
   Future<String?> _pickAndUploadDocumentForStage({
     bool showSuccessSnackBar = false,
   }) async {
@@ -1903,6 +1943,25 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
   }
 
   Future<void> _deleteDocument(TripDocument doc) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Удалить документ?'),
+        content: Text('Документ "${doc.fileName}" будет удален без возможности восстановления.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
     try {
       await widget.documentsRepo.deleteObject(doc.objectKey);
       if (!mounted) return;
@@ -1915,6 +1974,36 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ошибка удаления документа')),
+      );
+    }
+  }
+
+  Future<void> _renameDocument(TripDocument doc) async {
+    final customTitle = await _openDocumentTitleDialog(doc.fileName);
+    if (customTitle == null) return;
+    final targetFileName = _buildTargetFileName(
+      customTitle: customTitle,
+      originalFileName: doc.fileName,
+    );
+
+    try {
+      final updated = await widget.documentsRepo.renameObject(
+        objectKey: doc.objectKey,
+        fileName: targetFileName,
+      );
+      if (!mounted) return;
+      setState(() {
+        _documents = _documents
+            .map((d) => d.objectKey == updated.objectKey ? updated : d)
+            .toList();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Название обновлено')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось переименовать документ')),
       );
     }
   }
@@ -2192,12 +2281,16 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                             _currentIndex = index;
                             if (index != 0) _showTripFavorites = false;
                             if (index != 2) _showBudgetAnalytics = false;
+                            if (index != 3) _showSharedDocumentsInTrip = false;
                           });
                           if (index == 2) {
                             _loadExpenses();
                           } else if (index == 1) {
                             _loadStages();
                           } else if (index == 3) {
+                            setState(() {
+                              _showSharedDocumentsInTrip = false;
+                            });
                             _loadDocuments();
                           }
                         },
@@ -5552,6 +5645,14 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
 
   void _onSearchChanged() {
     final query = _searchCtrl.text.trim();
+    if (query.isEmpty &&
+        (_mapQuery.isNotEmpty || _searchPointLat != null || _searchPointLon != null)) {
+      setState(() {
+        _mapQuery = '';
+        _searchPointLat = null;
+        _searchPointLon = null;
+      });
+    }
     if (!_applyingSuggestionSelection &&
         _selectedSuggestionTitle != null &&
         query != _mapQuery.trim()) {
@@ -6001,8 +6102,17 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
                                 ),
                               ),
                             ),
-                            TextButton(
+                            ElevatedButton(
                               onPressed: _submitSearch,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFD7E37A),
+                                foregroundColor: const Color(0xFF171717),
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                              ),
                               child: const Text('Найти'),
                             ),
                           ],
@@ -6227,6 +6337,8 @@ class _StageDetailsPage extends StatelessWidget {
   final String subtypeLabel;
   final String? timeRange;
   final VoidCallback? onOpenDocument;
+  final VoidCallback? onRenameDocument;
+  final VoidCallback? onDeleteDocument;
 
   const _StageDetailsPage({
     required this.stage,
@@ -6234,6 +6346,8 @@ class _StageDetailsPage extends StatelessWidget {
     required this.subtypeLabel,
     required this.timeRange,
     this.onOpenDocument,
+    this.onRenameDocument,
+    this.onDeleteDocument,
   });
 
   Widget _infoChip(String text) {
@@ -6265,6 +6379,45 @@ class _StageDetailsPage extends StatelessWidget {
         style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14),
       ),
     );
+  }
+
+  String _documentDisplayName(String objectKey) {
+    final leaf = objectKey.split('/').last;
+    final decoded = Uri.decodeComponent(leaf);
+    if (decoded.contains('__')) {
+      final idx = decoded.indexOf('__');
+      if (idx >= 0 && idx + 2 < decoded.length) {
+        return decoded.substring(idx + 2);
+      }
+    }
+    return decoded;
+  }
+
+  String? _effectiveTimeRange() {
+    String fmtHm(DateTime? dt) {
+      if (dt == null) return '';
+      final h = dt.hour.toString().padLeft(2, '0');
+      final m = dt.minute.toString().padLeft(2, '0');
+      return '$h:$m';
+    }
+
+    DateTime? computedEnd = stage.endTime;
+    if (stage.startTime != null &&
+        computedEnd == null &&
+        stage.durationMinutes != null &&
+        stage.durationMinutes! > 0) {
+      computedEnd = stage.startTime!.add(Duration(minutes: stage.durationMinutes!));
+    }
+
+    final start = fmtHm(stage.startTime);
+    final end = fmtHm(computedEnd);
+    if (start.isNotEmpty && end.isNotEmpty) return '$start-$end';
+    if (start.isNotEmpty) return start;
+    if (end.isNotEmpty) return end;
+
+    final fromProp = (timeRange ?? '').trim();
+    if (fromProp.isNotEmpty) return fromProp;
+    return null;
   }
 
   @override
@@ -6333,7 +6486,7 @@ class _StageDetailsPage extends StatelessWidget {
                                   children: [
                                     _infoChip(typeLabel),
                                     _infoChip(subtypeLabel),
-                                    if (timeRange != null) _infoChip(timeRange!),
+                                    if (_effectiveTimeRange() != null) _infoChip(_effectiveTimeRange()!),
                                   ],
                                 ),
                                 const SizedBox(height: 10),
@@ -6372,10 +6525,61 @@ class _StageDetailsPage extends StatelessWidget {
                                 _line('Комментарий', stage.notes),
                                 if ((stage.documentKey ?? '').isNotEmpty) ...[
                                   const SizedBox(height: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: onOpenDocument,
-                                    icon: const Icon(Icons.attach_file_rounded),
-                                    label: const Text('Открыть документ'),
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(20),
+                                    onTap: onOpenDocument,
+                                    child: Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [Color(0xFF2A2A2A), Color(0xFF202020)],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: const Color(0xFFD7E37A).withOpacity(0.6),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  _documentDisplayName(stage.documentKey!),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          IconButton(
+                                            tooltip: 'Переименовать',
+                                            onPressed: onRenameDocument,
+                                            icon: const Icon(
+                                              Icons.edit_rounded,
+                                              color: Color(0xFFD7E37A),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            tooltip: 'Удалить',
+                                            onPressed: onDeleteDocument,
+                                            icon: const Icon(
+                                              Icons.delete_outline_rounded,
+                                              color: Color(0xFFD7E37A),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ],
