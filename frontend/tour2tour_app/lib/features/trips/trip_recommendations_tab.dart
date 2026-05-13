@@ -95,7 +95,7 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
         tripId: widget.tripId,
         city: tripCity,
       );
-      final items = await widget.recommendationsRepo.getPersonalized(
+      final feed = await widget.recommendationsRepo.getPersonalized(
         profile: profile,
         city: tripCity,
         nearRoute: widget.stages.isNotEmpty,
@@ -104,8 +104,8 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
         userId: me.id.toString(),
       );
       final filteredItems = tripCity == null || tripCity.isEmpty
-          ? items
-          : items
+          ? feed.items
+          : feed.items
               .where((item) => item.city.trim().toLowerCase() == tripCity.toLowerCase())
               .toList();
       if (!mounted) return;

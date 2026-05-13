@@ -68,18 +68,34 @@ class RecommendationItem {
   }
 }
 
+class RecommendationFeed {
+  final List<RecommendationItem> items;
+  final bool hasMore;
+  final int total;
+  final int? nextOffset;
+
+  RecommendationFeed({
+    required this.items,
+    required this.hasMore,
+    required this.total,
+    required this.nextOffset,
+  });
+}
+
 class RecommendationsRepo {
   final ApiClient api;
 
   RecommendationsRepo(this.api);
 
-  Future<List<RecommendationItem>> getPersonalized({
+  Future<RecommendationFeed> getPersonalized({
     required SurveyProfile profile,
     String? city,
     bool nearRoute = false,
     double? routeLatitude,
     double? routeLongitude,
     String? userId,
+    int? limit,
+    int offset = 0,
   }) async {
     try {
       final res = await api.dio.post(
@@ -91,19 +107,50 @@ class RecommendationsRepo {
           'route_latitude': routeLatitude,
           'route_longitude': routeLongitude,
           'user_id': userId,
+          if (limit != null) 'limit': limit,
+          'offset': offset,
         },
       );
       final data = res.data;
       if (data is! Map || data['items'] is! List) {
-        return _syntheticRecommendations(city: city);
+        final fallback = _syntheticRecommendations(city: city);
+        return RecommendationFeed(
+          items: fallback,
+          hasMore: false,
+          total: fallback.length,
+          nextOffset: null,
+        );
       }
       final items = (data['items'] as List)
           .whereType<Map>()
           .map((raw) => RecommendationItem.fromJson(Map<String, dynamic>.from(raw)))
           .toList();
-      return items.isEmpty ? _syntheticRecommendations(city: city) : items;
+      if (items.isEmpty && offset == 0) {
+        final fallback = _syntheticRecommendations(city: city);
+        return RecommendationFeed(
+          items: fallback,
+          hasMore: false,
+          total: fallback.length,
+          nextOffset: null,
+        );
+      }
+      final total = (data['total'] as num?)?.toInt() ?? items.length;
+      final hasMore = data['has_more'] == true;
+      final nextOffset = (data['next_offset'] as num?)?.toInt();
+      return RecommendationFeed(
+        items: items,
+        hasMore: hasMore,
+        total: total,
+        nextOffset: nextOffset,
+      );
     } catch (_) {
-      return _syntheticRecommendations(city: city);
+      final fallback = _syntheticRecommendations(city: city);
+      return RecommendationFeed(
+        items: fallback,
+        hasMore: false,
+        total: fallback.length,
+        nextOffset: null,
+      );
     }
   }
 

@@ -221,6 +221,14 @@ class _PreferencesPageState extends State<PreferencesPage> {
     setState(() {});
   }
 
+  void _finishSurveyFlow([bool updated = false]) {
+    if (context.canPop()) {
+      context.pop(updated);
+      return;
+    }
+    context.go('/profile');
+  }
+
   Future<void> _skipSurvey() async {
     setState(() => _saving = true);
     try {
@@ -238,11 +246,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
         tripId: widget.tripId,
       );
       if (!mounted) return;
-      if (widget.fromRecommendations) {
-        context.pop();
-      } else {
-        context.go('/profile');
-      }
+      _finishSurveyFlow(true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -268,11 +272,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
       );
       await widget.repo.setSurveyProfile(profile, tripId: widget.tripId);
       if (!mounted) return;
-      if (widget.fromRecommendations) {
-        context.pop();
-      } else {
-        context.go('/profile');
-      }
+      _finishSurveyFlow(true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -365,7 +365,7 @@ class _PreferencesPageState extends State<PreferencesPage> {
                                 const SizedBox(width: 12),
                                 _CircleIconButton(
                                   icon: Icons.close_rounded,
-                                  onTap: () => context.go('/profile'),
+                                  onTap: () => _finishSurveyFlow(false),
                                 ),
                               ],
                             ),

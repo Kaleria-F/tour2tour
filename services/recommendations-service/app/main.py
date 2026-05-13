@@ -165,6 +165,7 @@ class RecommendationsRequest(BaseModel):
     route_longitude: float | None = None
     user_id: str | None = None
     limit: int | None = Field(default=None, ge=1, le=50)
+    offset: int = Field(default=0, ge=0)
 
 
 class RecommendationItem(BaseModel):
@@ -574,9 +575,19 @@ def personalized_recommendations(payload: RecommendationsRequest):
             )
         )
 
+    full_limit = max(len(items), payload.limit or _default_limit(payload.profile.pace))
+    ranked = _rerank_with_diversity(items, limit=full_limit)
+    total = len(ranked)
+    offset = min(payload.offset, total)
     limit = payload.limit or _default_limit(payload.profile.pace)
-    ranked = _rerank_with_diversity(items, limit=limit)
-    return {"items": ranked}
+    paged = ranked[offset:offset + limit]
+    next_offset = offset + len(paged)
+    return {
+        "items": paged,
+        "total": total,
+        "next_offset": next_offset if next_offset < total else None,
+        "has_more": next_offset < total,
+    }
 
 
 SUGGESTION_TEMPLATES: dict[tuple[str, str], list[dict[str, Any]]] = {

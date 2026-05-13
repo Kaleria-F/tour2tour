@@ -52,8 +52,13 @@ class _ProfilePageState extends State<ProfilePage> {
   Set<String> _viewedStoryIds = const <String>{};
   bool _loading = true;
   bool _recommendationsLoading = false;
+  bool _recommendationsUpdating = false;
+  bool _recommendationsHasMore = false;
+  int? _recommendationsNextOffset;
   String? _error;
   Timer? _premiumPopupTimer;
+
+  static const int _recommendationsPageSize = 12;
 
   @override
   void initState() {
@@ -150,18 +155,63 @@ class _ProfilePageState extends State<ProfilePage> {
     if (profile == null) return;
     setState(() => _recommendationsLoading = true);
     try {
-      final items = await widget.recommendationsRepo.getPersonalized(
+      final feed = await widget.recommendationsRepo.getPersonalized(
         profile: profile,
         userId: _me?.id.toString(),
+        limit: _recommendationsPageSize,
+        offset: 0,
       );
       if (!mounted) return;
-      setState(() => _recommendations = items);
+      setState(() {
+        _recommendations = feed.items;
+        _recommendationsHasMore = feed.hasMore;
+        _recommendationsNextOffset = feed.nextOffset;
+      });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _recommendations = const []);
+      setState(() {
+        _recommendations = const [];
+        _recommendationsHasMore = false;
+        _recommendationsNextOffset = null;
+      });
     } finally {
       if (!mounted) return;
       setState(() => _recommendationsLoading = false);
+    }
+  }
+
+  Future<void> _refreshOrLoadMoreRecommendations() async {
+    final profile = _surveyProfile;
+    if (profile == null || _recommendationsUpdating) return;
+    setState(() => _recommendationsUpdating = true);
+    try {
+      final reset = !_recommendationsHasMore;
+      final feed = await widget.recommendationsRepo.getPersonalized(
+        profile: profile,
+        userId: _me?.id.toString(),
+        limit: _recommendationsPageSize,
+        offset: reset ? 0 : (_recommendationsNextOffset ?? _recommendations.length),
+      );
+      if (!mounted) return;
+      setState(() {
+        _recommendations = reset
+            ? feed.items
+            : [..._recommendations, ...feed.items];
+        _recommendationsHasMore = feed.hasMore;
+        _recommendationsNextOffset = feed.nextOffset;
+      });
+      if (reset) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Подборка рекомендаций обновлена'),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+    } finally {
+      if (!mounted) return;
+      setState(() => _recommendationsUpdating = false);
     }
   }
 
@@ -947,9 +997,16 @@ class _ProfilePageState extends State<ProfilePage> {
                                   )
                                 : ListView.separated(
                                     scrollDirection: Axis.horizontal,
-                                    itemCount: _recommendations.length,
+                                    itemCount: _recommendations.length + 1,
                                     separatorBuilder: (_, __) => const SizedBox(width: 14),
                                     itemBuilder: (_, index) {
+                                      if (index == _recommendations.length) {
+                                        return _RecommendationsRefreshCard(
+                                          loading: _recommendationsUpdating,
+                                          hasMore: _recommendationsHasMore,
+                                          onTap: _refreshOrLoadMoreRecommendations,
+                                        );
+                                      }
                                       final item = _recommendations[index];
                                       return _RecommendationCarouselCard(
                                         item: item,
@@ -1389,6 +1446,90 @@ class _MetaChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _RecommendationsRefreshCard extends StatelessWidget {
+  final bool loading;
+  final bool hasMore;
+  final VoidCallback onTap;
+
+  const _RecommendationsRefreshCard({
+    required this.loading,
+    required this.hasMore,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 236,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(30),
+          onTap: loading ? null : onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              color: const Color(0xFF171717),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD7E37A),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: loading
+                        ? const Padding(
+                            padding: EdgeInsets.all(14),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: Color(0xFF171717),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.refresh_rounded,
+                            color: Color(0xFF171717),
+                            size: 28,
+                          ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    hasMore ? 'Обновить' : 'Обновить подборку',
+                    style: const TextStyle(
+                      fontFamily: 'Geologica',
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w400,
+                      height: 1.02,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    hasMore
+                        ? 'Показать ещё подходящие рекомендации.'
+                        : 'Загрузить подборку заново по вашим интересам.',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.64),
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
