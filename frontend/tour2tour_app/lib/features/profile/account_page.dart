@@ -31,6 +31,14 @@ class _AccountPageState extends State<AccountPage> {
   bool _loggingOut = false;
   String? _error;
 
+  String _formatPremiumExpiry(DateTime? value) {
+    if (value == null) return '';
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final year = value.year.toString();
+    return '$day.$month.$year';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -77,6 +85,10 @@ class _AccountPageState extends State<AccountPage> {
     await context.push('/edit-account');
     if (!mounted) return;
     await _load();
+  }
+
+  Future<void> _openSupport() async {
+    await context.push('/support');
   }
 
   String _formatDate(DateTime value) {
@@ -233,7 +245,7 @@ class _AccountPageState extends State<AccountPage> {
                                       const SizedBox(height: 3),
                                       Text(
                                         _me?.isPremium == true
-                                            ? 'Подписка уже активна'
+                                            ? 'Активна до ${_formatPremiumExpiry(_me?.premiumExpiresAt)}'
                                             : 'Быстрый ввод и умное заполнение этапов',
                                         style: TextStyle(
                                           color: Colors.white.withOpacity(0.72),
@@ -415,6 +427,25 @@ class _AccountPageState extends State<AccountPage> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF6A3F2E),
                             foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _openSupport,
+                          icon: const Icon(Icons.support_agent_rounded),
+                          label: const Text('Связаться с командой приложения'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFD7E37A),
+                            side: BorderSide(
+                              color: const Color(0xFFD7E37A).withOpacity(0.55),
+                            ),
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),

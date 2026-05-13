@@ -6,6 +6,7 @@ import '../interactions/interactions_repo.dart';
 import '../profile/profile_repo.dart';
 import '../recommendations/recommendation_labels.dart';
 import '../shared/travel_app_shell.dart';
+import '../trips/stage_form_page.dart';
 import '../trips/trips_repo.dart';
 
 class FavoritesPage extends StatefulWidget {
@@ -21,6 +22,7 @@ class FavoritesPage extends StatefulWidget {
     this.tripsRepo,
     this.embedded = false,
     this.onBack,
+    this.onTripStageAdded,
   });
 
   final InteractionsRepo interactionsRepo;
@@ -33,6 +35,7 @@ class FavoritesPage extends StatefulWidget {
   final TripsRepo? tripsRepo;
   final bool embedded;
   final VoidCallback? onBack;
+  final Future<void> Function()? onTripStageAdded;
 
   @override
   State<FavoritesPage> createState() => _FavoritesPageState();
@@ -40,6 +43,24 @@ class FavoritesPage extends StatefulWidget {
 
 class _FavoritesPageState extends State<FavoritesPage> {
   static const _primaryColor = Color(0xFFD7E37A);
+  static const Map<String, String> _stageTypeLabels = <String, String>{
+    'transport': 'Поездка',
+    'place': 'Посещение места',
+    'stay': 'Проживание',
+    'food': 'Еда',
+    'shopping': 'Покупки',
+    'activity': 'Активность',
+    'document': 'Документ',
+  };
+  static const Map<String, List<String>> _stageSubtypes = <String, List<String>>{
+    'transport': ['road', 'airplane', 'train', 'car', 'bus', 'public_transport', 'walk', 'taxi', 'bicycle'],
+    'place': ['attraction', 'excursion', 'museum', 'park', 'event', 'nature'],
+    'stay': ['hotel', 'hostel', 'apartment', 'overnight', 'rest'],
+    'food': ['restaurant', 'cafe', 'fastfood', 'breakfast', 'lunch', 'dinner', 'to_go'],
+    'shopping': ['mall', 'market', 'souvenirs', 'shopping'],
+    'activity': ['sport', 'entertainment', 'walk', 'beach'],
+    'document': ['tickets', 'visa', 'insurance', 'booking'],
+  };
   bool _loading = true;
   String? _error;
   List<FavoriteCityGroup> _groups = const [];
@@ -158,32 +179,232 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final tripsRepo = widget.tripsRepo;
     final tripId = widget.tripId ?? item.tripId;
     if (userId == null || tripsRepo == null || tripId == null) return;
+    try {
+      final trip = await _resolveTripSummary(tripId, tripsRepo);
+      if (!mounted) return;
+      final routeDay = await _pickTripDay(trip);
+      if (!mounted || routeDay == null) return;
 
-    final created = await tripsRepo.createStage(
-      tripId: tripId,
-      stageType: 'place',
-      subtype: (item.subcategory ?? '').isEmpty ? 'attraction' : item.subcategory!,
-      title: item.title,
-      address: (item.address ?? '').isEmpty ? null : item.address,
-      notes: (item.description ?? '').isEmpty ? null : item.description,
-      rating: item.rating,
-    );
+      final stageType = _favoriteStageType(item);
+      final payload = await Navigator.of(context).push<AddStagePayload>(
+        MaterialPageRoute(
+          builder: (_) => StageFormPage(
+            stageTypeLabels: _stageTypeLabels,
+            stageSubtypes: _stageSubtypes,
+            initialType: stageType,
+            destinationCity: item.city,
+            tripsRepo: tripsRepo,
+            isPremium: true,
+            routeDay: routeDay,
+            promptPlaceSuggestionOnOpen: stageType == 'place',
+            initial: AddStagePayload(
+              stageType: stageType,
+              subtype: _favoriteSubtype(item, stageType),
+              title: item.title,
+              address: (item.address ?? '').trim().isEmpty ? null : item.address!.trim(),
+              rating: item.rating,
+            ),
+          ),
+        ),
+      );
+      if (!mounted || payload == null) return;
 
-    if (created == null) {
+      final created = await tripsRepo.createStage(
+        tripId: tripId,
+        stageType: payload.stageType,
+        subtype: payload.subtype,
+        title: payload.title,
+        startLocation: payload.startLocation,
+        endLocation: payload.endLocation,
+        address: payload.address,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        startTime: payload.startTime,
+        endTime: payload.endTime,
+        durationMinutes: payload.durationMinutes,
+        costRub: payload.costRub,
+        referenceNumber: payload.referenceNumber,
+        notes: payload.notes,
+        websiteUrl: payload.websiteUrl,
+        rating: payload.rating,
+        documentKey: payload.documentKey,
+      );
+
+      if (!mounted) return;
+      if (created == null) {
+        _showFeedback('Не удалось добавить место в маршрут');
+        return;
+      }
+
+      await widget.interactionsRepo.trackEvent(
+        userId: userId,
+        placeId: item.placeId,
+        action: 'added_to_trip',
+        weight: 5,
+        metadata: _metadata(item),
+      );
+      if (!mounted) return;
+      _showFeedback('Добавлено в маршрут: ${item.title}');
+      if (widget.onTripStageAdded != null) {
+        await widget.onTripStageAdded!();
+      }
+      if (!mounted) return;
+      if (widget.embedded && widget.onTripStageAdded == null) {
+        widget.onBack?.call();
+      }
+    } catch (_) {
       if (!mounted) return;
       _showFeedback('Не удалось добавить место в маршрут');
-      return;
     }
+  }
 
-    await widget.interactionsRepo.trackEvent(
-      userId: userId,
-      placeId: item.placeId,
-      action: 'added_to_trip',
-      weight: 5,
-      metadata: _metadata(item),
+  String _favoriteStageType(FavoritePlace item) {
+    switch ((item.category ?? '').trim()) {
+      case 'food':
+        return 'food';
+      case 'stay':
+        return 'stay';
+      case 'shopping':
+        return 'shopping';
+      case 'activity':
+        return 'activity';
+      case 'document':
+        return 'document';
+      case 'transport':
+        return 'transport';
+      default:
+        return 'place';
+    }
+  }
+
+  String _favoriteSubtype(FavoritePlace item, String stageType) {
+    final available = _stageSubtypes[stageType] ?? const <String>[];
+    final candidate = (item.subcategory ?? '').trim();
+    if (candidate.isNotEmpty && available.contains(candidate)) {
+      return candidate;
+    }
+    if (stageType == 'place' && available.contains('attraction')) {
+      return 'attraction';
+    }
+    if (stageType == 'transport' && available.contains('road')) {
+      return 'road';
+    }
+    return available.isNotEmpty ? available.first : candidate;
+  }
+
+  Future<TripSummary?> _resolveTripSummary(int tripId, TripsRepo tripsRepo) async {
+    try {
+      final trips = await tripsRepo.listTrips();
+      for (final trip in trips) {
+        if (trip.id == tripId) return trip;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  List<DateTime> _tripDaysForSummary(TripSummary? trip) {
+    if (trip == null) {
+      final now = DateTime.now();
+      return <DateTime>[DateTime(now.year, now.month, now.day)];
+    }
+    final start = DateTime(trip.startDate.year, trip.startDate.month, trip.startDate.day);
+    final byPlannedDays = trip.plannedDays;
+    if (byPlannedDays != null && byPlannedDays > 0) {
+      return List<DateTime>.generate(
+        byPlannedDays,
+        (index) => start.add(Duration(days: index)),
+      );
+    }
+    final end = DateTime(trip.endDate.year, trip.endDate.month, trip.endDate.day);
+    final days = end.difference(start).inDays + 1;
+    final safeDays = days > 0 ? days : 1;
+    return List<DateTime>.generate(
+      safeDays,
+      (index) => start.add(Duration(days: index)),
     );
-    if (!mounted) return;
-    _showFeedback('Добавлено в маршрут: ${item.title}');
+  }
+
+  String _formatTripDay(DateTime day) {
+    const weekdays = <int, String>{
+      DateTime.monday: 'ПН',
+      DateTime.tuesday: 'ВТ',
+      DateTime.wednesday: 'СР',
+      DateTime.thursday: 'ЧТ',
+      DateTime.friday: 'ПТ',
+      DateTime.saturday: 'СБ',
+      DateTime.sunday: 'ВС',
+    };
+    const months = <int, String>{
+      1: 'янв',
+      2: 'фев',
+      3: 'мар',
+      4: 'апр',
+      5: 'мая',
+      6: 'июн',
+      7: 'июл',
+      8: 'авг',
+      9: 'сен',
+      10: 'окт',
+      11: 'ноя',
+      12: 'дек',
+    };
+    final weekday = weekdays[day.weekday] ?? '';
+    final month = months[day.month] ?? '';
+    return '$weekday, ${day.day} $month';
+  }
+
+  Future<DateTime?> _pickTripDay(TripSummary? trip) async {
+    final days = _tripDaysForSummary(trip);
+    if (days.length == 1) return days.first;
+    return showModalBottomSheet<DateTime>(
+      context: context,
+      backgroundColor: const Color(0xFF1D1D1D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Выберите день маршрута',
+                  style: TextStyle(
+                    fontFamily: 'Geologica',
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ...days.map(
+                  (day) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      _formatTripDay(day),
+                      style: const TextStyle(
+                        fontFamily: 'Geologica',
+                        color: Colors.white,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                    trailing: const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white54,
+                    ),
+                    onTap: () => Navigator.of(context).pop(day),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _openFavoriteDetails(FavoritePlace item) async {

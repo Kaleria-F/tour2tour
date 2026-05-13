@@ -6,6 +6,7 @@ import '../preferences/preferences_repo.dart';
 import '../profile/profile_repo.dart';
 import '../recommendations/recommendations_repo.dart';
 import '../recommendations/recommendation_labels.dart';
+import 'stage_form_page.dart';
 import 'trips_repo.dart';
 
 class TripRecommendationsTab extends StatefulWidget {
@@ -41,6 +42,25 @@ class TripRecommendationsTab extends StatefulWidget {
 }
 
 class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
+  static const _primaryColor = Color(0xFFD7E37A);
+  static const Map<String, String> _stageTypeLabels = <String, String>{
+    'transport': 'Поездка',
+    'place': 'Посещение места',
+    'stay': 'Проживание',
+    'food': 'Еда',
+    'shopping': 'Покупки',
+    'activity': 'Активность',
+    'document': 'Документ',
+  };
+  static const Map<String, List<String>> _stageSubtypes = <String, List<String>>{
+    'transport': ['road', 'airplane', 'train', 'car', 'bus', 'public_transport', 'walk', 'taxi', 'bicycle'],
+    'place': ['attraction', 'excursion', 'museum', 'park', 'event', 'nature'],
+    'stay': ['hotel', 'hostel', 'apartment', 'overnight', 'rest'],
+    'food': ['restaurant', 'cafe', 'fastfood', 'breakfast', 'lunch', 'dinner', 'to_go'],
+    'shopping': ['mall', 'market', 'souvenirs', 'shopping'],
+    'activity': ['sport', 'entertainment', 'walk', 'beach'],
+    'document': ['tickets', 'visa', 'insurance', 'booking'],
+  };
   bool _loading = false;
   List<RecommendationItem> _recommendations = const [];
   SurveyProfile? _surveyProfile;
@@ -207,6 +227,31 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
     } catch (_) {}
   }
 
+  void _showRouteFeedback(String message) {
+    final width = MediaQuery.of(context).size.width;
+    final snackWidth = width > 462 ? 430.0 : width - 32;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        width: snackWidth,
+        backgroundColor: _primaryColor,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+        content: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: 'Geologica',
+            color: Color(0xFF171717),
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
+
   Map<String, dynamic> _metadata(RecommendationItem item) => {
         'title': item.title,
         'city': item.city,
@@ -258,31 +303,220 @@ class _TripRecommendationsTabState extends State<TripRecommendationsTab> {
 
   Future<void> _addToTrip(RecommendationItem item) async {
     if (widget.tripId == null) return;
-    final created = await widget.tripsRepo.createStage(
-      tripId: widget.tripId!,
-      stageType: 'place',
-      subtype: item.subcategory.isEmpty ? 'attraction' : item.subcategory,
-      title: item.title,
-      address: item.address.isEmpty ? null : item.address,
-      latitude: item.latitude == 0 ? null : item.latitude,
-      longitude: item.longitude == 0 ? null : item.longitude,
-      notes: item.description.isEmpty ? null : item.description,
-      rating: item.rating == 0 ? null : item.rating,
-    );
-    if (created == null) {
+    try {
+      final trip = await _resolveTripSummary(widget.tripId!);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0440\u0435\u043a\u043e\u043c\u0435\u043d\u0434\u0430\u0446\u0438\u044e \u0432 \u043c\u0430\u0440\u0448\u0440\u0443\u0442')),
+      final routeDay = await _pickTripDay(trip);
+      if (!mounted || routeDay == null) return;
+
+      final stageType = _recommendationStageType(item);
+      final payload = await Navigator.of(context).push<AddStagePayload>(
+        MaterialPageRoute(
+          builder: (_) => StageFormPage(
+            stageTypeLabels: _stageTypeLabels,
+            stageSubtypes: _stageSubtypes,
+            initialType: stageType,
+            destinationCity: widget.destinationCity ?? item.city,
+            tripsRepo: widget.tripsRepo,
+            isPremium: true,
+            routeDay: routeDay,
+            promptPlaceSuggestionOnOpen: stageType == 'place',
+            initial: AddStagePayload(
+              stageType: stageType,
+              subtype: _recommendationSubtype(item, stageType),
+              title: item.title,
+              address: item.address.isEmpty ? null : item.address,
+              latitude: item.latitude == 0 ? null : item.latitude,
+              longitude: item.longitude == 0 ? null : item.longitude,
+              rating: item.rating == 0 ? null : item.rating,
+            ),
+          ),
+        ),
       );
-      return;
+      if (!mounted || payload == null) return;
+
+      final created = await widget.tripsRepo.createStage(
+        tripId: widget.tripId!,
+        stageType: payload.stageType,
+        subtype: payload.subtype,
+        title: payload.title,
+        startLocation: payload.startLocation,
+        endLocation: payload.endLocation,
+        address: payload.address,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        startTime: payload.startTime,
+        endTime: payload.endTime,
+        durationMinutes: payload.durationMinutes,
+        costRub: payload.costRub,
+        referenceNumber: payload.referenceNumber,
+        notes: payload.notes,
+        websiteUrl: payload.websiteUrl,
+        rating: payload.rating,
+        documentKey: payload.documentKey,
+      );
+      if (!mounted) return;
+      if (created == null) {
+        _showRouteFeedback('Не удалось добавить рекомендацию в маршрут');
+        return;
+      }
+      await _trackAction(item, 'added_to_trip', weight: 5, metadata: _metadata(item));
+      if (!mounted) return;
+      widget.onStagesChanged();
+      _consume(item.id);
+      _showRouteFeedback('Добавлено в маршрут: ${item.title}');
+    } catch (_) {
+      if (!mounted) return;
+      _showRouteFeedback('Не удалось добавить рекомендацию в маршрут');
     }
-    await _trackAction(item, 'added_to_trip', weight: 5, metadata: _metadata(item));
-    if (!mounted) return;
-    widget.onStagesChanged();
-    _consume(item.id);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('\u0414\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u043e \u0432 \u043c\u0430\u0440\u0448\u0440\u0443\u0442: ${item.title}')),
+  }
+
+  String _recommendationStageType(RecommendationItem item) {
+    switch (item.category.trim()) {
+      case 'food':
+        return 'food';
+      case 'stay':
+        return 'stay';
+      case 'shopping':
+        return 'shopping';
+      case 'activity':
+        return 'activity';
+      case 'document':
+        return 'document';
+      case 'transport':
+        return 'transport';
+      default:
+        return 'place';
+    }
+  }
+
+  String _recommendationSubtype(RecommendationItem item, String stageType) {
+    final available = _stageSubtypes[stageType] ?? const <String>[];
+    final candidate = item.subcategory.trim();
+    if (candidate.isNotEmpty && available.contains(candidate)) {
+      return candidate;
+    }
+    if (stageType == 'place' && available.contains('attraction')) {
+      return 'attraction';
+    }
+    if (stageType == 'transport' && available.contains('road')) {
+      return 'road';
+    }
+    return available.isNotEmpty ? available.first : candidate;
+  }
+
+  Future<TripSummary?> _resolveTripSummary(int tripId) async {
+    try {
+      final trips = await widget.tripsRepo.listTrips();
+      for (final trip in trips) {
+        if (trip.id == tripId) return trip;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  List<DateTime> _tripDaysForSummary(TripSummary? trip) {
+    if (trip == null) {
+      final now = DateTime.now();
+      return <DateTime>[DateTime(now.year, now.month, now.day)];
+    }
+    final start = DateTime(trip.startDate.year, trip.startDate.month, trip.startDate.day);
+    final byPlannedDays = trip.plannedDays;
+    if (byPlannedDays != null && byPlannedDays > 0) {
+      return List<DateTime>.generate(
+        byPlannedDays,
+        (index) => start.add(Duration(days: index)),
+      );
+    }
+    final end = DateTime(trip.endDate.year, trip.endDate.month, trip.endDate.day);
+    final days = end.difference(start).inDays + 1;
+    final safeDays = days > 0 ? days : 1;
+    return List<DateTime>.generate(
+      safeDays,
+      (index) => start.add(Duration(days: index)),
+    );
+  }
+
+  String _formatTripDay(DateTime day) {
+    const weekdays = <int, String>{
+      DateTime.monday: 'ПН',
+      DateTime.tuesday: 'ВТ',
+      DateTime.wednesday: 'СР',
+      DateTime.thursday: 'ЧТ',
+      DateTime.friday: 'ПТ',
+      DateTime.saturday: 'СБ',
+      DateTime.sunday: 'ВС',
+    };
+    const months = <int, String>{
+      1: 'янв',
+      2: 'фев',
+      3: 'мар',
+      4: 'апр',
+      5: 'мая',
+      6: 'июн',
+      7: 'июл',
+      8: 'авг',
+      9: 'сен',
+      10: 'окт',
+      11: 'ноя',
+      12: 'дек',
+    };
+    final weekday = weekdays[day.weekday] ?? '';
+    final month = months[day.month] ?? '';
+    return '$weekday, ${day.day} $month';
+  }
+
+  Future<DateTime?> _pickTripDay(TripSummary? trip) async {
+    final days = _tripDaysForSummary(trip);
+    if (days.length == 1) return days.first;
+    return showModalBottomSheet<DateTime>(
+      context: context,
+      backgroundColor: const Color(0xFF1D1D1D),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Выберите день маршрута',
+                  style: TextStyle(
+                    fontFamily: 'Geologica',
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ...days.map(
+                  (day) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      _formatTripDay(day),
+                      style: const TextStyle(
+                        fontFamily: 'Geologica',
+                        color: Colors.white,
+                        fontWeight: FontWeight.w300,
+                      ),
+                    ),
+                    trailing: const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white54,
+                    ),
+                    onTap: () => Navigator.of(context).pop(day),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

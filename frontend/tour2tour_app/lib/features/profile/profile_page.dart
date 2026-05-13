@@ -649,12 +649,12 @@ class _ProfilePageState extends State<ProfilePage> {
       subtitle: '',
       currentTab: TravelNavTab.home,
       headerAction: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Image.asset(
-          'assets/images/tur2tur_logo.png',
-          width: 48,
-          height: 48,
-          fit: BoxFit.cover,
+          'assets/images/tur2tur_wordmark.png',
+          width: 92,
+          height: 28,
+          fit: BoxFit.contain,
         ),
       ),
       body: _loading

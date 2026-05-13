@@ -192,6 +192,7 @@ class StageFormPage extends StatefulWidget {
   final DateTime? routeDay;
   final AddStagePayload? initial;
   final String submitLabel;
+  final bool promptPlaceSuggestionOnOpen;
   final Future<String?> Function()? onUploadDocument;
 
   const StageFormPage({
@@ -205,6 +206,7 @@ class StageFormPage extends StatefulWidget {
     this.routeDay,
     this.onUploadDocument,
     this.initial,
+    this.promptPlaceSuggestionOnOpen = false,
     this.submitLabel = 'Добавить',
   });
 
@@ -307,6 +309,7 @@ class _StageFormPageState extends State<StageFormPage> {
   String? _orgSuggestBbox;
   bool _orgSuggestEnabled = true;
   bool _isPickingOrgSuggestion = false;
+  bool _showOrgSuggestHint = false;
 
   late String _stageType;
   late String _subtype;
@@ -350,6 +353,15 @@ class _StageFormPageState extends State<StageFormPage> {
     _titleCtrl.addListener(_onOrgSuggestTitleChanged);
     _titleFocusNode.addListener(_onTitleFocusChanged);
     _resolveOrgSuggestBounds();
+    if (widget.promptPlaceSuggestionOnOpen &&
+        _stageType != 'transport' &&
+        _titleCtrl.text.trim().length >= 2 &&
+        _addressCtrl.text.trim().isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _promptOrgSuggestionSelection(_titleCtrl.text);
+      });
+    }
   }
 
   @override
@@ -582,7 +594,23 @@ class _StageFormPageState extends State<StageFormPage> {
       _orgSuggestLoading = false;
       _orgSuggestEnabled = false;
       _titleEdited = orgName.isNotEmpty;
+      _showOrgSuggestHint = false;
     });
+  }
+
+  void _promptOrgSuggestionSelection(String title) {
+    final normalized = title.trim();
+    if (normalized.length < 2 || _stageType == 'transport') return;
+    _orgSuggestEnabled = true;
+    _titleFocusNode.requestFocus();
+    setState(() {
+      _showOrgSuggestHint = true;
+    });
+    _orgSuggestDebounce?.cancel();
+    _orgSuggestDebounce = Timer(
+      const Duration(milliseconds: 120),
+      () => _loadOrgSuggestions(normalized),
+    );
   }
 
   Future<void> _resolveOrgSuggestBounds() async {
@@ -1035,6 +1063,13 @@ class _StageFormPageState extends State<StageFormPage> {
       _assistantCtrl.text = draft.sourceText;
       if (assistantTitle.isNotEmpty && hadEditableTitle) {
         _titleEdited = assistantTitle != _defaultStageTitle();
+        if ((draft.address == null || draft.address!.trim().isEmpty) &&
+            _stageType != 'transport') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _promptOrgSuggestionSelection(assistantTitle);
+          });
+        }
       } else {
         _applyTransportDefaultsIfNeeded(
           forceTitle: !_titleEdited || _titleCtrl.text.trim().isEmpty,
@@ -2063,6 +2098,9 @@ class _StageFormPageState extends State<StageFormPage> {
                                       if (_titleEdited) {
                                         _titleSelectAllOnNextTap = false;
                                       }
+                                      if (_showOrgSuggestHint) {
+                                        setState(() => _showOrgSuggestHint = false);
+                                      }
                                     },
                                     style: const TextStyle(
                                       fontFamily: 'Geologica',
@@ -2076,6 +2114,43 @@ class _StageFormPageState extends State<StageFormPage> {
                                   if (_stageType != 'transport' &&
                                       (_orgSuggestLoading || _orgSuggestions.isNotEmpty)) ...[
                                     const SizedBox(height: 6),
+                                    if (_showOrgSuggestHint) ...[
+                                      Container(
+                                        margin: const EdgeInsets.only(bottom: 8),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFB6A1FF).withOpacity(0.16),
+                                          borderRadius: BorderRadius.circular(14),
+                                          border: Border.all(
+                                            color: const Color(0xFFB6A1FF).withOpacity(0.38),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.touch_app_rounded,
+                                              size: 16,
+                                              color: const Color(0xFFB6A1FF).withOpacity(0.95),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Expanded(
+                                              child: Text(
+                                                'Нажмите, чтобы уточнить место',
+                                                style: TextStyle(
+                                                  fontFamily: 'Geologica',
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w300,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                     Container(
                                       decoration: BoxDecoration(
                                         color: Colors.white.withOpacity(0.04),

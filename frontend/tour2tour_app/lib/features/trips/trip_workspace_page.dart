@@ -697,6 +697,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
             tripsRepo: widget.tripsRepo,
             isPremium: _hasPremium,
             routeDay: _currentAssistantRouteDay(),
+            promptPlaceSuggestionOnOpen: true,
             initial: _buildAssistantPayloadFromDraft(draft),
             onUploadDocument: _pickAndUploadDocumentForStage,
           ),
@@ -2042,6 +2043,17 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     });
   }
 
+  Future<void> _handleTripFavoriteStageAdded() async {
+    await _loadStages();
+    await _loadExpenses();
+    if (!mounted) return;
+    setState(() {
+      _selectedStageId = null;
+      _currentIndex = 1;
+      _showTripFavorites = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -2149,6 +2161,8 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                             titleOverride: 'Сохраненные места',
                                             embedded: true,
                                             onBack: _closeTripFavoritesView,
+                                            onTripStageAdded:
+                                                _handleTripFavoriteStageAdded,
                                           )
                                         : TripRecommendationsTab(
                                             recommendationsRepo:
@@ -6480,18 +6494,37 @@ class _RouteAssistantTextDialogState extends State<_RouteAssistantTextDialog> {
   final TextEditingController _controller = TextEditingController();
   bool _recording = false;
   bool _processingVoice = false;
+  Timer? _recordTimer;
+  int _secondsLeft = 30;
 
   Future<void> _toggleVoice() async {
     if (_processingVoice) return;
     if (!_recording) {
       final started = await widget.onStartVoice();
-      if (!mounted) return null;
+      if (!mounted) return;
       if (started) {
-        setState(() => _recording = true);
+        _recordTimer?.cancel();
+        setState(() {
+          _recording = true;
+          _secondsLeft = 30;
+        });
+        _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+          if (!mounted || !_recording) {
+            timer.cancel();
+            return;
+          }
+          if (_secondsLeft <= 1) {
+            timer.cancel();
+            await _toggleVoice();
+            return;
+          }
+          setState(() => _secondsLeft -= 1);
+        });
       }
       return;
     }
 
+    _recordTimer?.cancel();
     setState(() => _processingVoice = true);
     final transcript = await widget.onStopVoice();
     if (!mounted) return;
@@ -6504,17 +6537,20 @@ class _RouteAssistantTextDialogState extends State<_RouteAssistantTextDialog> {
     setState(() {
       _recording = false;
       _processingVoice = false;
+      _secondsLeft = 30;
     });
   }
 
   @override
   void dispose() {
+    _recordTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final progress = ((30 - _secondsLeft) / 30).clamp(0.0, 1.0);
     return Dialog(
       backgroundColor: const Color(0xFF1D222A),
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -6616,7 +6652,7 @@ class _RouteAssistantTextDialogState extends State<_RouteAssistantTextDialog> {
                               width: 46,
                               height: 46,
                               child: CircularProgressIndicator(
-                                value: _recording ? null : 0,
+                                value: _recording ? progress : 0,
                                 strokeWidth: 3,
                                 backgroundColor: Colors.white.withOpacity(0.12),
                                 valueColor: const AlwaysStoppedAnimation<Color>(
@@ -6649,13 +6685,21 @@ class _RouteAssistantTextDialogState extends State<_RouteAssistantTextDialog> {
                                               AlwaysStoppedAnimation<Color>(Colors.white),
                                         ),
                                       )
-                                    : Icon(
-                                        _recording
-                                            ? Icons.graphic_eq_rounded
-                                            : Icons.mic_rounded,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
+                                    : _recording
+                                        ? Text(
+                                            '$_secondsLeft',
+                                            style: const TextStyle(
+                                              fontFamily: 'Geologica',
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w400,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.mic_rounded,
+                                            color: Colors.white,
+                                            size: 18,
+                                          ),
                               ),
                             ),
                           ],

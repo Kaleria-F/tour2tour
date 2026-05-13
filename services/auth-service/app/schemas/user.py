@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, field_validator
 
@@ -10,6 +11,7 @@ class UserMeOut(BaseModel):
     display_name: str | None
     avatar_url: str | None
     is_premium: bool
+    premium_expires_at: datetime | None = None
     role: str
     is_2fa_enabled: bool
     totp_enabled: bool
@@ -80,3 +82,29 @@ class StageAssistantTrialOut(BaseModel):
 
 class PremiumGrantIn(BaseModel):
     is_premium: bool = True
+    duration_days: int = 30
+
+
+class SupportMessageIn(BaseModel):
+    subject: str
+    message: str
+
+    @field_validator("subject")
+    @classmethod
+    def validate_subject(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Subject is required.")
+        if len(normalized) > 160:
+            raise ValueError("Subject is too long.")
+        return normalized
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Message is required.")
+        if len(normalized) > 5000:
+            raise ValueError("Message is too long.")
+        return normalized

@@ -16,11 +16,33 @@ try {
 from app.db.session import SessionLocal
 from app.models.user import User
 from app.core.security import hash_password
+from datetime import datetime, timedelta, timezone
 
 USERS = [
-    {"email": "reco.tester@example.com", "phone": "+79000000001", "password": "Test1234!", "role": "traveler", "is_premium": True},
-    {"email": "family.tester@example.com", "phone": "+79000000002", "password": "Test1234!", "role": "traveler", "is_premium": False},
-    {"email": "admin.seed@example.com", "phone": "+79000000003", "password": "Admin1234!", "role": "admin", "is_premium": False},
+    {
+        "email": "reco.tester@example.com",
+        "phone": "+79000000001",
+        "password": "Test1234!",
+        "role": "traveler",
+        "is_premium": True,
+        "premium_expires_at": datetime.now(timezone.utc) + timedelta(days=30),
+    },
+    {
+        "email": "family.tester@example.com",
+        "phone": "+79000000002",
+        "password": "Test1234!",
+        "role": "traveler",
+        "is_premium": False,
+        "premium_expires_at": None,
+    },
+    {
+        "email": "admin.seed@example.com",
+        "phone": "+79000000003",
+        "password": "Admin1234!",
+        "role": "admin",
+        "is_premium": False,
+        "premium_expires_at": None,
+    },
 ]
 
 db = SessionLocal()
@@ -34,6 +56,7 @@ try:
                 password_hash=hash_password(payload["password"]),
                 role=payload["role"],
                 is_premium=payload["is_premium"],
+                premium_expires_at=payload["premium_expires_at"],
                 is_2fa_enabled=False,
                 totp_enabled=False,
                 passkey_enabled=False,
@@ -45,6 +68,7 @@ try:
             user.password_hash = hash_password(payload["password"])
             user.role = payload["role"]
             user.is_premium = payload["is_premium"]
+            user.premium_expires_at = payload["premium_expires_at"]
             user.is_2fa_enabled = False
             user.totp_enabled = False
             user.passkey_enabled = False
@@ -280,7 +304,7 @@ INSERT INTO user_place_interactions (id, user_id, place_id, action, context, ses
 
   Write-Host "Seed complete."
   Write-Host "Users:"
-  docker compose exec -T auth-db psql -U auth -d auth -c "select id, email, role from users where email in ('reco.tester@example.com', 'family.tester@example.com', 'admin.seed@example.com') order by id;"
+  docker compose exec -T auth-db psql -U auth -d auth -c "select id, email, role, is_premium, premium_expires_at from users where email in ('reco.tester@example.com', 'family.tester@example.com', 'admin.seed@example.com') order by id;"
   Write-Host "Places:"
   docker compose exec -T places-db psql -U places -d places -c "select city, count(*) from places where source='synthetic_seed' group by city order by city;"
   Write-Host "Stories:"

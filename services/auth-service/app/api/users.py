@@ -2,6 +2,7 @@ import json
 import logging
 import secrets
 from collections import Counter, defaultdict
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -28,6 +29,7 @@ from app.schemas.user import (
     EmailChangeConfirmIn,
     EmailChangeRequestIn,
     PremiumGrantIn,
+    SupportMessageIn,
     StageAssistantTrialOut,
     UserMeOut,
     UserProfileUpdateIn,
@@ -55,15 +57,44 @@ STAGE_ASSISTANT_TRIAL_KEY = "stage_assistant_trial_used"
 STAGE_ASSISTANT_TRIAL_LIMIT = 5
 
 
+def _normalize_dt(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _apply_premium_expiry_if_needed(user: User, db: Session | None = None) -> bool:
+    expires_at = _normalize_dt(user.premium_expires_at)
+    now = datetime.now(timezone.utc)
+    if user.is_premium and expires_at is not None and expires_at <= now:
+        user.is_premium = False
+        user.premium_expires_at = None
+        if db is not None:
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        return False
+    if user.is_premium and expires_at is None:
+        return False
+    return bool(user.is_premium)
+
+
 @router.get("/me", response_model=UserMeOut)
-def get_me(me: User = Depends(get_current_user)):
+def get_me(
+    db: Session = Depends(get_db),
+    me: User = Depends(get_current_user),
+):
+    is_premium = _apply_premium_expiry_if_needed(me, db)
     return UserMeOut(
         id=me.id,
         email=me.email,
         phone=me.phone,
         display_name=me.display_name,
         avatar_url=me.avatar_url,
-        is_premium=me.is_premium,
+        is_premium=is_premium,
+        premium_expires_at=_normalize_dt(me.premium_expires_at) if is_premium else None,
         role=me.role,
         is_2fa_enabled=me.is_2fa_enabled,
         totp_enabled=me.totp_enabled,
@@ -212,6 +243,15 @@ def _send_email_or_fail(
             detail="Не удалось отправить письмо с кодом подтверждения.",
         )
 
+def _resolve_support_email() -> str:
+    target = settings.support_email.strip() or settings.smtp_from.strip()
+    if not target:
+        raise HTTPException(
+            status_code=503,
+            detail="Support email is not configured.",
+        )
+    return target
+
 
 @router.patch("/me", response_model=UserMeOut)
 def update_me(
@@ -232,7 +272,7 @@ def update_me(
     db.add(me)
     db.commit()
     db.refresh(me)
-    return get_me(me)
+    return get_me(db=db, me=me)
 
 
 @router.post("/internal/users/{user_id}/premium", response_model=UserMeOut)
@@ -246,11 +286,20 @@ def set_user_premium_status(
     user = db.execute(select(User).where(User.id == user_id)).scalars().first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    user.is_premium = payload.is_premium
+    if payload.is_premium:
+        now = datetime.now(timezone.utc)
+        base = _normalize_dt(user.premium_expires_at)
+        if not user.is_premium or base is None or base <= now:
+            base = now
+        user.is_premium = True
+        user.premium_expires_at = base + timedelta(days=max(1, payload.duration_days))
+    else:
+        user.is_premium = False
+        user.premium_expires_at = None
     db.add(user)
     db.commit()
     db.refresh(user)
-    return get_me(user)
+    return get_me(db=db, me=user)
 
 
 @router.post("/me/request-email-change")
@@ -306,7 +355,57 @@ def confirm_email_change(
     db.commit()
     db.refresh(me)
     _state_delete_or_503(key)
-    return get_me(me)
+    return get_me(db=db, me=me)
+
+
+@router.post("/me/support-message")
+def send_support_message(
+    payload: SupportMessageIn,
+    me: User = Depends(get_current_user),
+):
+    support_email = _resolve_support_email()
+    sender_name = (me.display_name or "").strip() or f"user-{me.id}"
+    sender_email = (me.email or "").strip() or "Не указана"
+    sender_phone = (me.phone or "").strip() or "Не указан"
+    subject = f"Tour2Tour Support: {payload.subject}"
+    body = (
+        "Новое обращение в поддержку Tour2Tour\n\n"
+        f"Пользователь: {sender_name}\n"
+        f"User ID: {me.id}\n"
+        f"Email: {sender_email}\n"
+        f"Телефон: {sender_phone}\n\n"
+        "Тема:\n"
+        f"{payload.subject}\n\n"
+        "Сообщение:\n"
+        f"{payload.message}\n"
+    )
+    html_body = f"""
+<html>
+  <body style="margin:0;padding:24px;background:#f4f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#172033;">
+    <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:20px;padding:28px;border:1px solid #e6ebf2;box-shadow:0 12px 40px rgba(23,32,51,0.08);">
+      <div style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#4b6bfb;margin-bottom:18px;">Tour2Tour Support</div>
+      <h1 style="margin:0 0 16px;font-size:24px;line-height:1.25;color:#172033;">Новое обращение в поддержку</h1>
+      <div style="margin:0 0 20px;padding:16px 18px;background:#f7f9fc;border:1px solid #dbe4f0;border-radius:16px;">
+        <p style="margin:0 0 6px;font-size:14px;line-height:1.5;"><strong>Пользователь:</strong> {sender_name}</p>
+        <p style="margin:0 0 6px;font-size:14px;line-height:1.5;"><strong>User ID:</strong> {me.id}</p>
+        <p style="margin:0 0 6px;font-size:14px;line-height:1.5;"><strong>Email:</strong> {sender_email}</p>
+        <p style="margin:0;font-size:14px;line-height:1.5;"><strong>Телефон:</strong> {sender_phone}</p>
+      </div>
+      <h2 style="margin:0 0 10px;font-size:17px;color:#172033;">Тема</h2>
+      <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#172033;">{payload.subject}</p>
+      <h2 style="margin:0 0 10px;font-size:17px;color:#172033;">Сообщение</h2>
+      <div style="font-size:15px;line-height:1.7;color:#172033;white-space:pre-wrap;">{payload.message}</div>
+    </div>
+  </body>
+</html>
+""".strip()
+    _send_email_or_fail(
+        to_email=support_email,
+        subject=subject,
+        body=body,
+        html_body=html_body,
+    )
+    return {"status": "ok"}
 
 
 @router.get("/me/stage-assistant-trial", response_model=StageAssistantTrialOut)
@@ -315,7 +414,7 @@ def get_stage_assistant_trial(
     me: User = Depends(get_current_user),
 ):
     used = _read_stage_assistant_trial_used(db, me.id)
-    return _stage_assistant_trial_out(used, me.is_premium)
+    return _stage_assistant_trial_out(used, _apply_premium_expiry_if_needed(me, db))
 
 
 @router.post("/me/stage-assistant-trial/consume", response_model=StageAssistantTrialOut)
@@ -323,7 +422,7 @@ def consume_stage_assistant_trial(
     db: Session = Depends(get_db),
     me: User = Depends(get_current_user),
 ):
-    if me.is_premium:
+    if _apply_premium_expiry_if_needed(me, db):
         return _stage_assistant_trial_out(0, True)
 
     used = _read_stage_assistant_trial_used(db, me.id)

@@ -8,6 +8,7 @@ class UserMe {
   final String? displayName;
   final String? avatarUrl;
   final bool isPremium;
+  final DateTime? premiumExpiresAt;
   final String role;
   final bool is2faEnabled;
   final bool totpEnabled;
@@ -20,6 +21,7 @@ class UserMe {
     required this.displayName,
     required this.avatarUrl,
     required this.isPremium,
+    required this.premiumExpiresAt,
     required this.role,
     required this.is2faEnabled,
     required this.totpEnabled,
@@ -34,6 +36,9 @@ class UserMe {
       displayName: json['display_name'] as String?,
       avatarUrl: json['avatar_url'] as String?,
       isPremium: (json['is_premium'] ?? false) as bool,
+      premiumExpiresAt: json['premium_expires_at'] == null
+          ? null
+          : DateTime.tryParse(json['premium_expires_at'].toString())?.toLocal(),
       role: (json['role'] ?? '').toString(),
       is2faEnabled: (json['is_2fa_enabled'] ?? false) as bool,
       totpEnabled: (json['totp_enabled'] ?? false) as bool,
@@ -87,5 +92,18 @@ class ProfileRepo {
       },
     );
     return UserMe.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> sendSupportMessage({
+    required String subject,
+    required String message,
+  }) async {
+    await api.dio.post(
+      '/users/me/support-message',
+      data: {
+        'subject': subject,
+        'message': message,
+      },
+    );
   }
 }

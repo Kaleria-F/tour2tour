@@ -1,4 +1,6 @@
-from sqlalchemy import String, Boolean, Text
+from datetime import datetime
+
+from sqlalchemy import String, Boolean, Text, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
@@ -12,6 +14,10 @@ class User(Base):
     display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_premium: Mapped[bool] = mapped_column(Boolean, default=False)
+    premium_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="traveler")  # traveler/admin
     is_2fa_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -101,7 +101,7 @@ async def _grant_premium(user_id: int) -> None:
         response = await client.post(
             f"{settings.auth_service_url.rstrip('/')}/users/internal/users/{user_id}/premium",
             headers={"X-Internal-Token": token},
-            json={"is_premium": True},
+            json={"is_premium": True, "duration_days": 30},
         )
     if response.status_code >= 400:
         logger.error(

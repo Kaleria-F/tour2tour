@@ -27,6 +27,7 @@ import 'features/profile/account_page.dart';
 import 'features/profile/complete_profile_page.dart';
 import 'features/profile/edit_account_page.dart';
 import 'features/profile/premium_page.dart';
+import 'features/profile/support_page.dart';
 import 'features/shared/travel_app_shell.dart';
 import 'features/stories/stories_repo.dart';
 import 'features/stories/story_viewer_page.dart';
@@ -182,6 +183,10 @@ GoRouter buildRouter() {
           profileRepo: profile,
           paymentsRepo: payments,
         ),
+      ),
+      GoRoute(
+        path: '/support',
+        builder: (_, __) => SupportPage(profileRepo: profile),
       ),
       GoRoute(
         path: '/favorites',
