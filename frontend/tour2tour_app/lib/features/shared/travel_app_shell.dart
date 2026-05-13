@@ -27,6 +27,27 @@ class TravelAppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPadding = screenWidth >= 1200
+        ? 42.0
+        : screenWidth >= 900
+            ? 36.0
+            : screenWidth >= 768
+                ? 30.0
+                : 20.0;
+    final adaptiveMaxWidth = screenWidth >= 1400
+        ? 1200.0
+        : screenWidth >= 1200
+            ? 1080.0
+            : screenWidth >= 992
+                ? 920.0
+                : screenWidth >= 768
+                    ? 700.0
+                    : maxWidth;
+    final effectiveMaxWidth = screenWidth >= 768
+        ? math.max(maxWidth, adaptiveMaxWidth)
+        : maxWidth;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -34,9 +55,9 @@ class TravelAppShell extends StatelessWidget {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxWidth),
+                constraints: BoxConstraints(maxWidth: effectiveMaxWidth),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+                  padding: EdgeInsets.fromLTRB(horizontalPadding, 12, horizontalPadding, 18),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -50,7 +71,13 @@ class TravelAppShell extends StatelessWidget {
                       ],
                       Expanded(child: body),
                       const SizedBox(height: 18),
-                      TravelBottomNavBar(currentTab: currentTab),
+                      Align(
+                        alignment: Alignment.center,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 430),
+                          child: TravelBottomNavBar(currentTab: currentTab),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -378,15 +405,18 @@ class _TravelShellBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobileLayout = MediaQuery.of(context).size.width < 768;
     return CustomPaint(
-      painter: _TravelShellPainter(),
+      painter: _TravelShellPainter(isMobileLayout: isMobileLayout),
       child: const SizedBox.expand(),
     );
   }
 }
 
 class _TravelShellPainter extends CustomPainter {
+  final bool isMobileLayout;
   final _rng = math.Random(12);
+  _TravelShellPainter({required this.isMobileLayout});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -398,26 +428,28 @@ class _TravelShellPainter extends CustomPainter {
     );
     canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
 
-    final glowPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          const Color(0xFF6D7B33).withOpacity(0.18),
-          Colors.transparent,
-        ],
-      ).createShader(Rect.fromCircle(
-        center: Offset(size.width * 0.15, size.height * 0.82),
-        radius: size.width * 0.5,
-      ));
-    canvas.drawRect(rect, glowPaint);
+    if (!isMobileLayout) {
+      final glowPaint = Paint()
+        ..shader = RadialGradient(
+          colors: [
+            const Color(0xFF6D7B33).withOpacity(0.18),
+            Colors.transparent,
+          ],
+        ).createShader(Rect.fromCircle(
+          center: Offset(size.width * 0.15, size.height * 0.82),
+          radius: size.width * 0.5,
+        ));
+      canvas.drawRect(rect, glowPaint);
 
-    final dotBright = Paint()..color = Colors.white.withOpacity(0.07);
-    final dotDim = Paint()..color = Colors.white.withOpacity(0.03);
-    final count = (size.width * size.height / 10000).clamp(40, 90).toInt();
-    for (var i = 0; i < count; i++) {
-      final x = _rng.nextDouble() * size.width;
-      final y = _rng.nextDouble() * size.height * 0.35;
-      final r = _rng.nextDouble() * 1.1 + 0.2;
-      canvas.drawCircle(Offset(x, y), r, i.isEven ? dotBright : dotDim);
+      final dotBright = Paint()..color = Colors.white.withOpacity(0.07);
+      final dotDim = Paint()..color = Colors.white.withOpacity(0.03);
+      final count = (size.width * size.height / 10000).clamp(40, 90).toInt();
+      for (var i = 0; i < count; i++) {
+        final x = _rng.nextDouble() * size.width;
+        final y = _rng.nextDouble() * size.height * 0.35;
+        final r = _rng.nextDouble() * 1.1 + 0.2;
+        canvas.drawCircle(Offset(x, y), r, i.isEven ? dotBright : dotDim);
+      }
     }
   }
 

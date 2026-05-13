@@ -687,17 +687,18 @@ class _CreateTripPageState extends State<CreateTripPage> {
   }
 
   Widget _buildIconPicker() {
+    final compact = MediaQuery.of(context).size.width < 420;
     return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+      spacing: compact ? 4 : 8,
+      runSpacing: compact ? 4 : 8,
       children: _cardIcons.map((key) {
         final selected = _selectedCardIcon == key;
         return InkWell(
           onTap: () => setState(() => _selectedCardIcon = key),
           borderRadius: BorderRadius.circular(12),
           child: Container(
-            width: 42,
-            height: 42,
+            width: compact ? 34 : 42,
+            height: compact ? 34 : 42,
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.06),
               borderRadius: BorderRadius.circular(12),
@@ -705,7 +706,7 @@ class _CreateTripPageState extends State<CreateTripPage> {
                 color: selected ? const Color(0xFFD7E37A) : Colors.white.withOpacity(0.16),
               ),
             ),
-            child: Icon(_iconByKey(key), color: Colors.white, size: 20),
+            child: Icon(_iconByKey(key), color: Colors.white, size: compact ? 16 : 20),
           ),
         );
       }).toList(),

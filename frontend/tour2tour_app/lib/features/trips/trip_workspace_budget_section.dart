@@ -325,6 +325,9 @@ extension _TripWorkspaceBudgetSection on _TripWorkspacePageState {
                     _showBudgetAnalytics = false;
                   });
                 },
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFD7E37A),
+                ),
                 icon: const Icon(Icons.arrow_back_rounded),
                 label: const Text('Назад к расходам'),
               ),

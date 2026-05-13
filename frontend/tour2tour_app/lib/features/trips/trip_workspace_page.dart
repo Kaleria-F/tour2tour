@@ -1946,15 +1946,28 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Удалить документ?'),
+        backgroundColor: const Color(0xFF1D1D1D),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withOpacity(0.14)),
+        ),
+        title: const Text('Удалить документ?', style: TextStyle(color: Colors.white)),
         content: Text('Документ "${doc.fileName}" будет удален без возможности восстановления.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
             child: const Text('Отмена'),
           ),
-          FilledButton(
+          ElevatedButton(
             onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD7E37A),
+              foregroundColor: const Color(0xFF171717),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             child: const Text('Удалить'),
           ),
         ],
@@ -2145,6 +2158,21 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPadding = screenWidth >= 1200
+        ? 28.0
+        : screenWidth >= 900
+            ? 24.0
+            : 20.0;
+    final contentMaxWidth = screenWidth >= 1400
+        ? 1200.0
+        : screenWidth >= 1200
+            ? 1080.0
+            : screenWidth >= 992
+                ? 920.0
+                : screenWidth >= 768
+                    ? 700.0
+                    : 420.0;
     final cs = Theme.of(context).colorScheme;
     final routeOrdered = [..._stages]
       ..sort((a, b) => a.position.compareTo(b.position));
@@ -2161,9 +2189,9 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: BoxConstraints(maxWidth: contentMaxWidth),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -2273,27 +2301,33 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
                                           ),
                       ),
                       const SizedBox(height: 14),
-                      _BottomMenu(
-                        currentIndex: _currentIndex,
-                        lightStyle: false,
-                        onTap: (index) {
-                          setState(() {
-                            _currentIndex = index;
-                            if (index != 0) _showTripFavorites = false;
-                            if (index != 2) _showBudgetAnalytics = false;
-                            if (index != 3) _showSharedDocumentsInTrip = false;
-                          });
-                          if (index == 2) {
-                            _loadExpenses();
-                          } else if (index == 1) {
-                            _loadStages();
-                          } else if (index == 3) {
-                            setState(() {
-                              _showSharedDocumentsInTrip = false;
-                            });
-                            _loadDocuments();
-                          }
-                        },
+                      Align(
+                        alignment: Alignment.center,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 430),
+                          child: _BottomMenu(
+                            currentIndex: _currentIndex,
+                            lightStyle: false,
+                            onTap: (index) {
+                              setState(() {
+                                _currentIndex = index;
+                                if (index != 0) _showTripFavorites = false;
+                                if (index != 2) _showBudgetAnalytics = false;
+                                if (index != 3) _showSharedDocumentsInTrip = false;
+                              });
+                              if (index == 2) {
+                                _loadExpenses();
+                              } else if (index == 1) {
+                                _loadStages();
+                              } else if (index == 3) {
+                                setState(() {
+                                  _showSharedDocumentsInTrip = false;
+                                });
+                                _loadDocuments();
+                              }
+                            },
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 18),
                     ],
@@ -2796,6 +2830,19 @@ class _StageTypePickerPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final horizontalPadding = screenWidth >= 1200
+        ? 28.0
+        : screenWidth >= 900
+            ? 24.0
+            : 20.0;
+    final contentMaxWidth = screenWidth >= 1200
+        ? 980.0
+        : screenWidth >= 992
+            ? 860.0
+            : screenWidth >= 768
+                ? 680.0
+                : 420.0;
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       body: Stack(
@@ -2804,9 +2851,9 @@ class _StageTypePickerPage extends StatelessWidget {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: BoxConstraints(maxWidth: contentMaxWidth),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -3333,9 +3380,25 @@ class _StageFormPageState extends State<_StageFormPage> {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width >= 1200
+                      ? 980
+                      : MediaQuery.of(context).size.width >= 992
+                          ? 860
+                          : MediaQuery.of(context).size.width >= 768
+                              ? 680
+                              : 420,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: MediaQuery.of(context).size.width >= 1200
+                        ? 42
+                        : MediaQuery.of(context).size.width >= 900
+                            ? 36
+                            : MediaQuery.of(context).size.width >= 768
+                                ? 30
+                                : 20,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -3797,9 +3860,25 @@ class _StageFormPageState extends State<_StageFormPage> {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width >= 1200
+                      ? 980
+                      : MediaQuery.of(context).size.width >= 992
+                          ? 860
+                          : MediaQuery.of(context).size.width >= 768
+                              ? 680
+                              : 420,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: MediaQuery.of(context).size.width >= 1200
+                        ? 42
+                        : MediaQuery.of(context).size.width >= 900
+                            ? 36
+                            : MediaQuery.of(context).size.width >= 768
+                                ? 30
+                                : 20,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -5033,7 +5112,7 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                       border: Border.all(color: Colors.white.withOpacity(0.12)),
                     ),
                     child: Text(
-                      '${_fmtDate(_startDate)} вЂ” ${_fmtDate(_endDate)}',
+                      '${_fmtDate(_startDate)} — ${_fmtDate(_endDate)}',
                       textAlign: TextAlign.left,
                       style: const TextStyle(color: Colors.white),
                     ),
@@ -5114,16 +5193,17 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
               ),
               const SizedBox(height: 10),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: MediaQuery.of(context).size.width < 420 ? 4 : 8,
+                runSpacing: MediaQuery.of(context).size.width < 420 ? 4 : 8,
                 children: _cardIcons.map((key) {
                   final selected = _selectedCardIcon == key;
+                  final compact = MediaQuery.of(context).size.width < 420;
                   return InkWell(
                     onTap: () => setState(() => _selectedCardIcon = key),
                     borderRadius: BorderRadius.circular(10),
                     child: Container(
-                      width: 38,
-                      height: 38,
+                      width: compact ? 31 : 38,
+                      height: compact ? 31 : 38,
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.06),
                         borderRadius: BorderRadius.circular(10),
@@ -5133,7 +5213,11 @@ class _TripSettingsDialogState extends State<_TripSettingsDialog> {
                               : Colors.white.withOpacity(0.16),
                         ),
                       ),
-                      child: Icon(_iconByKey(key), size: 18, color: Colors.white),
+                      child: Icon(
+                        _iconByKey(key),
+                        size: compact ? 14 : 18,
+                        color: Colors.white,
+                      ),
                     ),
                   );
                 }).toList(),
@@ -6030,9 +6114,25 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width >= 1200
+                      ? 980
+                      : MediaQuery.of(context).size.width >= 992
+                          ? 860
+                          : MediaQuery.of(context).size.width >= 768
+                              ? 680
+                              : 420,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: MediaQuery.of(context).size.width >= 1200
+                        ? 42
+                        : MediaQuery.of(context).size.width >= 900
+                            ? 36
+                            : MediaQuery.of(context).size.width >= 768
+                                ? 30
+                                : 20,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -6430,9 +6530,25 @@ class _StageDetailsPage extends StatelessWidget {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width >= 1200
+                      ? 980
+                      : MediaQuery.of(context).size.width >= 992
+                          ? 860
+                          : MediaQuery.of(context).size.width >= 768
+                              ? 680
+                              : 420,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: MediaQuery.of(context).size.width >= 1200
+                        ? 42
+                        : MediaQuery.of(context).size.width >= 900
+                            ? 36
+                            : MediaQuery.of(context).size.width >= 768
+                                ? 30
+                                : 20,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -6652,8 +6768,9 @@ class _NightBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobileLayout = MediaQuery.of(context).size.width < 768;
     return CustomPaint(
-      painter: _NightPainter(),
+      painter: _NightPainter(isMobileLayout: isMobileLayout),
       child: const SizedBox.expand(),
     );
   }
@@ -6661,6 +6778,9 @@ class _NightBackground extends StatelessWidget {
 
 
 class _NightPainter extends CustomPainter {
+  final bool isMobileLayout;
+  _NightPainter({required this.isMobileLayout});
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
@@ -6670,11 +6790,13 @@ class _NightPainter extends CustomPainter {
       colors: [Color(0xFF151515), Color(0xFF0F0F0F)],
     );
     canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
-    final vignette = RadialGradient(
-      colors: [Colors.transparent, Colors.black.withOpacity(0.55)],
-      stops: const [0.55, 1.0],
-    );
-    canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
+    if (!isMobileLayout) {
+      final vignette = RadialGradient(
+        colors: [Colors.transparent, Colors.black.withOpacity(0.55)],
+        stops: const [0.55, 1.0],
+      );
+      canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
+    }
   }
 
   @override

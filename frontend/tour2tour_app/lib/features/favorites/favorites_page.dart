@@ -855,31 +855,20 @@ class _CityFolderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final previewItems = group.items.take(2).toList();
     return InkWell(
       borderRadius: BorderRadius.circular(30),
       onTap: onTap,
       child: Stack(
-        clipBehavior: Clip.none,
+        clipBehavior: Clip.hardEdge,
         children: [
-          Positioned(
+          const Positioned(
             top: 2,
-            left: 20,
-            child: _FolderPreviewSheet(
-              angle: -0.05,
-              item: previewItems.isNotEmpty ? previewItems[0] : null,
-            ),
+            left: 14,
+            right: 14,
+            child: _FolderBackPair(),
           ),
           Positioned(
-            top: 8,
-            right: 18,
-            child: _FolderPreviewSheet(
-              angle: 0.06,
-              item: previewItems.length > 1 ? previewItems[1] : null,
-            ),
-          ),
-          Positioned(
-            top: 18,
+            top: 20,
             left: 8,
             right: 8,
             bottom: 14,
@@ -894,14 +883,27 @@ class _CityFolderCard extends StatelessWidget {
   }
 }
 
+class _FolderBackPair extends StatelessWidget {
+  const _FolderBackPair();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: const [
+        _FolderPreviewSheet(angle: -0.05),
+        _FolderPreviewSheet(angle: 0.06),
+      ],
+    );
+  }
+}
+
 class _FolderPreviewSheet extends StatelessWidget {
   const _FolderPreviewSheet({
     required this.angle,
-    required this.item,
   });
 
   final double angle;
-  final FavoritePlace? item;
 
   @override
   Widget build(BuildContext context) {
@@ -923,25 +925,13 @@ class _FolderPreviewSheet extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(18),
-          child: item?.imageUrl != null && item!.imageUrl!.isNotEmpty
-              ? Image.network(
-                  item!.imageUrl!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Center(
-                    child: Icon(
-                      Icons.photo_rounded,
-                      color: Colors.black.withOpacity(0.28),
-                      size: 24,
-                    ),
-                  ),
-                )
-              : Center(
-                  child: Icon(
-                    Icons.photo_rounded,
-                    color: Colors.black.withOpacity(0.28),
-                    size: 24,
-                  ),
-                ),
+          child: Center(
+            child: Icon(
+              Icons.photo_rounded,
+              color: Colors.black.withOpacity(0.28),
+              size: 24,
+            ),
+          ),
         ),
       ),
     );

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
@@ -89,9 +89,25 @@ class StageTypePickerPage extends StatelessWidget {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width >= 1200
+                      ? 980
+                      : MediaQuery.of(context).size.width >= 992
+                          ? 860
+                          : MediaQuery.of(context).size.width >= 768
+                              ? 680
+                              : 420,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: MediaQuery.of(context).size.width >= 1200
+                        ? 42
+                        : MediaQuery.of(context).size.width >= 900
+                            ? 36
+                            : MediaQuery.of(context).size.width >= 768
+                                ? 30
+                                : 20,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -397,6 +413,7 @@ class _StageFormPageState extends State<StageFormPage> {
   }
 
   void _onOrgSuggestTitleChanged() {
+    if (_isPickingOrgSuggestion) return;
     if (!_titleFocusNode.hasFocus || !_orgSuggestEnabled) {
       if (_orgSuggestions.isNotEmpty || _orgSuggestLoading) {
         setState(() {
@@ -449,7 +466,28 @@ class _StageFormPageState extends State<StageFormPage> {
     });
   }
 
+  void _hideOrgSuggestionsFromInteractiveTap() {
+    _orgSuggestHideOnBlurTimer?.cancel();
+    if (_orgSuggestions.isNotEmpty || _orgSuggestLoading) {
+      setState(() {
+        _orgSuggestions = const [];
+        _orgSuggestLoading = false;
+      });
+    }
+    if (_titleFocusNode.hasFocus) {
+      _titleFocusNode.unfocus();
+    }
+  }
+
   Future<void> _loadOrgSuggestions(String query) async {
+    if (!_orgSuggestEnabled || !_titleFocusNode.hasFocus || _isPickingOrgSuggestion) {
+      if (!mounted) return;
+      setState(() {
+        _orgSuggestions = const [];
+        _orgSuggestLoading = false;
+      });
+      return;
+    }
     final normalized = query.trim();
     if (normalized.length < 2) {
       if (!mounted) return;
@@ -549,8 +587,8 @@ class _StageFormPageState extends State<StageFormPage> {
   String _addressFromSubtitle(String subtitle) {
     final clean = _normalizeSuggestText(subtitle);
     final withCity = _ensureAddressHasTripCity(clean);
-    if (clean.contains('·')) {
-      final parts = clean.split('·').map((e) => _normalizeSuggestText(e)).toList();
+    if (clean.contains('В·')) {
+      final parts = clean.split('В·').map((e) => _normalizeSuggestText(e)).toList();
       if (parts.isNotEmpty) {
         final tail = parts.last;
         if (tail.isNotEmpty) return _ensureAddressHasTripCity(tail);
@@ -577,9 +615,12 @@ class _StageFormPageState extends State<StageFormPage> {
   void _onOrgSuggestionTap(_OrgSuggestItem item) {
     _isPickingOrgSuggestion = true;
     _orgSuggestDebounce?.cancel();
+    _orgSuggestEnabled = false;
     _applyOrgSuggestion(item);
     _titleFocusNode.unfocus();
-    _isPickingOrgSuggestion = false;
+    Future<void>.delayed(const Duration(milliseconds: 250), () {
+      _isPickingOrgSuggestion = false;
+    });
   }
 
   void _applyOrgSuggestion(_OrgSuggestItem item) {
@@ -1867,10 +1908,13 @@ class _StageFormPageState extends State<StageFormPage> {
     return TextFormField(
       controller: controller,
       readOnly: true,
-      onTap: () => _pickTime(
-        controller,
-        nextController: shouldPickEndTimeNext ? _endTimeCtrl : null,
-      ),
+      onTap: () {
+        _hideOrgSuggestionsFromInteractiveTap();
+        _pickTime(
+          controller,
+          nextController: shouldPickEndTimeNext ? _endTimeCtrl : null,
+        );
+      },
       style: const TextStyle(
         fontFamily: 'Geologica',
         color: Colors.white,
@@ -1886,16 +1930,20 @@ class _StageFormPageState extends State<StageFormPage> {
               IconButton(
                 icon: const Icon(Icons.close_rounded, color: Colors.white54),
                 onPressed: () {
+                  _hideOrgSuggestionsFromInteractiveTap();
                   controller.clear();
                   setState(() {});
                 },
               ),
             IconButton(
               icon: const Icon(Icons.access_time_rounded, color: Colors.white70),
-              onPressed: () => _pickTime(
-                controller,
-                nextController: shouldPickEndTimeNext ? _endTimeCtrl : null,
-              ),
+              onPressed: () {
+                _hideOrgSuggestionsFromInteractiveTap();
+                _pickTime(
+                  controller,
+                  nextController: shouldPickEndTimeNext ? _endTimeCtrl : null,
+                );
+              },
             ),
           ],
         ),
@@ -1935,9 +1983,25 @@ class _StageFormPageState extends State<StageFormPage> {
           SafeArea(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width >= 1200
+                      ? 980
+                      : MediaQuery.of(context).size.width >= 992
+                          ? 860
+                          : MediaQuery.of(context).size.width >= 768
+                              ? 680
+                              : 420,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: MediaQuery.of(context).size.width >= 1200
+                        ? 42
+                        : MediaQuery.of(context).size.width >= 900
+                            ? 36
+                            : MediaQuery.of(context).size.width >= 768
+                                ? 30
+                                : 20,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -2067,6 +2131,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                               )
                                             : BorderSide.none,
                                         onSelected: (_) {
+                                          _hideOrgSuggestionsFromInteractiveTap();
                                           setState(() {
                                             _stageType = entry.key;
                                             _subtype = entry.key == 'transport'
@@ -2090,7 +2155,22 @@ class _StageFormPageState extends State<StageFormPage> {
                                   TextFormField(
                                     controller: _titleCtrl,
                                     focusNode: _titleFocusNode,
-                                    onTap: _handleTitleTap,
+                                    onTap: () {
+                                      _handleTitleTap();
+                                      _orgSuggestEnabled = true;
+                                      final query = _titleCtrl.text.trim();
+                                      if (query.length >= 2 && _stageType != 'transport') {
+                                        _orgSuggestDebounce?.cancel();
+                                        _orgSuggestDebounce = Timer(
+                                          const Duration(milliseconds: 120),
+                                          () => _loadOrgSuggestions(query),
+                                        );
+                                      }
+                                    },
+                                    onTapOutside: (_) {
+                                      // Keep suggestions visible on non-interactive outside taps.
+                                      // They hide only after interactive actions.
+                                    },
                                     onChanged: (value) {
                                       final normalized = value.trim();
                                       final autoTitle = _defaultStageTitle();
@@ -2254,6 +2334,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                   if (isTransport) ...[
                                     TextFormField(
                                       controller: _startLocationCtrl,
+                                      onTap: _hideOrgSuggestionsFromInteractiveTap,
                                       style: const TextStyle(
                                         fontFamily: 'Geologica',
                                         color: Colors.white,
@@ -2264,6 +2345,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                     const SizedBox(height: 8),
                                     TextFormField(
                                       controller: _endLocationCtrl,
+                                      onTap: _hideOrgSuggestionsFromInteractiveTap,
                                       style: const TextStyle(
                                         fontFamily: 'Geologica',
                                         color: Colors.white,
@@ -2274,6 +2356,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                   ] else ...[
                                     TextFormField(
                                       controller: _addressCtrl,
+                                      onTap: _hideOrgSuggestionsFromInteractiveTap,
                                       style: const TextStyle(
                                         fontFamily: 'Geologica',
                                         color: Colors.white,
@@ -2289,53 +2372,96 @@ class _StageFormPageState extends State<StageFormPage> {
                                     ),
                                   ],
                                   const SizedBox(height: 8),
-                                  SegmentedButton<String>(
-                                    segments: const [
-                                      ButtonSegment<String>(
-                                        value: 'duration',
-                                            label: Text('Продолжительность'),
+                                  Container(
+                                    width: double.infinity,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF2B2B2B),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: const Color(0xFFD7E37A).withOpacity(0.6),
                                       ),
-                                      ButtonSegment<String>(
-                                        value: 'range',
-                                            label: Text('Промежуток'),
-                                      ),
-                                    ],
-                                    selected: {_transportTimeMode},
-                                    showSelectedIcon: false,
-                                    style: ButtonStyle(
-                                      backgroundColor: WidgetStateProperty.resolveWith((states) {
-                                        if (states.contains(WidgetState.selected)) {
-                                          return const Color(0xFF222715);
-                                        }
-                                        return const Color(0xFF2B2B2B);
-                                      }),
-                                      foregroundColor: WidgetStateProperty.resolveWith((states) {
-                                        if (states.contains(WidgetState.selected)) {
-                                          return const Color(0xFFD7E37A);
-                                        }
-                                        return Colors.white;
-                                      }),
-                                      side: WidgetStateProperty.resolveWith((states) {
-                                        if (states.contains(WidgetState.selected)) {
-                                          return BorderSide(
-                                            color: const Color(0xFFD7E37A).withOpacity(0.6),
-                                          );
-                                        }
-                                        return BorderSide(
-                                          color: Colors.white.withOpacity(0.24),
-                                        );
-                                      }),
                                     ),
-                                    onSelectionChanged: (selection) {
-                                      final nextMode = selection.first;
-                                      setState(() {
-                                        _transportTimeMode = nextMode;
-                                        if (nextMode == 'duration' &&
-                                            _durationCtrl.text.trim().isEmpty) {
-                                          _durationCtrl.text = '60';
-                                        }
-                                      });
-                                    },
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: InkWell(
+                                            borderRadius: const BorderRadius.horizontal(
+                                              left: Radius.circular(999),
+                                            ),
+                                            onTap: () {
+                                              _hideOrgSuggestionsFromInteractiveTap();
+                                              setState(() {
+                                                _transportTimeMode = 'duration';
+                                                if (_durationCtrl.text.trim().isEmpty) {
+                                                  _durationCtrl.text = '60';
+                                                }
+                                              });
+                                            },
+                                            child: Container(
+                                              alignment: Alignment.center,
+                                              decoration: BoxDecoration(
+                                                color: _transportTimeMode == 'duration'
+                                                    ? const Color(0xFF222715)
+                                                    : Colors.transparent,
+                                                borderRadius: const BorderRadius.horizontal(
+                                                  left: Radius.circular(999),
+                                                ),
+                                              ),
+                                              child: Text(
+                                                'Продолжительность',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: _transportTimeMode == 'duration'
+                                                      ? const Color(0xFFD7E37A)
+                                                      : Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          width: 1,
+                                          height: 24,
+                                          color: const Color(0xFFD7E37A).withOpacity(0.6),
+                                        ),
+                                        Expanded(
+                                          child: InkWell(
+                                            borderRadius: const BorderRadius.horizontal(
+                                              right: Radius.circular(999),
+                                            ),
+                                            onTap: () {
+                                              _hideOrgSuggestionsFromInteractiveTap();
+                                              setState(() {
+                                                _transportTimeMode = 'range';
+                                              });
+                                            },
+                                            child: Container(
+                                              alignment: Alignment.center,
+                                              decoration: BoxDecoration(
+                                                color: _transportTimeMode == 'range'
+                                                    ? const Color(0xFF222715)
+                                                    : Colors.transparent,
+                                                borderRadius: const BorderRadius.horizontal(
+                                                  right: Radius.circular(999),
+                                                ),
+                                              ),
+                                              child: Text(
+                                                'Промежуток',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: _transportTimeMode == 'range'
+                                                      ? const Color(0xFFD7E37A)
+                                                      : Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                   const SizedBox(height: 8),
                                   if (_transportTimeMode == 'duration') ...[
@@ -2343,6 +2469,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                     const SizedBox(height: 8),
                                     TextFormField(
                                       controller: _durationCtrl,
+                                      onTap: _hideOrgSuggestionsFromInteractiveTap,
                                       style: const TextStyle(
                                         fontFamily: 'Geologica',
                                         color: Colors.white,
@@ -2419,6 +2546,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                             )
                                             .toList(),
                                         onChanged: (value) {
+                                          _hideOrgSuggestionsFromInteractiveTap();
                                           if (value == null) return;
                                           setState(() {
                                             _subtype = value;
@@ -2434,6 +2562,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                     if (!isDocument) ...[
                                       TextFormField(
                                         controller: _costCtrl,
+                                        onTap: _hideOrgSuggestionsFromInteractiveTap,
                                         style: const TextStyle(
                                           fontFamily: 'Geologica',
                                           color: Colors.white,
@@ -2471,6 +2600,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                                   widget.onUploadDocument == null)
                                               ? null
                                               : () async {
+                                                  _hideOrgSuggestionsFromInteractiveTap();
                                                   setState(() => _uploadingStageDocument = true);
                                                   final objectKey =
                                                       await widget.onUploadDocument!.call();
@@ -2499,6 +2629,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                     ],
                                     TextFormField(
                                       controller: _notesCtrl,
+                                      onTap: _hideOrgSuggestionsFromInteractiveTap,
                                       style: const TextStyle(
                                         fontFamily: 'Geologica',
                                         color: Colors.white,
@@ -2517,6 +2648,7 @@ class _StageFormPageState extends State<StageFormPage> {
                                       foregroundColor: const Color(0xFF171717),
                                     ),
                                     onPressed: () {
+                                      _hideOrgSuggestionsFromInteractiveTap();
                                       if (!(_formKey.currentState?.validate() ?? false)) return;
                                       final resolvedSubtype = _stageType == 'transport'
                                           ? (_subtype.trim().isEmpty ? 'road' : _subtype.trim())
@@ -2661,8 +2793,9 @@ class _NightBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobileLayout = MediaQuery.of(context).size.width < 768;
     return CustomPaint(
-      painter: _NightPainter(),
+      painter: _NightPainter(isMobileLayout: isMobileLayout),
       child: const SizedBox.expand(),
     );
   }
@@ -2670,6 +2803,9 @@ class _NightBackground extends StatelessWidget {
 
 
 class _NightPainter extends CustomPainter {
+  final bool isMobileLayout;
+  _NightPainter({required this.isMobileLayout});
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
@@ -2679,11 +2815,13 @@ class _NightPainter extends CustomPainter {
       colors: [Color(0xFF151515), Color(0xFF0F0F0F)],
     );
     canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
-    final vignette = RadialGradient(
-      colors: [Colors.transparent, Colors.black.withOpacity(0.55)],
-      stops: const [0.55, 1.0],
-    );
-    canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
+    if (!isMobileLayout) {
+      final vignette = RadialGradient(
+        colors: [Colors.transparent, Colors.black.withOpacity(0.55)],
+        stops: const [0.55, 1.0],
+      );
+      canvas.drawRect(rect, Paint()..shader = vignette.createShader(rect));
+    }
   }
 
   @override
@@ -2756,6 +2894,8 @@ class _PremiumFeatureChip extends StatelessWidget {
     return child;
   }
 }
+
+
 
 
 

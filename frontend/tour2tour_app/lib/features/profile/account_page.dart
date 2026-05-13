@@ -683,7 +683,7 @@ class _GlassFolderTile extends StatelessWidget {
       child: SizedBox(
         height: 180,
         child: Stack(
-          clipBehavior: Clip.none,
+          clipBehavior: Clip.hardEdge,
           children: [
             const Positioned(
               top: 2,

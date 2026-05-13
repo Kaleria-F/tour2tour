@@ -14,7 +14,7 @@
     This is a placeholder for base href that will be replaced by the value of
     the `--base-href` argument provided to `flutter build`.
   -->
-  <base href="/">
+  <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
@@ -230,6 +230,13 @@
           state.map.removeChild(state.selectedSuggestionMarker);
         } catch (_) {}
         state.selectedSuggestionMarker = null;
+        if (Array.isArray(state.markersMeta)) {
+          state.markersMeta = state.markersMeta.filter((m) => !(m && m.isSearch));
+        }
+        if (Array.isArray(state.selectedPointIndexes)) {
+          state.selectedPointIndexes = [];
+        }
+        updateMarkerSelectionVisual(state);
       }
 
       function hideAddRouteButton(state) {
@@ -243,12 +250,26 @@
         if (state.addRouteButton) return state.addRouteButton;
         const button = document.createElement('button');
         button.type = 'button';
-        button.textContent = 'Добавить в маршрут';
+        button.textContent = '';
+        const icon = document.createElement('span');
+        icon.style.width = '14px';
+        icon.style.height = '14px';
+        icon.style.display = 'inline-flex';
+        icon.style.alignItems = 'center';
+        icon.style.justifyContent = 'center';
+        icon.innerHTML =
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+          '<path d="M12 5v14M5 12h14" stroke="#D7E37A" stroke-width="2.6" stroke-linecap="round"/>' +
+          '</svg>';
+        const label = document.createElement('span');
+        label.textContent = 'Этап';
         button.style.position = 'absolute';
         button.style.right = '10px';
         button.style.bottom = '34px';
         button.style.zIndex = '7';
         button.style.display = 'none';
+        button.style.alignItems = 'center';
+        button.style.gap = '8px';
         button.style.pointerEvents = 'auto';
         button.style.border = '1px solid rgba(255,255,255,.24)';
         button.style.borderRadius = '999px';
@@ -261,6 +282,8 @@
         button.style.boxShadow = '0 6px 18px rgba(0,0,0,.28)';
         button.style.fontFamily =
           '"SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+        button.appendChild(icon);
+        button.appendChild(label);
         button.addEventListener('click', () => {
           const address = String(button.dataset.address || '').trim();
           if (!address) return;
@@ -389,14 +412,17 @@
         state.markersMeta.forEach((meta, index) => {
           if (!meta || !meta.element) return;
           const selected = (state.selectedPointIndexes || []).includes(index);
+          const isSearch = Boolean(meta.isSearch);
           meta.element.style.border = selected
             ? '2px solid #ffffff'
-            : (meta.isPrimary ? '2px solid #151515' : '2px solid #151515');
+            : '2px solid #151515';
           meta.element.style.boxShadow = selected
             ? '0 0 0 5px rgba(255,255,255,.2)'
-            : (meta.isPrimary
+            : (isSearch
+                ? '0 0 0 4px rgba(136,226,126,.25)'
+                : (meta.isPrimary
                 ? '0 0 0 4px rgba(215,227,122,.24)'
-                : '0 0 0 3px rgba(126,166,255,.22)');
+                : '0 0 0 3px rgba(126,166,255,.22)'));
         });
       }
 
@@ -834,12 +860,47 @@
           hideAddRouteButton(state);
           return;
         }
+        const markerElement = createSelectedSuggestionMarkerElement();
+        markerElement.style.cursor = 'pointer';
         const marker = new window.ymaps3.YMapMarker(
           { coordinates: coords },
-          createSelectedSuggestionMarkerElement(),
+          markerElement,
         );
         state.map.addChild(marker);
         state.selectedSuggestionMarker = marker;
+        state.markersMeta.push({
+          isPrimary: true,
+          isSearch: true,
+          element: markerElement,
+          coords: coords,
+          point: {
+            title: searchText,
+            address: searchText,
+            time: '',
+            cost: '',
+            notes: '',
+            markerOrder: '',
+            isPrimary: true,
+          },
+        });
+        markerElement.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          if (!state.routeBuilderActive) return;
+          const idx = state.markersMeta.findIndex((m) => m && m.isSearch);
+          if (idx < 0) return;
+          const arr = state.selectedPointIndexes || [];
+          const existing = arr.indexOf(idx);
+          if (existing >= 0) {
+            arr.splice(existing, 1);
+          } else {
+            if (arr.length >= 2) arr.shift();
+            arr.push(idx);
+          }
+          state.selectedPointIndexes = arr;
+          updateMarkerSelectionVisual(state);
+          await buildRouteIfReady(state);
+        });
+        updateMarkerSelectionVisual(state);
         showAddRouteButton(state, searchText);
         state.map.update({
           location: { center: coords, zoom: 15, duration: 220 },

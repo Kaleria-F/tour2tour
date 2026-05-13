@@ -404,7 +404,7 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
     if (!visible) return const SizedBox.shrink();
     return SizedBox(
       height: 40,
-      child: ElevatedButton(
+      child: ElevatedButton.icon(
         onPressed: () {
           final address = (_lastSearchAddress ?? '').trim();
           if (address.isEmpty) return;
@@ -420,8 +420,9 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14),
         ),
-        child: const Text(
-          'Добавить в маршрут',
+        icon: const Icon(Icons.add_road_rounded, size: 16),
+        label: const Text(
+          'Этап',
           style: TextStyle(
             fontFamily: 'Geologica',
             fontSize: 13,
@@ -707,7 +708,26 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
       ),
       text: '\u25CF',
     );
-    _searchMarker = _SearchMarkerRef(placemark: marker, point: point);
+    final listener = _StageTapListener(onTap: () async {
+      if (!_routeBuilderActive) return;
+      final existing = _selectedStageMarkerIndexes.indexOf(-1);
+      if (existing >= 0) {
+        _selectedStageMarkerIndexes.removeAt(existing);
+      } else {
+        if (_selectedStageMarkerIndexes.length >= 2) {
+          _selectedStageMarkerIndexes.removeAt(0);
+        }
+        _selectedStageMarkerIndexes.add(-1);
+      }
+      _applyStageSelectionStyles();
+      await _buildRouteIfReady();
+    });
+    marker.addTapListener(listener);
+    _searchMarker = _SearchMarkerRef(
+      placemark: marker,
+      point: point,
+      listener: listener,
+    );
     _lastSearchAddress = clean;
 
     map.move(
@@ -729,8 +749,18 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
     }
     _applyStageSelectionStyles();
 
-    final first = _stageMarkers[_selectedStageMarkerIndexes[0]].point;
-    final second = _stageMarkers[_selectedStageMarkerIndexes[1]].point;
+    ymk.Point? pointBySelection(int index) {
+      if (index == -1) return _searchMarker?.point;
+      if (index < 0 || index >= _stageMarkers.length) return null;
+      return _stageMarkers[index].point;
+    }
+
+    final first = pointBySelection(_selectedStageMarkerIndexes[0]);
+    final second = pointBySelection(_selectedStageMarkerIndexes[1]);
+    if (first == null || second == null) {
+      if (mounted) setState(() => _routeInfo = 'Выберите 2 точки на карте');
+      return;
+    }
     if (mounted) setState(() => _routeInfo = 'Строим маршрут...');
 
     try {
@@ -943,7 +973,6 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
   }
 
   void _applyStageSelectionStyles() {
-    if (_stageMarkers.isEmpty) return;
     for (var i = 0; i < _stageMarkers.length; i++) {
       final selected = _selectedStageMarkerIndexes.contains(i);
       final circle = _stageMarkers[i].placemark;
@@ -984,6 +1013,23 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
           } catch (_) {}
         } catch (_) {}
       }
+    }
+    final search = _searchMarker;
+    if (search != null) {
+      final selected = _selectedStageMarkerIndexes.contains(-1);
+      try {
+        search.placemark.setTextWithStyle(
+          ymk.TextStyle(
+            size: 38,
+            color: const Color(0xFF71D96A),
+            outlineColor:
+                selected ? const Color(0xFFFFFFFF) : const Color(0xFF1F4F1E),
+            outlineWidth: selected ? 4.0 : 2.6,
+            placement: ymk.TextStylePlacement.Center,
+          ),
+          text: '\u25CF',
+        );
+      } catch (_) {}
     }
   }
 
@@ -1094,8 +1140,12 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
     final marker = _searchMarker;
     if (marker == null) return;
     try {
+      marker.placemark.removeTapListener(marker.listener);
+    } catch (_) {}
+    try {
       _map?.mapObjects.remove(marker.placemark);
     } catch (_) {}
+    _selectedStageMarkerIndexes.removeWhere((e) => e == -1);
     _searchMarker = null;
   }
 
@@ -1247,9 +1297,11 @@ class _MapInputListener implements ymk.MapInputListener {
 class _SearchMarkerRef {
   final ymk.PlacemarkMapObject placemark;
   final ymk.Point point;
+  final _StageTapListener listener;
   _SearchMarkerRef({
     required this.placemark,
     required this.point,
+    required this.listener,
   });
 }
 
