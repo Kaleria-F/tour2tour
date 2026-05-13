@@ -1,83 +1,35 @@
 # Documents Service
 
-Сервис документов отвечает за загрузку, хранение и выдачу файлов поездки (PDF/PNG/JPEG).
-Работает в микросервисной схеме через API Gateway (`/documents/*`).
+Новая реализация сервиса документов с чистой серверной логикой (без браузерного S3 PUT).
 
-## Реализованный функционал
+## Что реализовано
 
-- загрузка документов, привязанных к конкретной поездке (`trip_id`);
-- хранение метаданных в PostgreSQL (`documents-db`):
-  - `user_id`, `trip_id`, `object_key`, `file_name`, `content_type`, `size_bytes`, `created_at`;
-- получение списка документов поездки;
-- открытие документов из приложения через presigned download URL;
-- поддержка форматов `application/pdf`, `image/png`, `image/jpeg`;
-- удаление документа (из S3 и из БД);
-- валидация размера и сигнатуры файла (magic bytes);
-- единый контур авторизации по JWT (`Authorization: Bearer <token>`);
-- синхронизация между устройствами через сервер (метаданные + общий объектный сторедж).
+- загрузка документов к конкретной поездке (`trip_id`);
+- хранение метаданных в PostgreSQL (`documents-db`);
+- список документов поездки;
+- открытие документа из приложения через backend-прокси `/documents/content`;
+- поддержка PDF/PNG/JPEG;
+- удаление документа (S3 + БД);
+- уведомления об ошибках/успехах через HTTP-коды и `detail`;
+- синхронизация между устройствами через серверный контур.
 
-## API (через Gateway)
+## API (через gateway)
 
-Базовый URL локально: `http://127.0.0.1:8888`
+- `POST /documents/upload-direct` - multipart загрузка файла
+- `GET /documents/trips/{trip_id}` - список файлов поездки
+- `POST /documents/download-url` - получить ссылку на просмотр через backend
+- `GET /documents/content?object_key=...` - чтение файла через backend
+- `DELETE /documents/object?object_key=...` - удалить файл
 
-- `POST /documents/storage/ensure-bucket` - создать/проверить bucket и CORS
-- `POST /documents/upload-direct` - прямой upload через multipart
-- `POST /documents/upload-init` + `POST /documents/upload-complete` - двухшаговый upload через presigned PUT
-- `GET /documents/trips/{trip_id}` - список документов поездки
-- `POST /documents/download-url` - получить ссылку на открытие/просмотр
-- `DELETE /documents/object?object_key=...` - удалить документ
-
-## Переменные окружения
-
-Для локального прогона значения задаются в корневом `.env`.
-
-Обязательные для `documents-service`:
-
-- `S3_ENDPOINT`
-- `S3_PUBLIC_ENDPOINT`
-- `S3_REGION`
-- `S3_ACCESS_KEY`
-- `S3_SECRET_KEY`
-- `S3_BUCKET`
-- `S3_USE_SSL`
-- `S3_VERIFY_SSL`
-- `S3_FORCE_PATH_STYLE`
-- `S3_PRESIGN_TTL_SECONDS`
-- `S3_SSE_MODE`
-- `S3_CORS_ALLOWED_ORIGINS`
-- `MAX_UPLOAD_SIZE_BYTES`
-- `ENABLE_UPLOAD_SCAN`
-
-## Локальный запуск (Docker Compose + Gateway)
-
-Из корня репозитория:
+## Локальный запуск
 
 ```powershell
-docker compose --env-file .env -f infra/docker-compose.yml up -d --build
+docker compose --env-file .env -f infra/docker-compose.yml up -d --build --force-recreate documents-service gateway
 ```
 
-Проверка контейнеров:
+## Проверка
 
-```powershell
-docker compose --env-file .env -f infra/docker-compose.yml ps
-```
-
-Проверка gateway:
-
-```powershell
-curl http://127.0.0.1:8888/health
-```
-
-## Быстрая проверка сценария документов
-
-1. Получить JWT через `auth-service` (`/auth/login`).
-2. Вызвать `POST /documents/storage/ensure-bucket`.
-3. Загрузить файл через `POST /documents/upload-direct`.
-4. Проверить список `GET /documents/trips/{trip_id}`.
-5. Получить ссылку `POST /documents/download-url` и открыть документ.
-6. Удалить `DELETE /documents/object`.
-
-## Примечания по безопасности
-
-- Для `download-url` и `delete` сервис дополнительно проверяет, что документ есть в БД и принадлежит текущему пользователю.
-- Не храните production-ключи в репозитории, используйте секреты CI/CD или менеджер секретов.
+1. Загрузить документ (`upload-direct`)
+2. Открыть документ (`download-url` -> `content`)
+3. Удалить документ (`delete`)
+4. Проверить список (`trips/{trip_id}`)

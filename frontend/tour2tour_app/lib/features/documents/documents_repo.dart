@@ -4,16 +4,6 @@ import 'package:dio/dio.dart';
 
 import '../../api/api_client.dart';
 
-class UploadInitResult {
-  final String objectKey;
-  final String uploadUrl;
-
-  UploadInitResult({
-    required this.objectKey,
-    required this.uploadUrl,
-  });
-}
-
 class TripDocument {
   final String objectKey;
   final String fileName;
@@ -42,62 +32,6 @@ class TripDocument {
 class DocumentsRepo {
   final ApiClient api;
   DocumentsRepo(this.api);
-
-  Future<void> ensureBucket() async {
-    await api.dio.post('/documents/storage/ensure-bucket');
-  }
-
-  Future<UploadInitResult> uploadInit({
-    required int tripId,
-    required String fileName,
-    required String contentType,
-    required int fileSizeBytes,
-  }) async {
-    final res = await api.dio.post(
-      '/documents/upload-init',
-      data: {
-        'trip_id': tripId,
-        'file_name': fileName,
-        'content_type': contentType,
-        'file_size_bytes': fileSizeBytes,
-      },
-    );
-    final data = Map<String, dynamic>.from(res.data as Map);
-    return UploadInitResult(
-      objectKey: (data['object_key'] ?? '').toString(),
-      uploadUrl: (data['upload_url'] ?? '').toString(),
-    );
-  }
-
-  Future<void> uploadComplete({
-    required int tripId,
-    required String objectKey,
-  }) async {
-    await api.dio.post(
-      '/documents/upload-complete',
-      data: {
-        'trip_id': tripId,
-        'object_key': objectKey,
-      },
-    );
-  }
-
-  Future<void> uploadBytesToPresigned({
-    required String uploadUrl,
-    required Uint8List bytes,
-    required String contentType,
-  }) async {
-    final dio = Dio();
-    await dio.put(
-      uploadUrl,
-      data: bytes,
-      options: Options(
-        headers: {
-          'Content-Type': contentType,
-        },
-      ),
-    );
-  }
 
   Future<TripDocument> uploadBytesDirect({
     required int tripId,
@@ -150,11 +84,16 @@ class DocumentsRepo {
   }
 
   Future<Uint8List> fetchFileBytes(String downloadUrl) async {
-    final dio = Dio();
-    final res = await dio.get<List<int>>(
-      downloadUrl,
-      options: Options(responseType: ResponseType.bytes),
-    );
+    final isAbsolute = downloadUrl.startsWith('http://') || downloadUrl.startsWith('https://');
+    final res = isAbsolute
+        ? await Dio().get<List<int>>(
+            downloadUrl,
+            options: Options(responseType: ResponseType.bytes),
+          )
+        : await api.dio.get<List<int>>(
+            downloadUrl,
+            options: Options(responseType: ResponseType.bytes),
+          );
     final bytes = res.data;
     if (bytes == null) return Uint8List(0);
     return Uint8List.fromList(bytes);
