@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 import 'package:dio/dio.dart';
 
@@ -54,11 +53,6 @@ class DocumentsRepo {
     required String contentType,
     required int fileSizeBytes,
   }) async {
-    if (kIsWeb) {
-      throw UnsupportedError(
-        'Web upload via presigned PUT is disabled. Use /documents/upload-direct.',
-      );
-    }
     final res = await api.dio.post(
       '/documents/upload-init',
       data: {
@@ -79,11 +73,6 @@ class DocumentsRepo {
     required int tripId,
     required String objectKey,
   }) async {
-    if (kIsWeb) {
-      throw UnsupportedError(
-        'Web upload via upload-complete is disabled. Use /documents/upload-direct.',
-      );
-    }
     await api.dio.post(
       '/documents/upload-complete',
       data: {
@@ -98,11 +87,6 @@ class DocumentsRepo {
     required Uint8List bytes,
     required String contentType,
   }) async {
-    if (kIsWeb) {
-      throw UnsupportedError(
-        'Web upload via presigned PUT is disabled. Use /documents/upload-direct.',
-      );
-    }
     final dio = Dio();
     await dio.put(
       uploadUrl,

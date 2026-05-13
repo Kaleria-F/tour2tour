@@ -32,6 +32,10 @@ extension _TripWorkspaceRouteSection on _TripWorkspacePageState {
                       color: _TripWorkspacePageState._accent.withOpacity(0.44),
                     ),
                     backgroundColor: const Color(0xFF222715),
+                    textStyle: const TextStyle(
+                      fontFamily: 'Geologica',
+                      fontWeight: FontWeight.w500,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(999),
                     ),
@@ -39,7 +43,7 @@ extension _TripWorkspaceRouteSection on _TripWorkspacePageState {
                   ),
                   icon: const Icon(Icons.map_outlined, size: 16),
                   label: const Text(
-                    'Маршрут на карте',
+                    'Карта',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

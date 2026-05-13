@@ -7,8 +7,8 @@ from botocore.exceptions import ClientError
 from app.core.config import settings
 
 
-def _build_s3_client(endpoint_url: str):
-    addressing_style = "path" if settings.s3_force_path_style else "virtual"
+def _build_s3_client(endpoint_url: str, addressing_style: str | None = None):
+    style = addressing_style or ("path" if settings.s3_force_path_style else "virtual")
     return boto3.client(
         "s3",
         endpoint_url=endpoint_url,
@@ -17,7 +17,7 @@ def _build_s3_client(endpoint_url: str):
         aws_secret_access_key=settings.s3_secret_key,
         use_ssl=settings.s3_use_ssl,
         verify=settings.s3_verify_ssl,
-        config=Config(s3={"addressing_style": addressing_style}),
+        config=Config(s3={"addressing_style": style}),
     )
 
 
@@ -28,6 +28,10 @@ def get_object_storage_client():
 def get_presign_client():
     endpoint = settings.s3_public_endpoint or settings.s3_endpoint
     return _build_s3_client(endpoint)
+
+
+def get_object_storage_client_with_style(addressing_style: str):
+    return _build_s3_client(settings.s3_endpoint, addressing_style=addressing_style)
 
 
 def ensure_bucket_exists(s3_client) -> None:

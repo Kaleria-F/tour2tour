@@ -4393,7 +4393,7 @@ class _RouteTimelineState extends State<_RouteTimeline> {
                                               style: const TextStyle(
                                                 color: Colors.white,
                                                 fontSize: 12,
-                                                fontWeight: FontWeight.w700,
+                                                fontWeight: FontWeight.w500,
                                                 height: 1.15,
                                               ),
                                             ),
@@ -4406,7 +4406,7 @@ class _RouteTimelineState extends State<_RouteTimeline> {
                                                 style: TextStyle(
                                                   color: Colors.white.withOpacity(0.9),
                                                   fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
+                                                  fontWeight: FontWeight.w400,
                                                 ),
                                               ),
                                             ],
@@ -6293,8 +6293,8 @@ class _StageDetailsPage extends StatelessWidget {
                               'Детали этапа',
                               style: TextStyle(
                                 color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
                               ),
                             ),
                           ),
@@ -6322,8 +6322,8 @@ class _StageDetailsPage extends StatelessWidget {
                                   stage.title,
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w800,
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                                 const SizedBox(height: 10),
