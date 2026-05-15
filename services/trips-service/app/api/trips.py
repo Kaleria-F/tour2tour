@@ -776,7 +776,7 @@ def _sync_stage_expense(
         return
 
     if existing is None:
-        # Backward-compatibility: bind legacy auto-expense rows created before stage_id existed.
+        # Поддержка ранее созданных расходов без stage_id.
         legacy = db.execute(
             select(Expense).where(
                 Expense.trip_id == stage.trip_id,

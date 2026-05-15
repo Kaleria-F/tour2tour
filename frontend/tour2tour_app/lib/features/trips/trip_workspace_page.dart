@@ -146,7 +146,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
     'transport': Color(0xFF7AE3BA), // #7ae3ba
     'shopping': Color(0xFFA3E37A), // #a3e37a
     'entertainment': Color(0xFFB6A1FF), // #b6a1ff
-    'other': Color(0xFF7AB4E3), // Р С–Р В°РЎР‚Р СР С•Р Р…Р С‘РЎвЂЎР Р…РЎвЂ№Р в„– 6-Р в„– (Р С–Р С•Р В»РЎС“Р В±Р С•Р в„–)
+    'other': Color(0xFF7AB4E3), // Цвет категории "Другое".
   };
 
   static const _stageTypeLabels = {
@@ -1387,7 +1387,7 @@ class _TripWorkspacePageState extends State<TripWorkspacePage> {
         );
       case 'activity':
         return const _StageVisualConfig(
-          iconColor: Color(0xFF7AB4E3), // Р С–Р В°РЎР‚Р СР С•Р Р…Р С‘РЎвЂЎР Р…РЎвЂ№Р в„– Р С–Р С•Р В»РЎС“Р В±Р С•Р в„–
+          iconColor: Color(0xFF7AB4E3), // Цвет для активности.
           backgroundColor: Color(0x1A7AB4E3),
           borderColor: Color(0x337AB4E3),
         );
@@ -5928,7 +5928,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
-    // Some suggest rows may still start with hidden unicode separators.
+    // Очистка скрытых unicode-разделителей в строках подсказок.
     while (out.isNotEmpty) {
       final code = out.codeUnitAt(0);
       final isAsciiSpace = code <= 0x20;
@@ -5985,7 +5985,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
     if (!titleLooksAddress && subtitle.trim().isNotEmpty) return true;
     // If the entered/result text clearly looks like an address, classify as geo-address.
     if (searchLooksAddress || displayLooksAddress || titleLooksAddress) return false;
-    // Conservative fallback: treat as business only when we have a distinct title + subtitle pair.
+    // Резервное правило: организация определяется по связке title + subtitle.
     return title.trim().isNotEmpty && subtitle.trim().isNotEmpty;
   }
 
@@ -6051,7 +6051,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
       final lat = fromPlaces.first.latitude;
       final lon = fromPlaces.first.longitude;
       if (lat == null || lon == null) return;
-      // Practical bounds for city-scoped suggest fallback.
+      // Границы области поиска по городу (fallback).
       const lonSpan = 1.2;
       const latSpan = 0.8;
       final minLon = (lon - lonSpan).clamp(-180.0, 180.0);
@@ -6065,7 +6065,7 @@ class _TripRouteMapPageState extends State<_TripRouteMapPage> {
         _tripBoundsBbox = '$minLon,$minLat~$maxLon,$maxLat';
       });
     } catch (_) {
-      // no-op, keep unbounded fallback
+      // При ошибке определения границ используется неограниченный поиск.
     }
   }
 

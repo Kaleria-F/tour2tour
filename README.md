@@ -1,151 +1,98 @@
 # Tour2Tour
 
-Основные режимы работы проекта:
-- локальная разработка и тестирование;
-- production-развертывание на VPS с доменом `24tour2tour.ru`.
+`Tour2Tour` — кроссплатформенное приложение для планирования путешествий.  
+Оно помогает собрать поездку в одном месте: маршрут по дням, точки на карте, бюджет и документы.
 
-Все локальные команды ниже выполняются из корня репозитория:
-`C:\Users\Valeria\tour2tour`
+## Для кого приложение
 
-## Локальный запуск
+- Для путешественников, которым нужен понятный инструмент планирования поездок.
+- Для пользователей, которые хотят хранить маршрут, расходы и документы в одном интерфейсе.
+- Для сценариев как на `Web`, так и на мобильных устройствах (`Android/iOS`).
 
-### 1. Поднять backend и инфраструктуру
+## Зачем оно нужно
+
+- Сокращает ручную работу при планировании поездки.
+- Убирает необходимость переключаться между множеством внешних сервисов.
+- Дает целостную картину поездки: куда едем, когда, сколько это стоит и какие документы уже готовы.
+
+## Крупные функциональные блоки
+
+### 1) Управление путешествиями
+- Создание поездки по датам или по количеству дней.
+- Редактирование параметров поездки.
+- Архивирование и удаление поездок.
+
+### 2) Маршрут и этапы
+- Планирование этапов на временной шкале.
+- Редактирование, копирование, удаление и изменение порядка этапов.
+- Автозаполнение полей этапа при добавлении точки с карты.
+
+### 3) Карта и геосценарии
+- Поиск адресов и организаций с подсказками.
+- Отображение этапов и поисковых точек на карте.
+- Построение маршрута между точками с расчетом расстояния и времени.
+
+### 4) Бюджет поездки
+- Автоматическое создание/обновление расходов из стоимости этапов.
+- Ручное управление расходами (CRUD).
+- Фильтрация, сортировка и аналитика по категориям.
+
+### 5) Документы поездки
+- Загрузка и хранение документов поездки.
+- Просмотр PDF/изображений внутри приложения.
+- Управление документами (список, переименование, удаление).
+
+### 6) Профиль пользователя
+- Просмотр персональных данных.
+- Просмотр списка поездок, включая архивные.
+
+## Архитектура (кратко)
+
+Проект построен по микросервисной архитектуре с единой точкой входа через `API Gateway`.
+
+- **Клиенты**: `Flutter Web` и `Flutter Mobile`.
+- **Gateway**: маршрутизация клиентских запросов к нужным сервисам.
+- **Основные сервисы**:
+  - `trips-service` — поездки, этапы, расходы, маршрутизация;
+  - `documents-service` — работа с документами;
+  - `auth-service` — аутентификация и пользовательский контекст;
+  - дополнительные доменные сервисы (`places`, `recommendations`, `payments`, `interactions`).
+- **Данные**: отдельные БД PostgreSQL для микросервисов.
+- **Внешние интеграции**:
+  - Яндекс Карты (`JS API` для web, `MapKit SDK` для mobile) — визуализация и поиск по карте;
+  - `OpenRouteService` — расчет маршрута;
+  - `Yandex Object Storage (S3)` — хранение пользовательских документов.
+
+## Технологический стек
+
+- Frontend: `Flutter (Dart)`
+- Backend: `FastAPI (Python)`
+- API: `REST/JSON`
+- DB: `PostgreSQL`
+- Контейнеризация: `Docker Compose`
+
+## Быстрый локальный запуск
+
 ```bash
 docker compose -f infra/docker-compose.yml up --build -d
 ```
 
-### 2. Выполнить миграции
-```bash
-docker compose -f infra/docker-compose.yml exec auth-service alembic upgrade head
-docker compose -f infra/docker-compose.yml exec trips-service alembic upgrade head
-```
+Проверка gateway:
 
-### 3. Проверить gateway
 ```bash
 curl.exe http://127.0.0.1:8888/health
 ```
 
 Ожидаемый ответ:
+
 ```json
 {"status":"ok"}
 ```
 
-### 4. Запустить Flutter Web локально
+Запуск web-клиента:
+
 ```bash
 cd frontend/tour2tour_app
 flutter pub get
 flutter run -d chrome
 ```
-
-Локальный web использует:
-- `http://127.0.0.1:8888`
-
-### 5. Запустить Flutter Android Emulator локально
-```bash
-cd frontend/tour2tour_app
-flutter pub get
-flutter run -d emulator-5554
-```
-
-Android emulator использует:
-- `http://10.0.2.2:8888`
-
-### 6. Запустить фронт против production API
-```bash
-cd frontend/tour2tour_app
-flutter pub get
-flutter run -d chrome --dart-define=API_BASE_URL=https://api.24tour2tour.ru
-```
-
-## Команды для тестирования
-
-### Проверить список контейнеров
-```bash
-docker compose -f infra/docker-compose.yml ps
-```
-
-### Проверить логи gateway
-```bash
-docker compose -f infra/docker-compose.yml logs gateway
-```
-
-### Проверить логи auth-service
-```bash
-docker compose -f infra/docker-compose.yml logs auth-service
-```
-
-### Проверить локальный auth endpoint
-```bash
-curl.exe -i http://127.0.0.1:8888/auth/register
-```
-
-Ожидаемо для GET:
-- `405 Method Not Allowed`
-
-Это означает, что маршрутизация до auth-service работает.
-
-## Очистка и перезапуск
-
-### Остановить локальный контур
-```bash
-docker compose -f infra/docker-compose.yml down
-```
-
-### Остановить и удалить тома
-```bash
-docker compose -f infra/docker-compose.yml down -v
-```
-
-Используй это только если нужно полностью сбросить локальные БД.
-
-### Пересобрать сервисы заново
-```bash
-docker compose -f infra/docker-compose.yml up --build -d
-```
-
-### Пересоздать только gateway
-```bash
-docker compose -f infra/docker-compose.yml up -d --force-recreate gateway
-```
-
-## Production
-
-### Backend на VPS
-```bash
-cd ~/tour2tour
-docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod up --build -d
-docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod exec auth-service alembic upgrade head
-docker compose -f infra/docker-compose.prod.yml --env-file infra/.env.prod exec trips-service alembic upgrade head
-```
-
-### Flutter Web build для production
-```bash
-cd frontend/tour2tour_app
-flutter build web --release --dart-define=API_BASE_URL=https://api.24tour2tour.ru
-```
-
-## Ветки
-
-- `main` — стабильная production-ветка
-- `develop` — разработка и локальное тестирование
-
-Поток работы:
-1. разработка идет в `develop`;
-2. после проверки создается PR из `develop` в `main`;
-3. деплой запускается из `main`.
-
-## Auto-deploy
-
-Workflow:
-- `.github/workflows/deploy.yml`
-
-Secrets GitHub Actions:
-- `SSH_HOST`
-- `SSH_USER`
-- `SSH_KEY`
-- `SSH_PORT`
-
-Текущий workflow делает:
-- `git pull` на сервере;
-- `docker compose ... up --build -d`;
-- `alembic upgrade head` для `auth-service` и `trips-service`.

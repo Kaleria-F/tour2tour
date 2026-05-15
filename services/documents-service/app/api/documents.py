@@ -319,7 +319,7 @@ def delete_object(
     try:
         _delete_from_storage(object_key=row.object_key)
     except (ClientError, BotoCoreError, HTTPError, URLError, RuntimeError):
-        # We still remove metadata to avoid broken rows and keep sync stable.
+        # При ошибке удаления объекта выполняется очистка метаданных для сохранения консистентности.
         pass
 
     db.delete(row)

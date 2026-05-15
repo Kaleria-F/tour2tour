@@ -949,7 +949,7 @@ class _YandexCityMapState extends State<YandexCityMap> with WidgetsBindingObserv
 
   void _handleMapLongTap(ymk.Point point) {
     // Details are opened by short tap on a stage marker.
-    // Keep long tap as a no-op to avoid conflicts with route selection mode.
+    // Долгое нажатие не используется, чтобы не конфликтовать с выбором точек маршрута.
     return;
   }
 

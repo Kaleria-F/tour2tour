@@ -48,5 +48,6 @@ flutter {
 
 dependencies {
     implementation("com.google.android.gms:play-services-location:21.1.0")
+    implementation("com.google.android.play:integrity:1.4.0")
     implementation("androidx.work:work-runtime:2.9.0")
 }

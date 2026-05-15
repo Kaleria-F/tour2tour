@@ -14,8 +14,7 @@ def _repair_text(value: object | None) -> str:
     if not text:
         return ""
 
-    # Some local datasets are already decoded into mojibake like "РњРѕСЃРєРІР°".
-    # Try to restore them, but keep the original value if the roundtrip fails.
+    # Нормализация строк для восстановления некорректно декодированных значений.
     if any(marker in text for marker in ("Р", "С", "Ð", "Ñ")):
         try:
             repaired = text.encode("latin1").decode("utf-8")

@@ -718,7 +718,7 @@ class _StageFormPageState extends State<StageFormPage> {
         _orgSuggestBbox = '$minLon,$minLat~$maxLon,$maxLat';
       });
     } catch (_) {
-      // no-op: keep unbounded suggest when location lookup is unavailable
+      // Если координаты города не определены, используется поиск без гео-ограничений.
     }
   }
   String _formatTimeOnly(DateTime? date) {
